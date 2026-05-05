@@ -49,30 +49,44 @@ Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts
 
 ## Installation
 
-### ⚡ Quick Install (Recommended)
-If you are using **Gemini CLI** or **Antigravity**, you can install all skills with a single command:
+### 🔮 1. Hermes Agent & OpenClaw (Primary Support)
+These skills are fully optimized for the Hermes ecosystem. You can install them globally or per project.
+
+**Global Installation:**
+```bash
+# Clone into the default Hermes skills directory
+git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.hermes/skills/nujinSkills
+cd ~/.hermes/skills/nujinSkills && npm install
+```
+
+**Project Installation:**
+Clone into your project's `.agents/skills/` directory:
+```bash
+git clone https://github.com/AutonomousEnterprises/nujinSkills.git .agents/skills/nujinSkills
+cd .agents/skills/nujinSkills && npm install
+```
+
+---
+
+### 🤖 2. Claude Code
+To add these skills to **Claude Code**, clone them into your personal skills directory:
+
+```bash
+git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.claude/skills/nujinSkills
+cd ~/.claude/skills/nujinSkills && npm install
+```
+
+---
+
+### 💎 3. Gemini CLI / Antigravity
+For **Gemini CLI**, you can use the built-in installer:
 
 ```bash
 gemini skills install https://github.com/AutonomousEnterprises/nujinSkills.git
 ```
 
-### 📂 Manual Installation
-Clone the repository into your agent's skill directory:
-
-| Agent | Global Directory | Project Directory |
-|-------|------------------|-------------------|
-| **Hermes / OpenClaw** | `~/.agents/skills/` | `.agents/skills/` |
-| **Gemini / Antigravity** | `~/.gemini/skills/` | `.gemini/skills/` |
-| **Claude Code** | `~/.claude/skills/` | `.claude/skills/` |
-
-```bash
-# Example: Global install for Claude Code
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.claude/skills/nujinSkills
-cd ~/.claude/skills/nujinSkills && npm install
-```
-
-### 🛠️ Setup Dependencies
-After cloning, ensure all dependencies are installed:
+### 🛠️ Manual Dependency Setup
+If you are developing or running scripts manually, ensure all dependencies are installed:
 ```bash
 cd nujinSkills
 npm install
