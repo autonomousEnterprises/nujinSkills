@@ -49,26 +49,34 @@ Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts
 
 ## Installation
 
-These skills follow the **Agent Skills Standard**. The easiest way to install them is using the universal `skills` manager, which automatically detects your agent's configuration (Hermes, OpenClaw, Claude Code, etc.).
-
-### 🔮 1. Hermes Agent & OpenClaw (Recommended)
-Use the universal installer to pull the entire skill bundle into your active agent library:
+### 🔮 1. Hermes Agent (Primary Support)
+To integrate these skills with **Hermes**, clone the repository directly into your Hermes skills directory:
 
 ```bash
-# This command automatically detects ~/.hermes or ~/.openclaw
-npx skills add AutonomousEnterprises/nujinSkills
+# Global installation (recommended)
+git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.hermes/skills/nujinSkills
+cd ~/.hermes/skills/nujinSkills && npm install
 ```
-*Note: After installation, restart your agent gateway or use `/skills` to verify.*
 
 ---
 
-### 🤖 2. Claude Code
-You can also use the universal installer for Claude Code:
+### 🦀 2. OpenClaw
+For **OpenClaw**, you can use the universal installer or manual clone:
 
 ```bash
+# Universal installer
 npx skills add AutonomousEnterprises/nujinSkills
+
+# Manual clone fallback
+git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.agents/skills/nujinSkills
+cd ~/.agents/skills/nujinSkills && npm install
 ```
-*If you prefer manual installation:*
+
+---
+
+### 🤖 3. Claude Code
+To add these skills to **Claude Code**, clone them into your personal skills directory:
+
 ```bash
 git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.claude/skills/nujinSkills
 cd ~/.claude/skills/nujinSkills && npm install
@@ -76,8 +84,8 @@ cd ~/.claude/skills/nujinSkills && npm install
 
 ---
 
-### 💎 3. Gemini CLI / Antigravity
-For Gemini-based agents, you can use the native installer:
+### 💎 4. Gemini CLI / Antigravity
+If you are using **Gemini CLI**, use the integrated installer:
 
 ```bash
 gemini skills install https://github.com/AutonomousEnterprises/nujinSkills.git
