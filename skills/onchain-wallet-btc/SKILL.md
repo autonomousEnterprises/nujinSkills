@@ -1,6 +1,6 @@
 ---
 name: onchain-wallet-btc
-description: "Bitcoin HD wallet management using BIP39/BIP84 Native SegWit. Create wallets, derive addresses, check balances, list UTXOs, and construct/broadcast transactions. Uses bitcoinjs-lib + Blockstream/Mempool.space APIs. No API key required."
+description: "Bitcoin (BTC) HD wallet management using BIP39/BIP84 Native SegWit. Create wallets, derive addresses, check balances, list UTXOs, and construct/broadcast transactions. Uses bitcoinjs-lib + Blockstream/Mempool.space APIs. No API key required."
 risk: critical
 source: nujinSkills
 date_added: "2026-05-05"
