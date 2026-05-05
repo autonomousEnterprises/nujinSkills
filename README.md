@@ -10,12 +10,12 @@
 
 **nujinSkills** is a curated collection of onchain skills that empower AI agents to interact with blockchains, DeFi protocols, and crypto markets — all without requiring API keys.
 
-Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts + references) and is compatible with:
+Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts + references) and is optimized for:
 
 | Agent | Status |
 |-------|--------|
-| 🔮 Hermes | ✅ Compatible |
-| 🦀 OpenClaw | ✅ Compatible |
+| 🔮 **Hermes** | 🚀 Primary Support |
+| 🦀 **OpenClaw** | 🛡️ Verified |
 | 🤖 Claude Code | ✅ Compatible |
 | 💎 Gemini CLI | ✅ Compatible |
 | 🧑‍💻 GitHub Copilot | ✅ Compatible |
@@ -61,9 +61,9 @@ Clone the repository into your agent's skill directory:
 
 | Agent | Global Directory | Project Directory |
 |-------|------------------|-------------------|
+| **Hermes / OpenClaw** | `~/.agents/skills/` | `.agents/skills/` |
 | **Gemini / Antigravity** | `~/.gemini/skills/` | `.gemini/skills/` |
 | **Claude Code** | `~/.claude/skills/` | `.claude/skills/` |
-| **Hermes / OpenClaw** | `~/.agents/skills/` | `.agents/skills/` |
 
 ```bash
 # Example: Global install for Claude Code
