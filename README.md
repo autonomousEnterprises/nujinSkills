@@ -49,21 +49,30 @@ Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts
 
 ## Installation
 
-### As Project Skills (recommended)
-Clone into your project's `.agents/skills/` or `.claude/skills/` directory:
+### ⚡ Quick Install (Recommended)
+If you are using **Gemini CLI** or **Antigravity**, you can install all skills with a single command:
 
 ```bash
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git .agents/skills/nujinSkills
+gemini skills install https://github.com/AutonomousEnterprises/nujinSkills.git
 ```
 
-### As Personal Skills
-Clone into your global skills directory:
+### 📂 Manual Installation
+Clone the repository into your agent's skill directory:
+
+| Agent | Global Directory | Project Directory |
+|-------|------------------|-------------------|
+| **Gemini / Antigravity** | `~/.gemini/skills/` | `.gemini/skills/` |
+| **Claude Code** | `~/.claude/skills/` | `.claude/skills/` |
+| **Hermes / OpenClaw** | `~/.agents/skills/` | `.agents/skills/` |
 
 ```bash
+# Example: Global install for Claude Code
 git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.claude/skills/nujinSkills
+cd ~/.claude/skills/nujinSkills && npm install
 ```
 
-### Install Dependencies
+### 🛠️ Setup Dependencies
+After cloning, ensure all dependencies are installed:
 ```bash
 cd nujinSkills
 npm install
