@@ -49,35 +49,26 @@ Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts
 
 ## Installation
 
-These skills are natively compatible with the **Agent Skills Standard**. For the best experience, use the official CLI installers for your preferred agent.
+These skills follow the **Agent Skills Standard**. The easiest way to install them is using the universal `skills` manager, which automatically detects your agent's configuration (Hermes, OpenClaw, Claude Code, etc.).
 
-### 🔮 1. Hermes Agent (Recommended)
-Hermes provides a native command to pull skills directly from GitHub:
+### 🔮 1. Hermes Agent & OpenClaw (Recommended)
+Use the universal installer to pull the entire skill bundle into your active agent library:
 
 ```bash
-# Install the entire repository as a skill bundle
-hermes skills install https://github.com/AutonomousEnterprises/nujinSkills.git
+# This command automatically detects ~/.hermes or ~/.openclaw
+npx skills add AutonomousEnterprises/nujinSkills
 ```
-*Skills will be automatically available in your next session. Use `/skills` to verify.*
+*Note: After installation, restart your agent gateway or use `/skills` to verify.*
 
 ---
 
-### 🦀 2. OpenClaw
-OpenClaw users can install via the built-in skill manager:
+### 🤖 2. Claude Code
+You can also use the universal installer for Claude Code:
 
 ```bash
-# Add the skills to your active workspace
-openclaw skills install https://github.com/AutonomousEnterprises/nujinSkills.git
-
-# Restart your gateway to apply changes
-openclaw gateway restart
+npx skills add AutonomousEnterprises/nujinSkills
 ```
-
----
-
-### 🤖 3. Claude Code
-For **Claude Code**, manual installation into the global skills directory is the standard:
-
+*If you prefer manual installation:*
 ```bash
 git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.claude/skills/nujinSkills
 cd ~/.claude/skills/nujinSkills && npm install
@@ -85,12 +76,14 @@ cd ~/.claude/skills/nujinSkills && npm install
 
 ---
 
-### 💎 4. Gemini CLI / Antigravity
-If you are using **Gemini CLI**, use the integrated installer:
+### 💎 3. Gemini CLI / Antigravity
+For Gemini-based agents, you can use the native installer:
 
 ```bash
 gemini skills install https://github.com/AutonomousEnterprises/nujinSkills.git
 ```
+
+---
 
 ### 🛠️ Manual & Developer Setup
 If you want to contribute or run scripts directly via terminal:
