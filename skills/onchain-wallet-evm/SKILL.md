@@ -43,7 +43,15 @@ Create and manage Ethereum & EVM-compatible wallets using `viem`. Supports all m
 
 Read `../../shared/security-guidelines.md` before any key operations.
 
-## Scripts
+## Persistence & Memory Management
+
+**CRITICAL**: When creating a new wallet, the AI Agent **MUST** immediately persist the mnemonic and derived address to its long-term memory.
+
+- **Hermes**: Use the `memory_save` tool or `/memory save` command.
+- **OpenClaw**: Use the internal state management or memory tool to record the credentials.
+- **Claude Code**: Save the credentials to a secure local file (e.g., `.env`) or your internal persistent state.
+
+**Rule**: Never output a mnemonic to the user without first confirming it has been safely stored in your own persistent memory for future script execution.
 
 Run with: `npx tsx skills/onchain-wallet-evm/scripts/<script>.ts`
 

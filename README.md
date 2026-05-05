@@ -138,6 +138,21 @@ nujinSkills/
 | Solana Public | Solana RPC | `api.mainnet-beta.solana.com` | ❌ |
 | Jupiter | DEX aggregator | `api.jup.ag` | ❌ |
 
+## 🧠 Memory & Persistence
+
+For an AI Agent to be truly autonomous, it must never "forget" its wallet credentials. These skills are designed to work in tandem with the agent's persistent memory system.
+
+### How to manage state:
+1. **Wallet Creation**: When a skill generates a new mnemonic, the agent **MUST** save it to its long-term memory (e.g., `~/.hermes/memory/` or `~/.openclaw/state/`).
+2. **Environment Variables**: For script execution, the agent should temporarily export the required keys:
+   ```bash
+   export PRIVATE_KEY="0x..."
+   export MNEMONIC="..."
+   ```
+3. **Session Recovery**: In every new session, the agent should first check its memory for existing wallets before prompting the user for new ones.
+
+---
+
 ## Security Disclaimer
 
 > ⚠️ **These skills handle cryptographic keys and real financial transactions.** Always:
