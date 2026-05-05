@@ -1,4 +1,4 @@
-<![CDATA[# ⛓️ nujinSkills — Onchain AIOS Skills Repository
+# ⛓️ nujinSkills — Onchain AIOS Skills Repository
 
 > Professional onchain skills collection for AI coding agents. Zero API-key dependencies.
 
@@ -117,4 +117,4 @@ nujinSkills/
 ## License
 
 MIT — See [LICENSE](LICENSE) for details.
-]]>
+
