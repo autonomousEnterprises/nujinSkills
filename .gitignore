@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Environment & Secrets
+.env
+.env.*
+*.key
+*.pem
+*.keystore
+*.json.enc
+
+# Wallet files — NEVER commit these
+**/wallet.json
+**/keypair.json
+**/keystore/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
