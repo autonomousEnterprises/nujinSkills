@@ -49,27 +49,34 @@ Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts
 
 ## Installation
 
-### 🔮 1. Hermes Agent & OpenClaw (Primary Support)
-These skills are fully optimized for the Hermes ecosystem. You can install them globally or per project.
+These skills are natively compatible with the **Agent Skills Standard**. For the best experience, use the official CLI installers for your preferred agent.
 
-**Global Installation:**
+### 🔮 1. Hermes Agent (Recommended)
+Hermes provides a native command to pull skills directly from GitHub:
+
 ```bash
-# Clone into the default Hermes skills directory
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.hermes/skills/nujinSkills
-cd ~/.hermes/skills/nujinSkills && npm install
+# Install the entire repository as a skill bundle
+hermes skills install https://github.com/AutonomousEnterprises/nujinSkills.git
 ```
+*Skills will be automatically available in your next session. Use `/skills` to verify.*
 
-**Project Installation:**
-Clone into your project's `.agents/skills/` directory:
+---
+
+### 🦀 2. OpenClaw
+OpenClaw users can install via the built-in skill manager:
+
 ```bash
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git .agents/skills/nujinSkills
-cd .agents/skills/nujinSkills && npm install
+# Add the skills to your active workspace
+openclaw skills install https://github.com/AutonomousEnterprises/nujinSkills.git
+
+# Restart your gateway to apply changes
+openclaw gateway restart
 ```
 
 ---
 
-### 🤖 2. Claude Code
-To add these skills to **Claude Code**, clone them into your personal skills directory:
+### 🤖 3. Claude Code
+For **Claude Code**, manual installation into the global skills directory is the standard:
 
 ```bash
 git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.claude/skills/nujinSkills
@@ -78,16 +85,17 @@ cd ~/.claude/skills/nujinSkills && npm install
 
 ---
 
-### 💎 3. Gemini CLI / Antigravity
-For **Gemini CLI**, you can use the built-in installer:
+### 💎 4. Gemini CLI / Antigravity
+If you are using **Gemini CLI**, use the integrated installer:
 
 ```bash
 gemini skills install https://github.com/AutonomousEnterprises/nujinSkills.git
 ```
 
-### 🛠️ Manual Dependency Setup
-If you are developing or running scripts manually, ensure all dependencies are installed:
+### 🛠️ Manual & Developer Setup
+If you want to contribute or run scripts directly via terminal:
 ```bash
+git clone https://github.com/AutonomousEnterprises/nujinSkills.git
 cd nujinSkills
 npm install
 ```
