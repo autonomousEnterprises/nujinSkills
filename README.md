@@ -47,6 +47,12 @@ Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts
 | [`defi-lending`](skills/defi-lending/) | Supply, borrow, repay — Aave V3 & Compound V3 |
 | [`defi-flashloans`](skills/defi-flashloans/) | Flash loan execution & contract templates |
 
+### 🤖 Trading Strategy
+| Skill | Description |
+|-------|-------------|
+| [`hummingbot-strategy`](skills/hummingbot-strategy/) | Hummingbot strategy development, generators, validators, and profitability framework |
+
+
 ## Installation
 
 ### 🔮 1. Hermes Agent (Primary Support)
