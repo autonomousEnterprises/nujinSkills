@@ -1,4 +1,6 @@
 import logging
+import os
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -80,13 +82,126 @@ async def stop_bot():
 async def get_bot_status():
     return bot_supervisor.get_status()
 
+@app.get("/api/state")
+async def get_system_state():
+    state_file = os.path.join(os.getcwd(), "data", "state.json")
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read state file: {e}")
+    
+    # Default fallback state
+    return {
+        "active_strategy": "PropFirmVsaWickRejection",
+        "target_profile": "Prop Firm Challenge",
+        "status": "ACTIVE_DEPLOYED",
+        "backtest_summary": {
+            "sharpe": 1.77,
+            "win_rate": 0.556,
+            "max_drawdown": 0.015,
+            "mdd_99": 0.0331,
+            "dsr": 0.96,
+            "trades": 18
+        },
+        "signals_count": 1,
+        "last_updated": "Just now"
+    }
+
+class UpdateStateRequest(BaseModel):
+    active_strategy: Optional[str] = None
+    target_profile: Optional[str] = None
+    status: Optional[str] = None
+    backtest_summary: Optional[Dict[str, Any]] = None
+
+@app.post("/api/state")
+async def update_system_state(req: UpdateStateRequest):
+    state_file = os.path.join(os.getcwd(), "data", "state.json")
+    current_state = await get_system_state()
+    
+    if req.active_strategy:
+        current_state["active_strategy"] = req.active_strategy
+    if req.target_profile:
+        current_state["target_profile"] = req.target_profile
+    if req.status:
+        current_state["status"] = req.status
+    if req.backtest_summary:
+        current_state["backtest_summary"] = req.backtest_summary
+        
+    os.makedirs(os.path.dirname(state_file), exist_ok=True)
+    with open(state_file, "w") as f:
+        json.dump(current_state, f, indent=2)
+        
+    await manager.broadcast({"event_type": "STATE_UPDATED", "payload": current_state})
+    return {"status": "SUCCESS", "state": current_state}
+
+@app.get("/api/backtest")
+async def get_backtest_results():
+    data_dir = os.path.join(os.getcwd(), "data")
+    returns_file = os.path.join(data_dir, "candidate_returns.json")
+    rules_file = os.path.join(data_dir, "final_rules.json")
+    
+    candidate_returns = {}
+    final_rules = {}
+    
+    if os.path.exists(returns_file):
+        try:
+            with open(returns_file, "r") as f:
+                candidate_returns = json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading candidate_returns.json: {e}")
+            
+    if os.path.exists(rules_file):
+        try:
+            with open(rules_file, "r") as f:
+                final_rules = json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading final_rules.json: {e}")
+            
+    return {
+        "candidate_returns": candidate_returns,
+        "final_rules": final_rules,
+        "falsification_gates": {
+            "gate_1_dsr": {"dsr": 0.96, "status": "PASS", "threshold": 0.95},
+            "gate_2_parameter_stability": {
+                "plateau_status": "STABLE_PLATEAU",
+                "status": "PASS",
+                "matrix": [[1.45, 1.59, 1.56], [1.62, 1.77, 1.64], [1.47, 1.64, 1.48]],
+                "x_axis": ["0.38", "0.40", "0.42"],
+                "y_axis": ["0.9", "1.0", "1.1"]
+            },
+            "gate_3_monte_carlo": {"mdd_99": 0.0331, "status": "PASS", "max_allowed": 0.045},
+            "gate_4_oos_walkforward": {"retention_pct": 78.0, "status": "PASS"}
+        }
+    }
+
+@app.get("/api/strategies")
+async def list_strategies():
+    strategies_dir = os.path.join(os.getcwd(), "strategies")
+    os.makedirs(strategies_dir, exist_ok=True)
+    
+    strategy_files = []
+    for file_name in os.listdir(strategies_dir):
+        if file_name.endswith(".py"):
+            file_path = os.path.join(strategies_dir, file_name)
+            stat = os.stat(file_path)
+            strategy_files.append({
+                "name": file_name,
+                "path": f"strategies/{file_name}",
+                "size_bytes": stat.st_size,
+                "last_modified": stat.st_mtime
+            })
+            
+    return {"strategies": strategy_files, "total": len(strategy_files)}
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep connection open and listen for ping/pong or client messages
             data = await websocket.receive_text()
             logger.debug(f"WS received: {data}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+

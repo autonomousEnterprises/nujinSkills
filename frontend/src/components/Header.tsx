@@ -1,9 +1,9 @@
 import React from 'react';
-import { Activity, BarChart2, LayoutGrid, Terminal } from 'lucide-react';
+import { Activity, BarChart2, LayoutGrid, Terminal, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {
-  activeScreen: 'CHART' | 'AGENT_DECK';
-  setActiveScreen: (screen: 'CHART' | 'AGENT_DECK') => void;
+  activeScreen: 'CHART' | 'AGENT_DECK' | 'BACKTEST';
+  setActiveScreen: (screen: 'CHART' | 'AGENT_DECK' | 'BACKTEST') => void;
   isConnected: boolean;
 }
 
@@ -22,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, setActiveScreen, i
           </span>
         </div>
         <span className="text-[#8b949e] hidden md:inline">
-          Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-white font-mono font-bold">Ctrl + Space</kbd> to swap fullscreen views
+          Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-white font-mono font-bold">F1 / F2 / F3</kbd> or <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-white font-mono font-bold">Ctrl + Space</kbd> to swap screens
         </span>
       </div>
 
@@ -35,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, setActiveScreen, i
             }`}
         >
           <BarChart2 className="w-3.5 h-3.5" />
-          <span>Lightweight Chart (F1)</span>
+          <span>Chart (F1)</span>
         </button>
 
         <button
@@ -46,9 +46,21 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, setActiveScreen, i
             }`}
         >
           <LayoutGrid className="w-3.5 h-3.5" />
-          <span>Agent Deck & Mining (F2)</span>
+          <span>Agent Deck (F2)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveScreen('BACKTEST')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all font-mono ${activeScreen === 'BACKTEST'
+            ? 'bg-[#238636] text-white font-bold shadow-lg shadow-emerald-950/50 border border-emerald-500/50'
+            : 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]'
+            }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Backtest & Strategies (F3)</span>
         </button>
       </div>
     </header>
   );
 };
+

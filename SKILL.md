@@ -212,7 +212,7 @@ Once a strategy passes all falsification gates, activate user-selected deploymen
 
 1. **Emit Freqtrade Production Code:** *(References: [`references/tradingbot.md`](file:///home/christonomous/Desktop/EdgeMiner/references/tradingbot.md) & [`references/libs_clis.md`](file:///home/christonomous/Desktop/EdgeMiner/references/libs_clis.md))*
    ```bash
-   python tools/strategy_emitter.py --thesis "<THESIS>" --rules data/final_rules.json --framework freqtrade --out user_data/strategies/MyStrategy.py
+   python tools/strategy_emitter.py --thesis "<THESIS>" --rules data/final_rules.json --framework freqtrade --out strategies/MyStrategy.py
    ```
 
 2. **Activate 24/7 Telegram Signal Chatbot (Optional):** *(Reference: [`references/signals_gateway.md`](file:///home/christonomous/Desktop/EdgeMiner/references/signals_gateway.md))*

@@ -2,24 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ChartCanvas } from './components/ChartCanvas';
 import { AgentDeck } from './components/AgentDeck';
+import { BacktestDeck } from './components/BacktestDeck';
 import { useWebSocket } from './hooks/useWebSocket';
 
 export const App: React.FC = () => {
-  const [activeScreen, setActiveScreen] = useState<'CHART' | 'AGENT_DECK'>('CHART');
+  const [activeScreen, setActiveScreen] = useState<'CHART' | 'AGENT_DECK' | 'BACKTEST'>('CHART');
   const { isConnected, widgets, latestSignal, signals } = useWebSocket();
 
-  // Hotkey Swapper: Press 'Ctrl + Space' or 'Tab' to swap fullscreen views instantly
+  // Hotkey Swapper: Press 'Ctrl + Space' or F1 / F2 / F3 to swap views instantly
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === ' ' && e.ctrlKey) || e.key === 'F1' || e.key === 'F2') {
+      if (e.key === 'F1') {
         e.preventDefault();
-        if (e.key === 'F1') {
-          setActiveScreen('CHART');
-        } else if (e.key === 'F2') {
-          setActiveScreen('AGENT_DECK');
-        } else {
-          setActiveScreen((prev) => (prev === 'CHART' ? 'AGENT_DECK' : 'CHART'));
-        }
+        setActiveScreen('CHART');
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        setActiveScreen('AGENT_DECK');
+      } else if (e.key === 'F3') {
+        e.preventDefault();
+        setActiveScreen('BACKTEST');
+      } else if (e.key === ' ' && e.ctrlKey) {
+        e.preventDefault();
+        setActiveScreen((prev) => {
+          if (prev === 'CHART') return 'AGENT_DECK';
+          if (prev === 'AGENT_DECK') return 'BACKTEST';
+          return 'CHART';
+        });
       }
     };
 
@@ -32,17 +40,23 @@ export const App: React.FC = () => {
       {/* Top Navigation & Hotkey Switcher */}
       <Header activeScreen={activeScreen} setActiveScreen={setActiveScreen} isConnected={isConnected} />
 
-      {/* Viewport 1: Fullscreen TradingView Candlestick Canvas */}
+      {/* Viewport 1: Fullscreen TradingView Candlestick Canvas (F1) */}
       <main className={`w-full flex-1 relative ${activeScreen === 'CHART' ? 'block' : 'hidden'}`}>
         <ChartCanvas latestSignal={latestSignal} />
       </main>
 
-      {/* Viewport 2: Server-Driven UI Agent Audit Deck & Mining Telemetry */}
+      {/* Viewport 2: Server-Driven UI Agent Audit Deck & Mining Telemetry (F2) */}
       <main className={`w-full flex-1 overflow-hidden ${activeScreen === 'AGENT_DECK' ? 'block' : 'hidden'}`}>
         <AgentDeck widgets={widgets} signals={signals} />
+      </main>
+
+      {/* Viewport 3: Backtest Analytics, DSR Audit Gates & Strategy Repository (F3) */}
+      <main className={`w-full flex-1 overflow-hidden ${activeScreen === 'BACKTEST' ? 'block' : 'hidden'}`}>
+        <BacktestDeck />
       </main>
     </div>
   );
 };
 
 export default App;
+
