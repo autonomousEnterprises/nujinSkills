@@ -270,3 +270,38 @@ Once a strategy passes all falsification gates, activate user-selected deploymen
 | `tools/frontend_control.py` | CLI tool to build and serve the dual-screen React UI | `build`, `start`, `stop`, `status`, `--port` |
 | `tools/bot_control.py` | CLI tool to launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
 
+---
+
+## 🌐 Backend REST API Reference
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/health` | GET | System health: bot status, WS connections |
+| `/api/candles` | GET | Live or synthetic OHLCV candles (BTC/USDT 15m via Binance) |
+| `/api/signals` | GET | All persisted signals + current active open signal |
+| `/api/signals/stats` | GET | **Live performance stats since activation:** win rate, profit factor, Sharpe (annualized), total PnL %, avg win/loss, max consecutive losses |
+| `/api/state` | GET | Single Source of Truth system state (active strategy, backtest summary) |
+| `/api/strategies` | GET | List all strategy `.py` files in `strategies/` |
+| `/api/strategies/select` | POST | Run real backtest preview for a strategy (no activation) |
+| `/api/bot/deploy` | POST | Activate & deploy a strategy to paper trading + update state |
+| `/api/bot/stop` | POST | Stop the active paper trading bot |
+| `/api/backtest` | GET | Get backtest results for active or specified strategy |
+| `/api/broadcast` | POST | Broadcast WebSocket event (signals, widgets, alerts) |
+| `/ws` | WS | Real-time telemetry bus: `UPSERT_WIDGET`, `SIGNAL_TRIGGERED`, `STATE_UPDATED` |
+
+---
+
+## 📺 Dashboard Screen Architecture
+
+| Screen | Hotkey | Purpose |
+| --- | --- | --- |
+| **Chart** (`ChartCanvas`) | F1 | Live BTC/USDT candlestick chart (Binance 15m WebSocket) with backtest trade markers overlay |
+| **Signal Deck** (`SignalDeck`) | F2 | Live strategy telemetry: performance stats since activation (win rate, PF, Sharpe, PnL), active open signal with live unrealized PnL, and full signal history audit table |
+| **Backtest** (`BacktestDeck`) | F3 | Full-width backtest analytics: equity growth curve, return distribution histogram, market regime survival (bull/bear/ranging), sequential trade log, and 5-Gate Cynic Audit |
+| **Strategy Mega Menu** | Header | Header mega menu dropdown listing all strategies in `strategies/` with run backtest and activate actions |
+
+> [!NOTE]
+> **AI State Sharing:** All three screens read from the same `data/state.json` (Single Source of Truth). The AI agent writes to this file via CLI tools (`run_backtest_audit.py --save-state`) or via REST API. The frontend subscribes to changes via WebSocket `STATE_UPDATED` events.
+
+
+

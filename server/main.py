@@ -9,7 +9,8 @@ from typing import Dict, Any, Optional
 from server.websocket import manager
 from server.telegram_bot import telegram_gateway
 from server.bot_runner import bot_supervisor
-from server.data_manager import generate_sample_ohlcv
+from server.data_manager import generate_sample_ohlcv, fetch_real_binance_klines
+
 from server.backtest_engine import run_real_backtest
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -51,8 +52,13 @@ async def health_check():
     }
 
 @app.get("/api/candles")
-async def get_candles(symbol: str = "BTC/USDT", count: int = 200):
-    return {"symbol": symbol, "data": generate_sample_ohlcv(symbol, count)}
+async def get_candles(symbol: str = "BTC/USDT", count: int = 500, mode: str = "live"):
+    if mode == "live":
+        data = fetch_real_binance_klines(symbol=symbol, interval="15m", count=count)
+    else:
+        data = generate_sample_ohlcv(symbol, count)
+    return {"symbol": symbol, "mode": mode, "data": data}
+
 
 @app.get("/api/widgets")
 async def get_widgets():
@@ -250,6 +256,72 @@ async def get_backtest_results(strategy: Optional[str] = None):
     state = await get_system_state()
     active_strat = state.get("active_strategy", "PropFirmVsaWickRejection")
     return run_real_backtest(active_strat, save_as_active=False)
+
+@app.get("/api/signals/stats")
+async def get_live_signal_stats():
+    """Compute live performance stats from all persisted signals since strategy activation."""
+    import math
+    signals_file = os.path.join(os.getcwd(), "data", "signals.json")
+    signals_list = []
+    if os.path.exists(signals_file):
+        try:
+            with open(signals_file, "r") as f:
+                signals_list = json.load(f)
+        except Exception:
+            pass
+
+    # Closed trades only (have exit_reason and pnl_pct set)
+    closed = [s for s in signals_list if s.get("exit_reason") and s.get("pnl_pct") is not None]
+    open_trades = [s for s in signals_list if s.get("status") == "ACTIVE_IN_POSITION"]
+
+    total_trades = len(closed)
+    wins = [s for s in closed if s.get("pnl_pct", 0) > 0]
+    losses = [s for s in closed if s.get("pnl_pct", 0) <= 0]
+
+    win_rate = len(wins) / total_trades if total_trades > 0 else 0.0
+    gross_profit = sum(s.get("pnl_pct", 0) for s in wins)
+    gross_loss = abs(sum(s.get("pnl_pct", 0) for s in losses))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else (99.0 if gross_profit > 0 else 0.0)
+    total_pnl = round(sum(s.get("pnl_pct", 0) for s in closed), 2)
+    avg_win = round(gross_profit / len(wins), 2) if wins else 0.0
+    avg_loss = round(gross_loss / len(losses), 2) if losses else 0.0
+
+    # Sharpe since activation (annualized, daily returns proxy)
+    returns = [s.get("pnl_pct", 0) for s in closed]
+    if len(returns) > 1:
+        mean_r = sum(returns) / len(returns)
+        variance = sum((r - mean_r) ** 2 for r in returns) / len(returns)
+        std_r = math.sqrt(variance) if variance > 0 else 1e-8
+        sharpe_live = round((mean_r / std_r) * math.sqrt(252), 2)
+    else:
+        sharpe_live = 0.0
+
+    # Max consecutive losses
+    max_consec_loss = 0
+    cur_consec = 0
+    for s in closed:
+        if s.get("pnl_pct", 0) <= 0:
+            cur_consec += 1
+            max_consec_loss = max(max_consec_loss, cur_consec)
+        else:
+            cur_consec = 0
+
+    return {
+        "total_trades": total_trades,
+        "open_trades": len(open_trades),
+        "wins": len(wins),
+        "losses": len(losses),
+        "win_rate": round(win_rate, 4),
+        "profit_factor": profit_factor,
+        "sharpe_live": sharpe_live,
+        "total_pnl_pct": total_pnl,
+        "avg_win_pct": avg_win,
+        "avg_loss_pct": avg_loss,
+        "gross_profit_pct": round(gross_profit, 2),
+        "gross_loss_pct": round(gross_loss, 2),
+        "max_consecutive_losses": max_consec_loss
+    }
+
 
 @app.get("/api/strategies")
 async def list_strategies():

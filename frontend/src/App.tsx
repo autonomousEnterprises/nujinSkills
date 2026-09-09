@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ChartCanvas } from './components/ChartCanvas';
 import { SignalDeck } from './components/SignalDeck';
-
 import { BacktestDeck } from './components/BacktestDeck';
 import { useWebSocket } from './hooks/useWebSocket';
 
@@ -17,23 +16,23 @@ export const App: React.FC = () => {
 
   const [selectedStrategy, setSelectedStrategy] = useState<string>('PropFirmVsaWickRejection.py');
   const [selectedBacktestData, setSelectedBacktestData] = useState<any>(null);
-  const [activeState, setActiveState] = useState<any>(null);
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loadingBacktest, setLoadingBacktest] = useState(false);
 
-  const { isConnected, widgets, latestSignal, signals } = useWebSocket();
+  // useWebSocket now surfaces liveSystemState (kept in sync via WS STATE_UPDATED events + initial REST fetch)
+  const { isConnected, widgets, latestSignal, signals, liveSystemState } = useWebSocket();
 
-  // Fetch initial system state & strategies repository
-  const fetchSystemInfo = async () => {
+  // activeState = live WS state if available, else local fallback
+  const activeState = liveSystemState;
+
+  // Fetch strategy repository list (doesn't need to live in WS)
+  const fetchStrategies = async () => {
     try {
-      const [resState, resStrat] = await Promise.all([
-        fetch('/api/state').then((r) => r.json()),
-        fetch('/api/strategies').then((r) => r.json()),
-      ]);
-      setActiveState(resState);
-      setStrategies(resStrat.strategies || []);
+      const res = await fetch('/api/strategies');
+      const data = await res.json();
+      setStrategies(data.strategies || []);
     } catch (e) {
-      console.error('Error fetching system info:', e);
+      console.error('Error fetching strategies:', e);
     }
   };
 
@@ -56,7 +55,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Really activate a strategy for the production system (deploys bot & updates state.json)
+  // Activate a strategy for production (deploys bot, updates state.json, broadcasts STATE_UPDATED via WS)
   const handleActivateStrategy = async (stratName: string) => {
     try {
       const res = await fetch('/api/bot/deploy', {
@@ -65,62 +64,52 @@ export const App: React.FC = () => {
         body: JSON.stringify({ strategy: stratName, mode: 'dry-run' }),
       });
       const data = await res.json();
+      // liveSystemState will auto-update via WS STATE_UPDATED broadcast from the server
+      // but also update backtest view immediately for the activated strategy
       if (data.state) {
-        setActiveState(data.state);
+        setSelectedBacktestData(data);
       }
-      await fetchSystemInfo();
-      // Also update currently inspected strategy to match activated strategy
       handleSelectStrategy(stratName);
     } catch (e) {
-      console.error('Failed to deploy strategy for system:', e);
+      console.error('Failed to deploy strategy:', e);
     }
   };
 
   useEffect(() => {
-    fetchSystemInfo();
+    fetchStrategies();
     handleSelectStrategy(selectedStrategy);
   }, []);
 
-  // Listen for OS system theme changes automatically
+  // OS theme auto-detect
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      setTheme(e.matches ? 'dark' : 'light');
-    };
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => setTheme(e.matches ? 'dark' : 'light');
+    mq.addEventListener('change', handleChange);
+    return () => mq.removeEventListener('change', handleChange);
   }, []);
 
-  // Hotkey Swapper: Press 'Ctrl + Space' or F1 / F2 / F3 to swap views
+  // Hotkeys: F1/F2/F3 + Ctrl+Space cycle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F1') {
+      if (e.key === 'F1') { e.preventDefault(); setActiveScreen('CHART'); }
+      else if (e.key === 'F2') { e.preventDefault(); setActiveScreen('AGENT_DECK'); }
+      else if (e.key === 'F3') { e.preventDefault(); setActiveScreen('BACKTEST'); }
+      else if (e.key === ' ' && e.ctrlKey) {
         e.preventDefault();
-        setActiveScreen('CHART');
-      } else if (e.key === 'F2') {
-        e.preventDefault();
-        setActiveScreen('AGENT_DECK');
-      } else if (e.key === 'F3') {
-        e.preventDefault();
-        setActiveScreen('BACKTEST');
-      } else if (e.key === ' ' && e.ctrlKey) {
-        e.preventDefault();
-        setActiveScreen((prev) => {
-          if (prev === 'CHART') return 'AGENT_DECK';
-          if (prev === 'AGENT_DECK') return 'BACKTEST';
-          return 'CHART';
-        });
+        setActiveScreen((prev) =>
+          prev === 'CHART' ? 'AGENT_DECK' : prev === 'AGENT_DECK' ? 'BACKTEST' : 'CHART'
+        );
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   return (
     <div className={`w-screen h-screen flex flex-col overflow-hidden ${theme === 'dark' ? 'bg-[#0d1117] text-white' : 'bg-slate-100 text-slate-900'}`}>
-      {/* Top Navigation, Theme Switcher & Hotkey Bar */}
+
+      {/* Header — strategy mega menu always accessible */}
       <Header
         activeScreen={activeScreen}
         setActiveScreen={setActiveScreen}
@@ -134,20 +123,19 @@ export const App: React.FC = () => {
         onActivateStrategy={handleActivateStrategy}
       />
 
-
-      {/* Viewport 1: Fullscreen TradingView Candlestick Canvas (F1) */}
+      {/* F1 — Live Chart */}
       <main className={`w-full flex-1 relative ${activeScreen === 'CHART' ? 'block' : 'hidden'}`}>
         <ChartCanvas
           latestSignal={latestSignal}
           theme={theme}
           selectedStrategy={selectedStrategy}
-          tradeMarkers={selectedBacktestData?.trade_markers || []}
-          tradesDetail={selectedBacktestData?.trades_detail || []}
+          tradeMarkers={selectedBacktestData?.trade_markers || activeState?.trade_markers || []}
+          tradesDetail={selectedBacktestData?.trades_detail || activeState?.trades_detail || []}
           activeStrategy={activeState?.active_strategy || 'PropFirmVsaWickRejection'}
         />
       </main>
 
-      {/* Viewport 2: 24/7 AI Quant Signal Telemetry & History Deck (F2) */}
+      {/* F2 — Signal Deck (live signals + performance since activation) */}
       <main className={`w-full flex-1 overflow-hidden ${activeScreen === 'AGENT_DECK' ? 'block' : 'hidden'}`}>
         <SignalDeck
           widgets={widgets}
@@ -159,8 +147,7 @@ export const App: React.FC = () => {
         />
       </main>
 
-
-      {/* Viewport 3: Backtest Analytics, DSR Audit Gates & Strategy Repository (F3) */}
+      {/* F3 — Backtest Analytics */}
       <main className={`w-full flex-1 overflow-hidden ${activeScreen === 'BACKTEST' ? 'block' : 'hidden'}`}>
         <BacktestDeck
           theme={theme}
@@ -173,6 +160,7 @@ export const App: React.FC = () => {
           loading={loadingBacktest}
         />
       </main>
+
     </div>
   );
 };

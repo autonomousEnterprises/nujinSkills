@@ -50,14 +50,22 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+
+  // Live vs Backtest Mode & Multi-Asset Selection State
+  const [chartMode, setChartMode] = useState<'LIVE' | 'BACKTEST'>('LIVE');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('BTC/USDT');
+  const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
+  const [lastLivePrice, setLastLivePrice] = useState<number | null>(null);
+
   const [candles, setCandles] = useState<any[]>([]);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [positionBoxes, setPositionBoxes] = useState<PositionBoxCoord[]>([]);
   const [activeTradeLevels, setActiveTradeLevels] = useState<{ entry: number; sl: number; tp: number; rr: string } | null>(null);
 
-  // 1. Fetch Candle Data & Live Ticker Polling (3s interval)
+  // 1. Fetch Initial Candles (Live or Backtest mode)
   const fetchCandles = () => {
-    fetch('/api/candles?count=200')
+    const url = `/api/candles?symbol=${encodeURIComponent(selectedSymbol)}&count=500&mode=${chartMode === 'LIVE' ? 'live' : 'backtest'}`;
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         if (data.data && data.data.length > 0) {
@@ -65,6 +73,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           if (candleSeriesRef.current) {
             candleSeriesRef.current.setData(data.data);
           }
+          const lastC = data.data[data.data.length - 1];
+          if (lastC) setLastLivePrice(lastC.close);
         }
       })
       .catch((err) => console.log('Failed to fetch candles:', err));
@@ -72,11 +82,73 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   useEffect(() => {
     fetchCandles();
-    const interval = setInterval(fetchCandles, 3000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [chartMode, selectedSymbol]);
 
-  // 2. Strictly filter trade markers to visible candle time range ONLY (eliminates left margin tower!)
+  // 2. Binance 100% Free Public Real-Time WebSocket Stream (when in LIVE mode)
+  useEffect(() => {
+    if (chartMode !== 'LIVE') {
+      setIsWsConnected(false);
+      return;
+    }
+
+    const cleanSym = selectedSymbol.replace('/', '').toLowerCase();
+    const wsUrl = `wss://stream.binance.com:9443/ws/${cleanSym}@kline_15m`;
+    let ws: WebSocket | null = null;
+
+    try {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log(`[BinanceLiveWS] Connected to live 15m stream for ${selectedSymbol}`);
+        setIsWsConnected(true);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg && msg.e === 'kline' && msg.k) {
+            const k = msg.k;
+            const updatedCandle = {
+              time: Math.floor(k.t / 1000) as Time,
+              open: parseFloat(k.o),
+              high: parseFloat(k.h),
+              low: parseFloat(k.l),
+              close: parseFloat(k.c),
+              volume: parseFloat(k.v)
+            };
+
+            setLastLivePrice(updatedCandle.close);
+            if (candleSeriesRef.current) {
+              candleSeriesRef.current.update(updatedCandle as any);
+            }
+          }
+        } catch (e) {
+          console.error('[BinanceLiveWS] Error parsing tick:', e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.warn('[BinanceLiveWS] WebSocket error:', err);
+        setIsWsConnected(false);
+      };
+
+      ws.onclose = () => {
+        setIsWsConnected(false);
+      };
+    } catch (err) {
+      console.error('[BinanceLiveWS] Failed to connect WebSocket:', err);
+      setIsWsConnected(false);
+    }
+
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [chartMode, selectedSymbol]);
+
+  // 3. Trade Markers & Position Boxes logic (when in BACKTEST mode or signal received)
+
   useEffect(() => {
     if (candles.length === 0) return;
     const minTime = candles[0].time as number;
@@ -389,27 +461,82 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   return (
     <div className={`w-full h-full relative ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
-      {/* Sleek Top Banner & Trade Parameters Panel */}
+      {/* Sleek Top Controls Banner: Symbol Selector, Live Stream vs Backtest Mode Toggle */}
       <div className="absolute top-3 left-3 z-20 flex flex-col gap-2 font-mono text-xs select-none">
-        <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex items-center gap-3 shadow-lg ${
+        <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex flex-wrap items-center gap-3 shadow-lg ${
           isDark ? 'bg-[#161b22]/90 border-[#30363d] text-[#8b949e]' : 'bg-white/90 border-slate-200 text-slate-700 shadow'
         }`}>
-          <div>
-            <span className={`${isDark ? 'text-white' : 'text-slate-900'} font-bold`}>BTC/USDT</span> • 15m
+          {/* Symbol Selector Dropdown */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedSymbol}
+              onChange={(e) => setSelectedSymbol(e.target.value)}
+              className={`px-2 py-1 rounded border font-bold text-xs outline-none cursor-pointer transition-colors ${
+                isDark ? 'bg-[#0d1117] border-[#30363d] text-white hover:border-emerald-500' : 'bg-slate-50 border-slate-300 text-slate-900'
+              }`}
+            >
+              <option value="BTC/USDT">BTC/USDT (15m)</option>
+              <option value="ETH/USDT">ETH/USDT (15m)</option>
+              <option value="SOL/USDT">SOL/USDT (15m)</option>
+              <option value="BNB/USDT">BNB/USDT (15m)</option>
+              <option value="XRP/USDT">XRP/USDT (15m)</option>
+            </select>
           </div>
-          <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">Inspecting Strategy:</span>
-            <span className="text-amber-400 font-bold">{selectedStrategy}</span>
+
+          <div className={`h-4 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+
+          {/* Mode Switcher Toggle Buttons */}
+          <div className="flex items-center p-0.5 rounded border border-slate-700/60 bg-slate-950/60">
+            <button
+              onClick={() => setChartMode('LIVE')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1.5 transition-all ${
+                chartMode === 'LIVE'
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>⚡ LIVE CHART (Binance Stream)</span>
+            </button>
+
+            <button
+              onClick={() => setChartMode('BACKTEST')}
+              className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1.5 transition-all ${
+                chartMode === 'BACKTEST'
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>📊 BACKTEST CHART</span>
+            </button>
           </div>
-          <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">System Active:</span>
-            <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-700 text-emerald-400 text-[10px] font-bold">
-              {activeStrategy}
-            </span>
-          </div>
+
+          <div className={`h-4 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+
+          {/* Live Status & Ticker Badge */}
+          {chartMode === 'LIVE' ? (
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border ${
+                isWsConnected
+                  ? 'bg-emerald-950/90 text-emerald-400 border-emerald-600'
+                  : 'bg-amber-950/90 text-amber-400 border-amber-600'
+              }`}>
+                <span className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                {isWsConnected ? 'LIVE BINANCE WS' : 'CONNECTING WS...'}
+              </span>
+              {lastLivePrice && (
+                <span className="text-emerald-400 font-bold text-xs font-mono">
+                  ${lastLivePrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-slate-400">Inspecting Strategy:</span>
+              <span className="text-amber-400 font-bold">{selectedStrategy}</span>
+            </div>
+          )}
         </div>
+
 
         {activeTradeLevels && (
           <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex items-center gap-4 shadow-lg ${
