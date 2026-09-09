@@ -3,6 +3,7 @@ import json
 import subprocess
 import logging
 import numpy as np
+from server.state_manager import state_manager
 
 logger = logging.getLogger("BacktestEngine")
 
@@ -310,8 +311,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             logger.error(f"Error computing equity curve / regime breakdown: {e_eq}")
 
     if save_as_active:
-        with open(state_file, "w") as f:
-            json.dump(state, f, indent=2)
+        state_manager.set_full(state)  # atomic locked write via StateManager
             
     # Execute validation_cynic.py for DSR gate matrix
     cmd_cynic = [

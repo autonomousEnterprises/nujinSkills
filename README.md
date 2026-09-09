@@ -141,56 +141,58 @@ You do not need to specify technical formulas or command-line flags. Simply prom
 ## 📂 Repository Architecture
 
 ```
-NujinSkills/
-├── SKILL.md                     <-- Master Skill Contract & Execution Manual
-├── PROJECT.md                   <-- Master Development Roadmap & Checklist
-├── requirements.txt             <-- Clean Python dependencies (polars, vectorbt, uvicorn, etc.)
-├── references/                  <-- AI Agent Knowledge Base (16 canonical specs)
-│   ├── strategy_profiles.md     # Natural prompt intent mapping & risk targets
-│   ├── dashboard.md             # Dual-output event bus & UI telemetry schemas
-│   ├── edge.md                  # Quantitative edge & counterparty trap principles
-│   ├── extended_tools_ideas.md  # Advanced math feature extraction (Hurst, Parkinson, AVWAP)
-│   ├── indicator_usage.md       # Non-consensus indicator principles
-│   ├── libs_clis.md             # Python libraries & CLI tool contracts
-│   ├── outofthebox_solutions_finding.md # Dialectic ideation engine (Consensus -> Failure -> Synthesis)
-│   ├── pricedataonly_edge_mining.md    # Price auction footprints & bar geometry
-│   ├── process.md               # 5-phase operational funnel specifications
-│   ├── riskmanagement.md        # Risk controls, ATR stops, invalidation rules
-│   ├── signals_gateway.md       # 24/7 Telegram Signal Gateway integration
-│   ├── simple_tools_ideas.md    # Bar geometry & VSA volume Z-scores
-│   ├── statistic_edge.md        # DSR formula & statistical rejection hurdles
-│   ├── thirdparty_edge_mining.md# Order book proxies & funding rate dynamics
-│   ├── tradingbot.md            # Freqtrade & Jesse strategy execution contracts
-│   └── ui_management.md         # Hotkey viewport switching & Server-Driven UI
-├── notes/                       <-- User Preparation Notes (READ-ONLY)
-├── tools/                       <-- Executable CLI Tools for AI Agent
-│   ├── feature_miner.py         # Bar geometry, Hurst, VSA, Parkinson Vol, AVWAP
-│   ├── vectorized_screener.py   # Vectorbt fast In-Sample filter
-│   ├── validation_cynic.py      # DSR gate, Parameter stability, Monte Carlo, OOS audit
-│   ├── strategy_emitter.py      # Freqtrade IStrategy code generator
-│   ├── ui_dispatcher.py         # WebSocket event dispatcher (Charts & Widgets)
-│   ├── server_control.py        # CLI: start/stop FastAPI server & Telegram gateway
-│   ├── frontend_control.py      # CLI: build/serve frontend dashboard UI
-│   └── bot_control.py           # CLI: deploy/manage trading bot paper/live process
-├── server/                      <-- Telemetry Backend & Telegram Gateway
-│   ├── main.py                  # FastAPI application & REST API
-│   ├── websocket.py             # Real-time WebSocket event broadcaster
-│   ├── telegram_bot.py          # Telegram signal gateway (24/7 alerts)
-│   ├── bot_runner.py            # Freqtrade / Jesse paper-trading supervisor
-│   └── data_manager.py          # OHLCV data loader & feed server
-└── frontend/                    <-- User Telemetry Dashboard (Dual-Screen UI)
-    ├── package.json
-    ├── vite.config.ts
-    ├── index.html
+EdgeMiner/
+├── SKILL.md                       <-- Master Skill Contract, tool standard & execution manual
+├── README.md                      <-- This file
+├── requirements.txt               <-- Python dependencies (polars, vectorbt, uvicorn, etc.)
+├── data/
+│   ├── state.json                 # ★ Single Source of Truth — read by all consumers
+│   ├── signals.json               # Persisted live signals (managed by SignalStore)
+│   ├── features.csv               # Extracted OHLCV feature matrix
+│   ├── candles_15m.csv            # BTC/USDT 15m historical candles
+│   └── candidate_returns.json     # Trade return arrays for DSR audit
+├── references/                    <-- AI Agent Knowledge Base
+│   ├── state_management.md        # Shared state: StateManager, SignalStore, CLI tool, schemas
+│   ├── strategy_profiles.md       # Natural prompt intent mapping & risk targets
+│   ├── dashboard.md               # UI architecture & telemetry schemas
+│   ├── edge.md                    # Quantitative edge & counterparty trap principles
+│   ├── statistic_edge.md          # DSR formula & statistical rejection hurdles
+│   ├── riskmanagement.md          # Risk controls, ATR stops, invalidation rules
+│   ├── signals_gateway.md         # 24/7 Telegram Signal Gateway integration
+│   ├── tradingbot.md              # Freqtrade & Jesse strategy execution contracts
+│   └── ...                        # (+ 8 more reference specs)
+├── tools/                         <-- AI Agent CLI Tools (one consistent standard)
+│   ├── feature_miner.py           # [FeatureMiner]    Bar geometry, Hurst, VSA, Parkinson, AVWAP
+│   ├── vectorized_screener.py     # [VectorizedScreener] Vectorbt fast In-Sample filter
+│   ├── validation_cynic.py        # [ValidationCynic] DSR gate, Monte Carlo, OOS audit
+│   ├── run_backtest_audit.py      # [BacktestAudit]   Full backtest & 5-Gate Cynic report
+│   ├── state_control.py           # [StateControl]    ★ Shared state CLI for AI agents
+│   ├── strategy_emitter.py        # [StrategyEmitter] Freqtrade IStrategy code generator
+│   ├── ui_dispatcher.py           # [UIDispatcher]    WebSocket event dispatcher
+│   ├── server_control.py          # [ServerControl]   Start/stop FastAPI server
+│   ├── frontend_control.py        # [FrontendControl] Build/serve frontend dashboard
+│   └── bot_control.py             # [BotControl]      Deploy/manage paper trading bot
+├── server/                        <-- Telemetry Backend & Telegram Gateway
+│   ├── main.py                    # FastAPI app & REST API
+│   ├── state_manager.py           # ★ StateManager & SignalStore — canonical file-locked writes
+│   ├── backtest_engine.py         # Vectorized backtest & regime analysis engine
+│   ├── websocket.py               # Real-time WebSocket event broadcaster
+│   ├── telegram_bot.py            # Telegram signal gateway (24/7 alerts)
+│   ├── bot_runner.py              # Freqtrade/Jesse paper-trading supervisor
+│   └── data_manager.py            # OHLCV data loader & Binance live feed
+├── strategies/                    <-- Strategy .py files (loaded by backtest engine)
+└── frontend/                      <-- User Telemetry Dashboard
     └── src/
-        ├── App.tsx              # Dual-screen viewport layout & hotkey listener
+        ├── App.tsx                # Screen router, unified state via useWebSocket
         ├── components/
-        │   ├── ChartCanvas.tsx  # TradingView Lightweight Charts canvas
-        │   ├── AgentDeck.tsx    # Server-Driven UI Widget Grid
-        │   └── Header.tsx       # Status pill & screen switcher
+        │   ├── ChartCanvas.tsx    # F1 — Live BTC/USDT chart + backtest trade markers
+        │   ├── SignalDeck.tsx     # F2 — Live signals, PnL, win rate, Sharpe since activation
+        │   ├── BacktestDeck.tsx   # F3 — Equity curve, regime survival, 5-Gate Cynic audit
+        │   └── Header.tsx         # Strategy mega-menu, WS status, screen switcher
         └── hooks/
-            └── useWebSocket.ts  # Real-time WS client hook
+            └── useWebSocket.ts    # Real-time WS client — surfaces liveSystemState
 ```
+
 
 ---
 
@@ -214,28 +216,71 @@ python tools/frontend_control.py build
 python tools/frontend_control.py start --port 3000 --daemon
 ```
 
+### 3. Inspect & Manage Shared State
+All three consumers share `data/state.json` through the `StateManager`:
+```bash
+python tools/state_control.py get                                  # full state as JSON
+python tools/state_control.py get --key backtest_summary.sharpe   # read a nested value
+python tools/state_control.py patch --patch '{"status":"STOPPED"}' # merge-patch
+python tools/state_control.py signal-stats                         # live win rate, PF, Sharpe, PnL
+```
+
 ---
 
 ## 🛠️ CLI Tools Reference
 
-| Tool Script | Responsibilities | Key Arguments |
-| --- | --- | --- |
-| `tools/feature_miner.py` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
-| `tools/vectorized_screener.py` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
-| `tools/validation_cynic.py` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
-| `tools/strategy_emitter.py` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
-| `tools/ui_dispatcher.py` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
-| `tools/server_control.py` | CLI tool to start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
-| `tools/frontend_control.py` | CLI tool to build and serve the dual-screen React UI | `build`, `start`, `stop`, `status`, `--port` |
-| `tools/bot_control.py` | CLI tool to launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+| Tool Script | `[Prefix]` | Responsibilities | Key Arguments |
+| --- | --- | --- | --- |
+| `tools/feature_miner.py` | `[FeatureMiner]` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
+| `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
+| `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
+| `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
+| `tools/state_control.py` | `[StateControl]` | **Shared state CLI:** read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add`, `schema` |
+| `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
+| `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
+| `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
+| `tools/frontend_control.py` | `[FrontendControl]` | Build and serve the dual-screen React UI | `build`, `start`, `stop`, `status`, `--port` |
+| `tools/bot_control.py` | `[BotControl]` | Launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+
+> All tools follow one consistent authoring standard — see `SKILL.md` § Tool Authoring Standard.
 
 ---
 
 ## 💻 Web Terminal Hotkeys
 
-- **`Ctrl + Space`** / **`Tab`**: Instantly swap between Screen 1 (TradingView Lightweight Chart Canvas) and Screen 2 (Agent Deck & Telemetry Report).
-- **`F1`**: Direct focus to Lightweight Chart Canvas.
-- **`F2`**: Direct focus to Agent Deck & Mining Telemetry.
+| Key | Screen |
+|---|---|
+| **`F1`** | Chart Canvas — live BTC/USDT candlestick chart with backtest trade markers |
+| **`F2`** | Signal Deck — live signal feed, win rate, profit factor, Sharpe & PnL since activation |
+| **`F3`** | Backtest — equity curve, return distribution, regime survival, 5-Gate Cynic Audit |
+| **`Ctrl + Space`** | Cycle through all three screens |
+
+---
+
+## 🗄️ Shared State Architecture
+
+All three consumers — **AI agent**, **server**, and **frontend** — read and write the same state.
+No component accesses `data/state.json` or `data/signals.json` directly.
+
+```
+AI Agent CLI                 Server (FastAPI)             Frontend (React)
+tools/state_control.py       server/main.py               useWebSocket hook
+        │                          │                             │
+        └──────── REST ───────────►│◄──────── REST GET ──────────┘
+                            server/state_manager.py
+                            (file-locked reads & writes)
+                                   │
+                           data/state.json
+                           data/signals.json
+                                   │
+                     WS broadcast (STATE_UPDATED)
+                       ┌───────────┘
+                       ▼
+             All open frontend screens
+             update in real time
+```
+
+See [`references/state_management.md`](references/state_management.md) for the full schema, Python API, and CLI reference.
 
 ---
 

@@ -251,24 +251,68 @@ Once a strategy passes all falsification gates, activate user-selected deploymen
 | **Signal Chatbot** | [`references/signals_gateway.md`](file:///home/christonomous/Desktop/EdgeMiner/references/signals_gateway.md) | 24/7 Telegram bot setup, Webhook ingestion, real-time alert dispatching. |
 | **Visual Dashboard** | [`references/dashboard.md`](file:///home/christonomous/Desktop/EdgeMiner/references/dashboard.md) | Dual-screen UI architecture, TradingView canvas, agent deck stream. |
 | **UI Management** | [`references/ui_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/ui_management.md) | Dashboard state machine, view hotkeys, background daemon controls. |
+| **State Management** | [`references/state_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/state_management.md) | Single source of truth: `StateManager`, `SignalStore`, `state_control.py` CLI, state & signal schemas, file lock safety. |
 | **Simple Utilities** | [`references/simple_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/simple_tools_ideas.md) | Lightweight helper script concepts and data formatting tools. |
 | **Extended Tools** | [`references/extended_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extended_tools_ideas.md) | Future expansion blueprints (advanced ML models, multi-exchange routers). |
 
 ---
 
-## CLI Tools Summary
+## 🔧 Tool Authoring Standard
 
-| Tool Script | Responsibilities | Key Arguments |
-| --- | --- | --- |
-| `tools/feature_miner.py` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
-| `tools/vectorized_screener.py` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
-| `tools/validation_cynic.py` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
-| `tools/run_backtest_audit.py` | **AI-First Quantitative Strategy Auditor:** Executes full backtest, equity curve, regime survival, & 5-Gate Cynic matrix | `--strategy`, `--save-state`, `--json-output` |
-| `tools/strategy_emitter.py` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
-| `tools/ui_dispatcher.py` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
-| `tools/server_control.py` | CLI tool to start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
-| `tools/frontend_control.py` | CLI tool to build and serve the dual-screen React UI | `build`, `start`, `stop`, `status`, `--port` |
-| `tools/bot_control.py` | CLI tool to launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+All scripts in `tools/` follow one consistent pattern. When writing or extending a tool, match this exactly:
+
+```python
+#!/usr/bin/env python3
+import argparse
+import json
+import urllib.request  # or numpy / polars for data tools
+import sys
+
+TOOL_NAME = "[MyTool]"  # prefix for all print() output — AI agent log readability
+
+def action_name(arg1, arg2, ...):
+    print(f"{TOOL_NAME} Doing action...")
+    # logic here
+    print(json.dumps(result, indent=2))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="One-line description for AI agent")
+    parser.add_argument("action", choices=["a", "b", "c"], help="Action to execute")
+    parser.add_argument("--arg", default="...", help="Description")
+    args = parser.parse_args()
+
+    if   args.action == "a": action_a(args.arg)
+    elif args.action == "b": action_b(args.arg)
+    elif args.action == "c": action_c(args.arg)
+```
+
+**Rules:**
+- `#!/usr/bin/env python3` shebang on line 1
+- Named functions per action — no `main()` wrapper
+- `[ToolName]` prefix on **all** `print()` output so the AI can parse tool identity from logs
+- `argparse` with a **flat positional `action` arg** and `choices=[]` — no subparsers
+- Stdlib only (`urllib.request`, `json`, `os`, `sys`) or approved scientific libs (`numpy`, `polars`, `scipy`)
+- No `logging.basicConfig` — use plain `print()` with prefix
+- No third-party deps beyond what is in `requirements.txt`
+- `if __name__ == "__main__":` entry point with flat `if/elif` dispatch
+
+---
+
+## 🛠️ CLI Tools Reference
+
+| Tool Script | `[Prefix]` | Responsibilities | Key Arguments |
+| --- | --- | --- | --- |
+| `tools/feature_miner.py` | `[FeatureMiner]` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
+| `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
+| `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
+| `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
+| `tools/state_control.py` | `[StateControl]` | **AI State CLI:** read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add`, `schema` |
+| `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
+| `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
+| `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI telemetry server & Telegram gateway | `start`, `stop`, `status`, `--port` |
+| `tools/frontend_control.py` | `[FrontendControl]` | Build and serve the dual-screen React UI | `build`, `start`, `stop`, `status`, `--port` |
+| `tools/bot_control.py` | `[BotControl]` | Launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+
 
 ---
 
