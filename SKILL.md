@@ -34,6 +34,10 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
 ### 3. Subagent Parallelization & Orchestration Pattern
 If the execution environment supports subagents (e.g., Google Antigravity, OpenClaw, Hermes), the Orchestrator AI Agent SHOULD delegate tasks using a **Directed Acyclic Graph (DAG) pipeline**:
 
+### 4. Directional Flexibility (Margin & Futures Openness)
+> [!NOTE]
+> **Directional Openness:** Strategies do NOT need to be strictly dual-directional nor strictly single-directional. The AI agent is directionally open—it autonomously tests **LONG-only**, **SHORT-only**, or **Dual LONG+SHORT** setups depending on market regime, structural asymmetry, and what yields the highest verified statistical edge (DSR $\ge 0.95$) for margin/futures markets according to the user's prompt requirements.
+
 ```
                          [ Phase 1: Feature Mining ]
                            Subagent 1 (Multi-TF)
