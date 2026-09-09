@@ -308,10 +308,13 @@ export const BacktestDeck: React.FC = () => {
                         e.stopPropagation();
                         handleSelectActive(strat.name);
                       }}
-                      className="mt-2.5 w-full py-1 bg-[#238636] hover:bg-emerald-600 text-white rounded text-[10px] font-bold flex items-center justify-center gap-1"
+                      className={`mt-2.5 w-full py-1.5 rounded text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all ${isActive
+                        ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-500/50 cursor-default'
+                        : 'bg-[#238636] hover:bg-emerald-600 text-white'
+                        }`}
                     >
                       <Play className="w-3 h-3 fill-current" />
-                      <span>Set as Single Source of Truth</span>
+                      <span>{isActive ? 'Active Strategy' : 'Activate Strategy'}</span>
                     </button>
                   </div>
                 );
