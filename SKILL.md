@@ -263,8 +263,10 @@ Once a strategy passes all falsification gates, activate user-selected deploymen
 | `tools/feature_miner.py` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
 | `tools/vectorized_screener.py` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
 | `tools/validation_cynic.py` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
+| `tools/run_backtest_audit.py` | **AI-First Quantitative Strategy Auditor:** Executes full backtest, equity curve, regime survival, & 5-Gate Cynic matrix | `--strategy`, `--save-state`, `--json-output` |
 | `tools/strategy_emitter.py` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
 | `tools/ui_dispatcher.py` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
 | `tools/server_control.py` | CLI tool to start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
 | `tools/frontend_control.py` | CLI tool to build and serve the dual-screen React UI | `build`, `start`, `stop`, `status`, `--port` |
 | `tools/bot_control.py` | CLI tool to launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+

@@ -128,7 +128,11 @@ export const App: React.FC = () => {
         setTheme={setTheme}
         selectedStrategy={selectedStrategy}
         activeStrategy={activeState?.active_strategy || 'PropFirmVsaWickRejection'}
+        strategies={strategies}
+        onSelectStrategy={handleSelectStrategy}
+        onActivateStrategy={handleActivateStrategy}
       />
+
 
       {/* Viewport 1: Fullscreen TradingView Candlestick Canvas (F1) */}
       <main className={`w-full flex-1 relative ${activeScreen === 'CHART' ? 'block' : 'hidden'}`}>
