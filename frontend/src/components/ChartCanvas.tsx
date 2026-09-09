@@ -56,6 +56,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const [selectedSymbol, setSelectedSymbol] = useState<string>('BTC/USDT');
   const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
   const [lastLivePrice, setLastLivePrice] = useState<number | null>(null);
+  const [showPositionBox, setShowPositionBox] = useState<boolean>(true);
 
   const [candles, setCandles] = useState<any[]>([]);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
@@ -99,44 +100,37 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log(`[BinanceLiveWS] Connected to live 15m stream for ${selectedSymbol}`);
         setIsWsConnected(true);
       };
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg && msg.e === 'kline' && msg.k) {
+          if (msg.e === 'kline') {
             const k = msg.k;
             const updatedCandle = {
-              time: Math.floor(k.t / 1000) as Time,
+              time: Math.floor(k.t / 1000),
               open: parseFloat(k.o),
               high: parseFloat(k.h),
               low: parseFloat(k.l),
               close: parseFloat(k.c),
-              volume: parseFloat(k.v)
+              volume: parseFloat(k.v),
             };
 
             setLastLivePrice(updatedCandle.close);
+
             if (candleSeriesRef.current) {
-              candleSeriesRef.current.update(updatedCandle as any);
+              candleSeriesRef.current.update(updatedCandle);
             }
           }
         } catch (e) {
-          console.error('[BinanceLiveWS] Error parsing tick:', e);
+          console.error('Error parsing Binance WS kline:', e);
         }
       };
 
-      ws.onerror = (err) => {
-        console.warn('[BinanceLiveWS] WebSocket error:', err);
-        setIsWsConnected(false);
-      };
-
-      ws.onclose = () => {
-        setIsWsConnected(false);
-      };
-    } catch (err) {
-      console.error('[BinanceLiveWS] Failed to connect WebSocket:', err);
+      ws.onerror = () => setIsWsConnected(false);
+      ws.onclose = () => setIsWsConnected(false);
+    } catch (e) {
       setIsWsConnected(false);
     }
 
@@ -147,157 +141,152 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     };
   }, [chartMode, selectedSymbol]);
 
-  // 3. Trade Markers & Position Boxes logic (when in BACKTEST mode or signal received)
-
+  // 3. Trade Markers & Active Open Position Levels Resolution
   useEffect(() => {
     if (candles.length === 0) return;
     const minTime = candles[0].time as number;
     const maxTime = candles[candles.length - 1].time as number;
 
+    // ACTIVE TRADE LEVELS & POSITION BOX: Only active if there is an OPEN active trade!
+    let currentOpenTrade: any = null;
+
+    if (latestSignal && latestSignal.status === 'ACTIVE_IN_POSITION') {
+      currentOpenTrade = latestSignal;
+    } else if (tradesDetail && tradesDetail.length > 0) {
+      const last = tradesDetail[tradesDetail.length - 1];
+      if (last.exit_reason === 'ACTIVE_IN_POSITION') {
+        currentOpenTrade = last;
+      }
+    }
+
+    if (currentOpenTrade) {
+      const entry = currentOpenTrade.entry_price;
+      const sl = currentOpenTrade.stop_loss;
+      const tp = currentOpenTrade.take_profit;
+      const risk = Math.abs(entry - sl);
+      const reward = Math.abs(tp - entry);
+      const rr = risk > 0 ? (reward / risk).toFixed(2) : '0.00';
+      setActiveTradeLevels({ entry, sl, tp, rr });
+    } else {
+      // All historical trades are closed — do NOT draw active price lines across chart
+      setActiveTradeLevels(null);
+    }
+
+    // Process trade markers for historical & live trades
     if (tradeMarkers && tradeMarkers.length > 0) {
-      const validMarkers: SeriesMarker<Time>[] = tradeMarkers
-        .filter((m) => (m.time as number) >= minTime && (m.time as number) <= maxTime)
-        .map((m) => ({
+      const filtered = tradeMarkers.filter((m) => (m.time as number) >= minTime && (m.time as number) <= maxTime);
+
+      const validMarkers: SeriesMarker<Time>[] = filtered.map((m) => {
+        return {
           time: m.time as Time,
           position: m.position,
           color: m.color,
           shape: m.shape,
           text: m.text,
-        }));
+        };
+      });
       setDisplayMarkers(validMarkers);
-
-      const buyMarkers = tradeMarkers.filter((m) => m.stop_loss && m.take_profit && m.entry_price);
-      if (buyMarkers.length > 0) {
-        const lastBuy = buyMarkers[buyMarkers.length - 1];
-        const entry = lastBuy.entry_price;
-        const sl = lastBuy.stop_loss;
-        const tp = lastBuy.take_profit;
-        const risk = Math.abs(entry - sl);
-        const reward = Math.abs(tp - entry);
-        const rr = risk > 0 ? (reward / risk).toFixed(2) : '0.00';
-        setActiveTradeLevels({ entry, sl, tp, rr });
-      }
-    } else {
-      const computed: SeriesMarker<Time>[] = [];
-      const cleanName = selectedStrategy.replace('.py', '');
-      const wickThresh = cleanName.includes('TrapFade') ? 0.38 : 0.40;
-      const stoplossPct = cleanName.includes('TrapFade') ? 0.02 : 0.025;
-      const takeprofitPct = cleanName.includes('TrapFade') ? 0.035 : 0.040;
-      const maxBars = cleanName.includes('TrapFade') ? 8 : 6;
-
-      let i = 20;
-      let lastLevels = null;
-
-      while (i < candles.length - 2) {
-        const c = candles[i];
-        const totalRange = Math.max(c.high - c.low, 1);
-        const lowerWick = (Math.min(c.close, c.open) - c.low) / totalRange;
-
-        if (lowerWick > wickThresh) {
-          const entryPrice = c.close;
-          const sl = Math.round(entryPrice * (1.0 - stoplossPct));
-          const tp = Math.round(entryPrice * (1.0 + takeprofitPct));
-          const rr = (takeprofitPct / stoplossPct).toFixed(2);
-          lastLevels = { entry: entryPrice, sl, tp, rr };
-
-          if ((c.time as number) >= minTime && (c.time as number) <= maxTime) {
-            computed.push({
-              time: c.time as Time,
-              position: 'belowBar',
-              color: '#26a69a',
-              shape: 'arrowUp',
-              text: `BUY $${(entryPrice / 1000).toFixed(1)}k`,
-            });
-          }
-
-          const exitIdx = Math.min(i + maxBars, candles.length - 1);
-          const exitC = candles[exitIdx];
-          const pnl = (((exitC.close - entryPrice) / entryPrice) * 100).toFixed(1);
-
-          if ((exitC.time as number) >= minTime && (exitC.time as number) <= maxTime) {
-            computed.push({
-              time: exitC.time as Time,
-              position: 'aboveBar',
-              color: exitC.close >= entryPrice ? '#26a69a' : '#ef5350',
-              shape: 'arrowDown',
-              text: `EXIT ${pnl}%`,
-            });
-          }
-
-          i = exitIdx + 1;
-        } else {
-          i++;
-        }
-      }
-
-      setDisplayMarkers(computed);
-      if (lastLevels) setActiveTradeLevels(lastLevels);
     }
-  }, [selectedStrategy, tradeMarkers, candles]);
+  }, [selectedStrategy, tradeMarkers, tradesDetail, candles, latestSignal]);
 
-  // 3. TradingView Position Box Coordinate Resolution (Renders Position Box on Right Edge to Latest Bar)
+  // 4. Precision Clamped Position Box Resolution (ONLY FOR OPEN ACTIVE SIGNALS)
   const updateBoxCoordinates = () => {
-    if (!chartRef.current || !candleSeriesRef.current || candles.length === 0) return;
-    const chart = chartRef.current;
-    const series = candleSeriesRef.current;
-
-    // Pick current / latest trade for position box
-    const targetTrade: TradeDetail | null = tradesDetail.length > 0 ? tradesDetail[tradesDetail.length - 1] : (
-      activeTradeLevels ? {
-        id: 99,
-        entry_time: candles[Math.max(0, candles.length - 30)]?.time || 1788523533,
-        entry_price: activeTradeLevels.entry,
-        stop_loss: activeTradeLevels.sl,
-        take_profit: activeTradeLevels.tp,
-        exit_time: candles[candles.length - 1]?.time || 1788555933,
-        exit_price: activeTradeLevels.entry * 1.01,
-        exit_reason: 'ACTIVE_TRADE',
-        pnl_pct: 1.0
-      } : null
-    );
-
-    if (!targetTrade) {
+    if (!showPositionBox || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current || candles.length === 0) {
       setPositionBoxes([]);
       return;
     }
 
-    const x1 = chart.timeScale().timeToCoordinate(targetTrade.entry_time as Time);
-    const x2 = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
-    const yEntry = series.priceToCoordinate(targetTrade.entry_price);
-    const ySL = series.priceToCoordinate(targetTrade.stop_loss);
-    const yTP = series.priceToCoordinate(targetTrade.take_profit);
-
-    if (yEntry !== null && ySL !== null && yTP !== null) {
-      const startX = x1 !== null ? Math.max(x1, 60) : 100;
-      const endX = x2 !== null ? Math.max(x2, startX + 50) : startX + 150;
-      const width = Math.max(endX - startX, 40);
-
-      const yProfitTop = Math.min(yEntry, yTP);
-      const profitHeight = Math.max(Math.abs(yEntry - yTP), 2);
-
-      const yLossTop = Math.min(yEntry, ySL);
-      const lossHeight = Math.max(Math.abs(yEntry - ySL), 2);
-
-      setPositionBoxes([
-        {
-          id: targetTrade.id,
-          x: startX,
-          width,
-          yEntry,
-          yProfitTop,
-          profitHeight,
-          yLossTop,
-          lossHeight,
-          tpPrice: targetTrade.take_profit,
-          slPrice: targetTrade.stop_loss,
-          entryPrice: targetTrade.entry_price,
-          pnlPct: targetTrade.pnl_pct
-        }
-      ]);
+    // Check if there is an active open trade currently in position
+    let targetTrade: TradeDetail | null = null;
+    if (tradesDetail && tradesDetail.length > 0) {
+      const last = tradesDetail[tradesDetail.length - 1];
+      if (last.exit_reason === 'ACTIVE_IN_POSITION') {
+        targetTrade = last;
+      }
+    } else if (latestSignal && latestSignal.status === 'ACTIVE_IN_POSITION') {
+      targetTrade = {
+        id: 99,
+        entry_time: latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : candles[candles.length - 1]?.time,
+        entry_price: latestSignal.entry_price || 0,
+        stop_loss: latestSignal.stop_loss || 0,
+        take_profit: latestSignal.take_profit || 0,
+        exit_time: candles[candles.length - 1]?.time,
+        exit_price: 0,
+        exit_reason: 'ACTIVE_IN_POSITION',
+        pnl_pct: 0
+      };
     }
+
+    // If NO active open signal, do NOT render position boxes for closed trades!
+    if (!targetTrade || !targetTrade.entry_price) {
+      setPositionBoxes([]);
+      return;
+    }
+
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    const containerHeight = chartContainerRef.current.clientHeight || 400;
+
+    const yEntryRaw = series.priceToCoordinate(targetTrade.entry_price);
+    if (yEntryRaw === null) {
+      setPositionBoxes([]);
+      return;
+    }
+
+    const x1Raw = chart.timeScale().timeToCoordinate(targetTrade.entry_time as Time);
+    const x2Raw = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
+
+    const getBoundedY = (price: number) => {
+      const y = series.priceToCoordinate(price);
+      if (y === null || isNaN(y)) {
+        return price > targetTrade.entry_price ? 0 : containerHeight;
+      }
+      return Math.max(0, Math.min(containerHeight, y));
+    };
+
+    const yEntry = yEntryRaw;
+    const ySL = getBoundedY(targetTrade.stop_loss);
+    const yTP = getBoundedY(targetTrade.take_profit);
+
+    const startX = x1Raw !== null ? x1Raw : 20;
+    const endX = x2Raw !== null ? x2Raw : startX + 120;
+
+    const leftX = Math.min(startX, endX);
+    const rightX = Math.max(startX, endX);
+    const width = Math.max(rightX - leftX, 30);
+
+    const isLong = targetTrade.take_profit >= targetTrade.entry_price;
+    let yProfitTop: number, profitHeight: number, yLossTop: number, lossHeight: number;
+
+    if (isLong) {
+      yProfitTop = yTP;
+      profitHeight = Math.max(yEntry - yTP, 2);
+      yLossTop = yEntry;
+      lossHeight = Math.max(ySL - yEntry, 2);
+    } else {
+      yProfitTop = yEntry;
+      profitHeight = Math.max(yTP - yEntry, 2);
+      yLossTop = ySL;
+      lossHeight = Math.max(yEntry - ySL, 2);
+    }
+
+    setPositionBoxes([{
+      id: targetTrade.id,
+      x: leftX,
+      width,
+      yEntry,
+      yProfitTop,
+      profitHeight,
+      yLossTop,
+      lossHeight,
+      tpPrice: targetTrade.take_profit,
+      slPrice: targetTrade.stop_loss,
+      entryPrice: targetTrade.entry_price,
+      pnlPct: targetTrade.pnl_pct
+    }]);
   };
 
-  // 4. Initialize Lightweight Chart & Price Lines
+  // 5. Initialize Lightweight Chart & Price Lines
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
@@ -339,7 +328,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       candleSeries.setMarkers(displayMarkers);
     }
 
-    // Horizontal Price Lines on Price Scale
+    // Horizontal Price Lines on Price Scale ONLY FOR ACTIVE OPEN TRADES
     if (activeTradeLevels) {
       if (activeTradeLevels.tp) {
         candleSeries.createPriceLine({
@@ -410,135 +399,105 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     if (chartRef.current && candleSeriesRef.current) {
       setTimeout(updateBoxCoordinates, 50);
     }
-  }, [tradesDetail, activeTradeLevels, displayMarkers]);
+  }, [tradesDetail, activeTradeLevels, displayMarkers, showPositionBox]);
 
-  // 5. Live Signal Handling
+  // 6. Live Signal Handling
   useEffect(() => {
     if (!latestSignal || !candleSeriesRef.current) return;
 
-    const series = candleSeriesRef.current;
     const isBuy = latestSignal.action === 'BUY';
 
-    const liveMarker: SeriesMarker<Time> = {
-      time: (latestSignal.time || Math.floor(Date.now() / 1000)) as Time,
+    if (latestSignal.status === 'ACTIVE_IN_POSITION' && latestSignal.entry_price && latestSignal.stop_loss && latestSignal.take_profit) {
+      const entry = latestSignal.entry_price;
+      const sl = latestSignal.stop_loss;
+      const tp = latestSignal.take_profit;
+      const risk = Math.abs(entry - sl);
+      const reward = Math.abs(tp - entry);
+      const rr = risk > 0 ? (reward / risk).toFixed(2) : '0.00';
+      setActiveTradeLevels({ entry, sl, tp, rr });
+    }
+
+    const newMarker: SeriesMarker<Time> = {
+      time: (latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : candles[candles.length - 1]?.time) as Time,
       position: isBuy ? 'belowBar' : 'aboveBar',
-      color: isBuy ? '#238636' : '#da3633',
+      color: isBuy ? '#26a69a' : '#ef5350',
       shape: isBuy ? 'arrowUp' : 'arrowDown',
-      text: `LIVE ${latestSignal.action}`,
+      text: `${latestSignal.action} @ $${latestSignal.entry_price?.toFixed(0) || lastLivePrice?.toFixed(0)}`,
     };
 
-    const minTime = candles[0]?.time as number;
-    const maxTime = candles[candles.length - 1]?.time as number;
-
-    const validMarkers = [...displayMarkers, liveMarker]
-      .filter((m) => (m.time as number) >= minTime && (m.time as number) <= maxTime)
-      .sort((a, b) => (a.time as number) - (b.time as number));
-
-    series.setMarkers(validMarkers);
-
-    if (latestSignal.stop_loss) {
-      series.createPriceLine({
-        price: latestSignal.stop_loss,
-        color: '#ef5350',
-        lineWidth: 2,
-        lineStyle: 0,
-        axisLabelVisible: true,
-        title: `LIVE SL: $${latestSignal.stop_loss}`,
-      });
-    }
-
-    if (latestSignal.take_profit) {
-      series.createPriceLine({
-        price: latestSignal.take_profit,
-        color: '#26a69a',
-        lineWidth: 2,
-        lineStyle: 0,
-        axisLabelVisible: true,
-        title: `LIVE TP: $${latestSignal.take_profit}`,
-      });
-    }
-  }, [latestSignal, displayMarkers, candles]);
+    setDisplayMarkers((prev) => [...prev, newMarker]);
+  }, [latestSignal]);
 
   return (
-    <div className={`w-full h-full relative ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
-      {/* Sleek Top Controls Banner: Symbol Selector, Live Stream vs Backtest Mode Toggle */}
-      <div className="absolute top-3 left-3 z-20 flex flex-col gap-2 font-mono text-xs select-none">
-        <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex flex-wrap items-center gap-3 shadow-lg ${
-          isDark ? 'bg-[#161b22]/90 border-[#30363d] text-[#8b949e]' : 'bg-white/90 border-slate-200 text-slate-700 shadow'
-        }`}>
-          {/* Symbol Selector Dropdown */}
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedSymbol}
-              onChange={(e) => setSelectedSymbol(e.target.value)}
-              className={`px-2 py-1 rounded border font-bold text-xs outline-none cursor-pointer transition-colors ${
-                isDark ? 'bg-[#0d1117] border-[#30363d] text-white hover:border-emerald-500' : 'bg-slate-50 border-slate-300 text-slate-900'
-              }`}
-            >
-              <option value="BTC/USDT">BTC/USDT (15m)</option>
-              <option value="ETH/USDT">ETH/USDT (15m)</option>
-              <option value="SOL/USDT">SOL/USDT (15m)</option>
-              <option value="BNB/USDT">BNB/USDT (15m)</option>
-              <option value="XRP/USDT">XRP/USDT (15m)</option>
-            </select>
-          </div>
+    <div className={`w-full h-full relative overflow-hidden flex flex-col ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
+      {/* Top Floating Control Toolbar */}
+      <div className={`absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-lg border backdrop-blur-md transition-colors ${
+        isDark ? 'bg-[#161b22]/90 border-[#30363d] text-white' : 'bg-white/90 border-slate-200 text-slate-800 shadow-md'
+      }`}>
+        <div className="flex items-center gap-3">
+          {/* Symbol Selector */}
+          <select
+            value={selectedSymbol}
+            onChange={(e) => setSelectedSymbol(e.target.value)}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold font-mono border focus:outline-none focus:ring-1 ${
+              isDark
+                ? 'bg-[#0d1117] border-[#30363d] text-white focus:ring-emerald-500'
+                : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-emerald-600'
+            }`}
+          >
+            <option value="BTC/USDT">BTC/USDT (15m)</option>
+            <option value="ETH/USDT">ETH/USDT (15m)</option>
+            <option value="SOL/USDT">SOL/USDT (15m)</option>
+          </select>
 
-          <div className={`h-4 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-
-          {/* Mode Switcher Toggle Buttons */}
-          <div className="flex items-center p-0.5 rounded border border-slate-700/60 bg-slate-950/60">
+          {/* Mode Switcher Pills (LIVE vs BACKTEST) */}
+          <div className={`flex items-center p-0.5 rounded-md border text-[11px] font-bold font-mono ${
+            isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-100 border-slate-300'
+          }`}>
             <button
               onClick={() => setChartMode('LIVE')}
-              className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1.5 transition-all ${
+              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
                 chartMode === 'LIVE'
-                  ? 'bg-emerald-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <span>⚡ LIVE CHART (Binance Stream)</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${isWsConnected ? 'bg-white animate-pulse' : 'bg-rose-400'}`} />
+              LIVE CHART (Binance Stream)
             </button>
 
             <button
               onClick={() => setChartMode('BACKTEST')}
-              className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1.5 transition-all ${
+              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
                 chartMode === 'BACKTEST'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <span>📊 BACKTEST CHART</span>
+              📊 BACKTEST CHART
+            </button>
+
+            {/* Position Box Shaded Overlay Toggle */}
+            <button
+              onClick={() => setShowPositionBox(!showPositionBox)}
+              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ml-1 ${
+                showPositionBox
+                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-700 font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Toggle Shaded Position Box Overlay"
+            >
+              {showPositionBox ? '📦 Box Overlay: ON' : '📦 Box Overlay: OFF'}
             </button>
           </div>
 
-          <div className={`h-4 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-
-          {/* Live Status & Ticker Badge */}
-          {chartMode === 'LIVE' ? (
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border ${
-                isWsConnected
-                  ? 'bg-emerald-950/90 text-emerald-400 border-emerald-600'
-                  : 'bg-amber-950/90 text-amber-400 border-amber-600'
-              }`}>
-                <span className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                {isWsConnected ? 'LIVE BINANCE WS' : 'CONNECTING WS...'}
-              </span>
-              {lastLivePrice && (
-                <span className="text-emerald-400 font-bold text-xs font-mono">
-                  ${lastLivePrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-slate-400">Inspecting Strategy:</span>
-              <span className="text-amber-400 font-bold">{selectedStrategy}</span>
-            </div>
-          )}
+          <span className="text-xs text-slate-500 font-mono hidden sm:inline border-l border-slate-700 pl-3">
+            Inspecting Strategy: <strong className="text-indigo-400">{selectedStrategy}</strong>
+          </span>
         </div>
 
-
-        {activeTradeLevels && (
+        {/* Active Open Signal Trade Levels Pill (ONLY WHEN AN OPEN POSITION EXISTS) */}
+        {activeTradeLevels ? (
           <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex items-center gap-4 shadow-lg ${
             isDark ? 'bg-[#161b22]/90 border-[#30363d]' : 'bg-white/90 border-slate-200 shadow'
           }`}>
@@ -562,101 +521,108 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               <span className="text-indigo-400 font-bold">1 : {activeTradeLevels.rr}</span>
             </div>
           </div>
+        ) : (
+          <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+            NO OPEN POSITION (ALL TRADES CLOSED)
+          </div>
         )}
       </div>
 
-      {/* SVG Overlay: Native TradingView Position Box (Shaded Green Profit & Red Loss Zones) */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
-        <defs>
-          <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#26a69a" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#26a69a" stopOpacity="0.08" />
-          </linearGradient>
-          <linearGradient id="lossGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ef5350" stopOpacity="0.08" />
-            <stop offset="100%" stopColor="#ef5350" stopOpacity="0.25" />
-          </linearGradient>
-        </defs>
+      {/* SVG Container strictly relative to Chart Canvas */}
+      <div ref={chartContainerRef} className="w-full h-full relative">
+        {showPositionBox && positionBoxes.length > 0 && (
+          <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
+            <defs>
+              <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#26a69a" stopOpacity="0.25" />
+                <stop offset="100%" stopColor="#26a69a" stopOpacity="0.08" />
+              </linearGradient>
+              <linearGradient id="lossGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ef5350" stopOpacity="0.08" />
+                <stop offset="100%" stopColor="#ef5350" stopOpacity="0.25" />
+              </linearGradient>
+            </defs>
 
-        {positionBoxes.map((box) => (
-          <g key={box.id}>
-            {/* Green Profit Zone Box */}
-            <rect
-              x={box.x}
-              y={box.yProfitTop}
-              width={box.width}
-              height={box.profitHeight}
-              fill="url(#profitGrad)"
-              stroke="#26a69a"
-              strokeWidth="1.5"
-              strokeDasharray="4 2"
-            />
-            {/* Red Loss Zone Box */}
-            <rect
-              x={box.x}
-              y={box.yLossTop}
-              width={box.width}
-              height={box.lossHeight}
-              fill="url(#lossGrad)"
-              stroke="#ef5350"
-              strokeWidth="1.5"
-              strokeDasharray="4 2"
-            />
-            {/* Entry Price Line */}
-            <line
-              x1={box.x}
-              y1={box.yEntry}
-              x2={box.x + box.width}
-              y2={box.yEntry}
-              stroke="#38bdf8"
-              strokeWidth="1.5"
-              strokeDasharray="3 3"
-            />
-            {/* Labels on Right Side of Position Box */}
-            <rect
-              x={box.x + box.width - 64}
-              y={box.yProfitTop + 2}
-              width="60"
-              height="16"
-              rx="3"
-              fill="rgba(38, 166, 154, 0.9)"
-            />
-            <text
-              x={box.x + box.width - 34}
-              y={box.yProfitTop + 13}
-              fill="#ffffff"
-              fontSize="9"
-              fontWeight="bold"
-              fontFamily="monospace"
-              textAnchor="middle"
-            >
-              TP: ${box.tpPrice.toFixed(0)}
-            </text>
+            {positionBoxes.map((box) => (
+              <g key={box.id}>
+                {/* Green Profit Zone Box */}
+                <rect
+                  x={box.x}
+                  y={box.yProfitTop}
+                  width={box.width}
+                  height={box.profitHeight}
+                  fill="url(#profitGrad)"
+                  stroke="#26a69a"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 2"
+                />
+                {/* Red Loss Zone Box */}
+                <rect
+                  x={box.x}
+                  y={box.yLossTop}
+                  width={box.width}
+                  height={box.lossHeight}
+                  fill="url(#lossGrad)"
+                  stroke="#ef5350"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 2"
+                />
+                {/* Entry Price Line */}
+                <line
+                  x1={box.x}
+                  y1={box.yEntry}
+                  x2={box.x + box.width}
+                  y2={box.yEntry}
+                  stroke="#38bdf8"
+                  strokeWidth="1.5"
+                  strokeDasharray="3 3"
+                />
+                {/* Labels on Right Side of Position Box */}
+                <rect
+                  x={box.x + box.width - 64}
+                  y={box.yProfitTop + 2}
+                  width="60"
+                  height="16"
+                  rx="3"
+                  fill="rgba(38, 166, 154, 0.9)"
+                />
+                <text
+                  x={box.x + box.width - 34}
+                  y={box.yProfitTop + 13}
+                  fill="#ffffff"
+                  fontSize="9"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                  textAnchor="middle"
+                >
+                  TP: ${box.tpPrice.toFixed(0)}
+                </text>
 
-            <rect
-              x={box.x + box.width - 64}
-              y={box.yLossTop + box.lossHeight - 18}
-              width="60"
-              height="16"
-              rx="3"
-              fill="rgba(239, 83, 80, 0.9)"
-            />
-            <text
-              x={box.x + box.width - 34}
-              y={box.yLossTop + box.lossHeight - 7}
-              fill="#ffffff"
-              fontSize="9"
-              fontWeight="bold"
-              fontFamily="monospace"
-              textAnchor="middle"
-            >
-              SL: ${box.slPrice.toFixed(0)}
-            </text>
-          </g>
-        ))}
-      </svg>
-
-      <div ref={chartContainerRef} className="w-full h-full" />
+                <rect
+                  x={box.x + box.width - 64}
+                  y={box.yLossTop + box.lossHeight - 18}
+                  width="60"
+                  height="16"
+                  rx="3"
+                  fill="rgba(239, 83, 80, 0.9)"
+                />
+                <text
+                  x={box.x + box.width - 34}
+                  y={box.yLossTop + box.lossHeight - 7}
+                  fill="#ffffff"
+                  fontSize="9"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                  textAnchor="middle"
+                >
+                  SL: ${box.slPrice.toFixed(0)}
+                </text>
+              </g>
+            ))}
+          </svg>
+        )}
+      </div>
     </div>
   );
 };
