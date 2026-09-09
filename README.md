@@ -1,173 +1,244 @@
-# ⛓️ nujinSkills — Onchain AIOS Skills Repository
+# ⚡ NujinSkill: Autonomous Quant Edge Mining Engine & Signal Gateway
 
-> Professional onchain skills collection for AI coding agents. Zero API-key dependencies.
+> **An agent-agnostic quantitative alpha discovery engine, 24/7 Telegram signal gateway, and interactive dual-screen telemetry dashboard for OHLCV market data.**
 
-[![Agent Skills Spec](https://img.shields.io/badge/Agent%20Skills-2026%20Spec-blueviolet)]()
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)]()
+---
 
-## Overview
+## 🌟 Key Capabilities
 
-**nujinSkills** is a curated collection of onchain skills that empower AI agents to interact with blockchains, DeFi protocols, and crypto markets — all without requiring API keys.
+- 🤖 **Agent-Agnostic AI Skill (`SKILL.md`):** Complete execution manual and dedicated reference knowledge base (`references/`) designed for AI agents (Google Antigravity, Hermes, OpenClaw, Claude Code, Cursor).
+- 💬 **Zero-Friction Prompting:** Prompt with simple requests like *"I need a prop firm strategy"* or *"Make me a BTC swing strategy"*. The AI automatically maps user intent, extracts features, mines alpha, backtests, and audits performance.
+- 🎨 **Unconstrained Creative Ideation:** **NOT limited to fixed strategy templates.** The AI invents creative mathematical combinations of bar geometry, VSA volume Z-scores, Parkinson volatility, Anchored VWAP, and Hurst regime metrics.
+- 🔁 **Relentless Persistence Loop:** If a candidate hypothesis fails falsification or DSR hurdles, the AI automatically logs the failure, blacklists the setup, mutates the hypothesis, and **persistently loops until a statistically vetted, profitable strategy is found**.
+- 🛠️ **Optional Execution Features (User Selected):** You decide what happens next:
+  - Generate production Freqtrade strategy code (`strategy_emitter.py`).
+  - Deploy dry-run / paper trading bots (`bot_control.py`).
+  - Activate 24/7 Telegram signal push alerts (`telegram_bot.py`).
+  - Open the interactive dual-screen web terminal (`frontend_control.py`).
 
-Each skill follows the **2026 Agent Skills specification** (`SKILL.md` + scripts + references) and is optimized for:
+---
 
-| Agent | Status |
-|-------|--------|
-| 🔮 **Hermes** | 🚀 Primary Support |
-| 🦀 **OpenClaw** | 🛡️ Verified |
-| 🤖 Claude Code | ✅ Compatible |
-| 💎 Gemini CLI | ✅ Compatible |
-| 🧑‍💻 GitHub Copilot | ✅ Compatible |
+## 🤖 Integration & Usage Guide Across AI Environments
 
-## Skills Index
+NujinSkill is built around a standard agent-agnostic `SKILL.md` contract and local CLI tools.
 
-### 🏦 Wallet Management
-| Skill | Description |
-|-------|-------------|
-| [`onchain-wallet-btc`](skills/onchain-wallet-btc/) | Bitcoin HD wallet — BIP39/BIP84 Native SegWit |
-| [`onchain-wallet-evm`](skills/onchain-wallet-evm/) | Ethereum & EVM chains — viem-based |
-| [`onchain-wallet-solana`](skills/onchain-wallet-solana/) | Solana keypair & SPL token management |
+### 1. Google Antigravity IDE
 
-### 📊 Market Data
-| Skill | Description |
-|-------|-------------|
-| [`market-data`](skills/market-data/) | Real-time prices, OHLC, order books (Binance, CoinGecko, DIA) |
-| [`defi-market`](skills/defi-market/) | DeFi analytics — TVL, yields, volumes, fees (DeFiLlama) |
+Antigravity automatically discovers and loads skills from customization roots:
 
-### 🔄 DEX Trading
-| Skill | Description |
-|-------|-------------|
-| [`dex-swap-evm`](skills/dex-swap-evm/) | Token swaps via Uniswap V3 direct contract calls |
-| [`dex-swap-solana`](skills/dex-swap-solana/) | Token swaps via Jupiter aggregator |
+- **Global Customizations Skill (Available in All Workspaces):**
+  Place NujinSkill in `~/.gemini/config/skills/quant-edge-mining/` (containing `SKILL.md`).
+  ```bash
+  mkdir -p ~/.gemini/config/skills/quant-edge-mining
+  cp -r * ~/.gemini/config/skills/quant-edge-mining/
+  ```
 
-### 🏛️ DeFi Protocols
-| Skill | Description |
-|-------|-------------|
-| [`defi-lending`](skills/defi-lending/) | Supply, borrow, repay — Aave V3 & Compound V3 |
-| [`defi-flashloans`](skills/defi-flashloans/) | Flash loan execution & contract templates |
+- **Workspace-Scoped Skill (Project Specific):**
+  Place NujinSkill in `.agents/skills/quant-edge-mining/` inside your project root.
+  ```bash
+  mkdir -p .agents/skills/quant-edge-mining
+  cp -r * .agents/skills/quant-edge-mining/
+  ```
 
-### 🤖 Trading Strategy
-| Skill | Description |
-|-------|-------------|
-| [`hummingbot-strategy`](skills/hummingbot-strategy/) | Hummingbot strategy development, generators, validators, and profitability framework |
+---
 
-
-## Installation
-
-### 🔮 1. Hermes Agent (Primary Support)
-To integrate these skills with **Hermes**, clone the repository directly into your Hermes skills directory:
-
+### 2. OpenClaw / Hermes CLI Agents
+Register the repository directly into your CLI agent's skill directory:
 ```bash
-# Global installation (recommended)
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.hermes/skills/nujinSkills
-cd ~/.hermes/skills/nujinSkills && npm install
+# Register skill into OpenClaw / Hermes
+openclaw skill add ./
+# Or symlink to global skills directory
+ln -s $(pwd) ~/.openclaw/skills/quant-edge-mining
 ```
 
 ---
 
-### 🦀 2. OpenClaw
-For **OpenClaw**, you can use the universal installer or manual clone:
+### 3. Claude Code / Cursor / Windsurf / VS Code Copilot
+Open this project folder directly in your editor. The AI assistant ingests `SKILL.md` and `references/` when processing context.
 
-```bash
-# Universal installer
-npx skills add AutonomousEnterprises/nujinSkills
+---
 
-# Manual clone fallback
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.agents/skills/nujinSkills
-cd ~/.agents/skills/nujinSkills && npm install
+## 💬 Simple User Prompts & Profiles
+
+You do not need to specify technical formulas or command-line flags. Simply prompt the AI with your trading goal:
+
+1. **Prop Firm Strategy:**
+   > *"I need a prop firm trading strategy."*
+   > *(AI sets strict Max DD $\le 4.5\%$, Sharpe $\ge 1.8$, DSR $\ge 0.96$, mines low-drawdown setups, emits Freqtrade code, and launches paper trading).*
+
+2. **BTC Swing Trading Strategy:**
+   > *"Make me a btc market cycle swing trade strategy."*
+   > *(AI extracts multi-day trend/chop regimes using Hurst $H > 0.55$, filters false breakouts, and projects markers on the Lightweight Chart).*
+
+3. **Longterm Conservative Investment:**
+   > *"Make me a longterm conservative investment strategy."*
+   > *(AI targets capital preservation, Parkinson volatility compression, Max DD $\le 8\%$, and low trade turnover).*
+
+4. **News Volatility Strategy:**
+   > *"How can news be traded effectively?"*
+   > *(AI mines post-event V-Spread spikes and wick rejection fades, stress-tests with Monte Carlo reshuffling, and relays alerts to Telegram).*
+
+---
+
+## 🔄 Autonomous AI Agent Workflow Loop
+
+```
+                        [ USER PROMPT ]
+  ("I need a prop firm strategy" / "Make me a BTC swing strategy")
+                                │
+                                ▼
+                ┌───────────────────────────────┐
+                │ 1. Map Strategy Profile &     │
+                │    Set Target Constraints     │
+                └───────────────┬───────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────┐
+                │ 2. Feature Extraction & Scan  │
+                │    python tools/feature_...   │
+                └───────────────┬───────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────┐
+                │ 3. Creative Dialectic         │
+                │    Out-of-the-Box Ideation    │
+                └───────────────┬───────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────┐
+                │ 4. Fast Vectorized Screen     │
+                │    python tools/vectoriz...   │
+                └───────────────┬───────────────┘
+                                │
+                  Pass Hurdles? │
+                ┌───────────────┴───────────────┐
+                │                               │
+              [ NO ]                         [ YES ]
+                │                               │
+                ▼                               ▼
+┌──────────────────────────────────┐ ┌───────────────────────────┐
+│ Refine Rules / Blacklist Failed  │ │ 5. Adversarial DSR Audit  │
+│ Setup & Loop Back to Step 3      │ │    python tools/valid...  │
+└──────────────────────────────────┘ └─────────────┬─────────────┘
+                                                   │
+                                      DSR >= 0.95? │
+                                     ┌─────────────┴─────────────┐
+                                     │                           │
+                                   [ NO ]                     [ YES ]
+                                     │                           │
+                                     ▼                           ▼
+                   ┌───────────────────────────┐ ┌───────────────────────────────┐
+                   │ Adjust Parameters & Loop  │ │ 6. Emit Code & Deploy Options │
+                   │ Back to Step 3            │ │    (User Chooses Deployment): │
+                   └───────────────────────────┘ │    - Emit Freqtrade Strategy   │
+                                                 │    - Launch Paper Trading Bot │
+                                                 │    - Activate Telegram Alerts │
+                                                 │    - Spin Up Web Dashboard    │
+                                                 └───────────────────────────────┘
 ```
 
 ---
 
-### 🤖 3. Claude Code
-To add these skills to **Claude Code**, clone them into your personal skills directory:
+## 📂 Repository Architecture
 
-```bash
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git ~/.claude/skills/nujinSkills
-cd ~/.claude/skills/nujinSkills && npm install
+```
+NujinSkill/
+├── SKILL.md                     <-- Master Skill Contract & Execution Manual
+├── PROJECT.md                   <-- Master Development Roadmap & Checklist
+├── requirements.txt             <-- Clean Python dependencies (polars, vectorbt, uvicorn, etc.)
+├── references/                  <-- AI Agent Knowledge Base (16 canonical specs)
+│   ├── strategy_profiles.md     # Natural prompt intent mapping & risk targets
+│   ├── dashboard.md             # Dual-output event bus & UI telemetry schemas
+│   ├── edge.md                  # Quantitative edge & counterparty trap principles
+│   ├── extended_tools_ideas.md  # Advanced math feature extraction (Hurst, Parkinson, AVWAP)
+│   ├── indicator_usage.md       # Non-consensus indicator principles
+│   ├── libs_clis.md             # Python libraries & CLI tool contracts
+│   ├── outofthebox_solutions_finding.md # Dialectic ideation engine (Consensus -> Failure -> Synthesis)
+│   ├── pricedataonly_edge_mining.md    # Price auction footprints & bar geometry
+│   ├── process.md               # 5-phase operational funnel specifications
+│   ├── riskmanagement.md        # Risk controls, ATR stops, invalidation rules
+│   ├── signals_gateway.md       # 24/7 Telegram Signal Gateway integration
+│   ├── simple_tools_ideas.md    # Bar geometry & VSA volume Z-scores
+│   ├── statistic_edge.md        # DSR formula & statistical rejection hurdles
+│   ├── thirdparty_edge_mining.md# Order book proxies & funding rate dynamics
+│   ├── tradingbot.md            # Freqtrade & Jesse strategy execution contracts
+│   └── ui_management.md         # Hotkey viewport switching & Server-Driven UI
+├── notes/                       <-- User Preparation Notes (READ-ONLY)
+├── tools/                       <-- Executable CLI Tools for AI Agent
+│   ├── feature_miner.py         # Bar geometry, Hurst, VSA, Parkinson Vol, AVWAP
+│   ├── vectorized_screener.py   # Vectorbt fast In-Sample filter
+│   ├── validation_cynic.py      # DSR gate, Parameter stability, Monte Carlo, OOS audit
+│   ├── strategy_emitter.py      # Freqtrade IStrategy code generator
+│   ├── ui_dispatcher.py         # WebSocket event dispatcher (Charts & Widgets)
+│   ├── server_control.py        # CLI: start/stop FastAPI server & Telegram gateway
+│   ├── frontend_control.py      # CLI: build/serve frontend dashboard UI
+│   └── bot_control.py           # CLI: deploy/manage trading bot paper/live process
+├── server/                      <-- Telemetry Backend & Telegram Gateway
+│   ├── main.py                  # FastAPI application & REST API
+│   ├── websocket.py             # Real-time WebSocket event broadcaster
+│   ├── telegram_bot.py          # Telegram signal gateway (24/7 alerts)
+│   ├── bot_runner.py            # Freqtrade / Jesse paper-trading supervisor
+│   └── data_manager.py          # OHLCV data loader & feed server
+└── frontend/                    <-- User Telemetry Dashboard (Dual-Screen UI)
+    ├── package.json
+    ├── vite.config.ts
+    ├── index.html
+    └── src/
+        ├── App.tsx              # Dual-screen viewport layout & hotkey listener
+        ├── components/
+        │   ├── ChartCanvas.tsx  # TradingView Lightweight Charts canvas
+        │   ├── AgentDeck.tsx    # Server-Driven UI Widget Grid
+        │   └── Header.tsx       # Status pill & screen switcher
+        └── hooks/
+            └── useWebSocket.ts  # Real-time WS client hook
 ```
 
 ---
 
-### 💎 4. Gemini CLI / Antigravity
-If you are using **Gemini CLI**, use the integrated installer:
+## ⚡ Quick Start
 
+### 1. Installation
+Clone the repository and install Python dependencies:
 ```bash
-gemini skills install https://github.com/AutonomousEnterprises/nujinSkills.git
+cd NujinSkill
+pip install -r requirements.txt
+```
+
+### 2. Launch Telemetry Backend & Web Dashboard (Optional)
+Use the CLI control tools to start services in background daemon mode:
+```bash
+# Start FastAPI Telemetry Backend & Telegram Signal Gateway (Port 8000)
+python tools/server_control.py start --port 8000 --daemon
+
+# Build and Start Dual-Screen Frontend Terminal (Port 3000)
+python tools/frontend_control.py build
+python tools/frontend_control.py start --port 3000 --daemon
 ```
 
 ---
 
-### 🛠️ Manual & Developer Setup
-If you want to contribute or run scripts directly via terminal:
-```bash
-git clone https://github.com/AutonomousEnterprises/nujinSkills.git
-cd nujinSkills
-npm install
-```
+## 🛠️ CLI Tools Reference
 
-## Architecture
-
-```
-nujinSkills/
-├── shared/                    # Common utilities
-│   ├── rpc-providers.ts       # Free public RPC registry
-│   ├── chain-config.ts        # Chain IDs, tokens, explorers
-│   └── security-guidelines.md # Key management best practices
-└── skills/
-    └── <skill-name>/
-        ├── SKILL.md           # Agent instructions (YAML + Markdown)
-        ├── scripts/           # Executable TypeScript scripts
-        ├── references/        # Documentation & API guides
-        └── contracts/         # Solidity templates & ABIs (where applicable)
-```
-
-## Key Principles
-
-1. **Zero API Keys** — All data from free public endpoints or direct on-chain interaction
-2. **Agent-Native** — Skills follow the 2026 Agent Skills spec for cross-agent compatibility
-3. **Security-First** — Never stores private keys in plaintext; env vars and prompts only
-4. **TypeScript Throughout** — Consistent, type-safe scripts for all operations
-5. **Progressive Disclosure** — Agents load only the SKILL.md frontmatter at startup, full instructions on demand
-
-## Free Data Sources
-
-| Source | Type | URL | Key Required |
-|--------|------|-----|:---:|
-| Binance | Market data | `api.binance.com` | ❌ |
-| CoinGecko | Market data | `api.coingecko.com` | ❌ |
-| DIA Data | Oracle prices | `api.diadata.org` | ❌ |
-| DeFiLlama | DeFi analytics | `api.llama.fi` | ❌ |
-| Blockstream | Bitcoin explorer | `blockstream.info/api` | ❌ |
-| Cloudflare ETH | Ethereum RPC | `cloudflare-eth.com` | ❌ |
-| Solana Public | Solana RPC | `api.mainnet-beta.solana.com` | ❌ |
-| Jupiter | DEX aggregator | `api.jup.ag` | ❌ |
-
-## 🧠 Memory & Persistence
-
-For an AI Agent to be truly autonomous, it must never "forget" its wallet credentials. These skills are designed to work in tandem with the agent's persistent memory system.
-
-### How to manage state:
-1. **Wallet Creation**: When a skill generates a new mnemonic, the agent **MUST** save it to its long-term memory (e.g., `~/.hermes/memory/` or `~/.openclaw/state/`).
-2. **Environment Variables**: For script execution, the agent should temporarily export the required keys:
-   ```bash
-   export PRIVATE_KEY="0x..."
-   export MNEMONIC="..."
-   ```
-3. **Session Recovery**: In every new session, the agent should first check its memory for existing wallets before prompting the user for new ones.
+| Tool Script | Responsibilities | Key Arguments |
+| --- | --- | --- |
+| `tools/feature_miner.py` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
+| `tools/vectorized_screener.py` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
+| `tools/validation_cynic.py` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
+| `tools/strategy_emitter.py` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
+| `tools/ui_dispatcher.py` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
+| `tools/server_control.py` | CLI tool to start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
+| `tools/frontend_control.py` | CLI tool to build and serve the dual-screen React UI | `build`, `start`, `stop`, `status`, `--port` |
+| `tools/bot_control.py` | CLI tool to launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
 
 ---
 
-## Security Disclaimer
+## 💻 Web Terminal Hotkeys
 
-> ⚠️ **These skills handle cryptographic keys and real financial transactions.** Always:
-> - Review scripts before executing them with real funds
-> - Test on testnets first (Sepolia, Devnet)
-> - Never commit `.env` files or private keys to version control
-> - Use hardware wallets for significant amounts
+- **`Ctrl + Space`** / **`Tab`**: Instantly swap between Screen 1 (TradingView Lightweight Chart Canvas) and Screen 2 (Agent Deck & Telemetry Report).
+- **`F1`**: Direct focus to Lightweight Chart Canvas.
+- **`F2`**: Direct focus to Agent Deck & Mining Telemetry.
 
-## License
+---
 
-MIT — See [LICENSE](LICENSE) for details.
-
+## 📜 License
+MIT License. Built for autonomous quantitative research and strategy development.
