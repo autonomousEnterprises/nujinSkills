@@ -1,23 +1,21 @@
 import os
 import json
+import time
 import subprocess
 import logging
 import numpy as np
 from datetime import datetime, timezone
 from server.state_manager import state_manager
-
-import time
 from server.data_manager import sync_30d_candles
 
 logger = logging.getLogger("BacktestEngine")
 
 def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     """
-    Executes real quantitative backtest and DSR cynic audit on the selected strategy.
-    Zero split-brain metrics. Uses a single source of truth trade execution simulation
-    on the last 30 days of real market data (2,880 15m candles up to current timestamp).
+    Executes real quantitative dual-directional (LONG & SHORT) backtest and DSR cynic audit.
+    Zero mockups. Evaluates both Long and Short entry signals with explicit TP/SL and position tracking.
     """
-    logger.info(f"[BacktestEngine] Running real 30-day backtest for strategy: {strategy_name} (save_as_active={save_as_active})")
+    logger.info(f"[BacktestEngine] Running real dual-directional 30-day backtest for strategy: {strategy_name} (save_as_active={save_as_active})")
     cwd = os.getcwd()
     data_dir = os.path.join(cwd, "data")
     features_file = os.path.join(data_dir, "features.csv")
@@ -47,10 +45,10 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         max_bars = 8
         trials = 80
         thesis_props = {
-            "thesis": "Fade Asian Session Liquidity Sweeps on 15m lower wick expansion (> 38%)",
-            "counterparty": "Breakout buyers trapped by passive institutional limit order blocks",
-            "invalidation": "2 consecutive candle closes below session low (-1.5% hard stop)",
-            "target_profile": "Liquidity Sweep Fade"
+            "thesis": "Dual-Directional Asian Session Liquidity Sweep Fade (LONG on lower wick expansion >38%, SHORT on upper wick expansion >38%)",
+            "counterparty": "Breakout buyers & panic sellers trapped by passive institutional limit order blocks",
+            "invalidation": "Candle close beyond session extreme (-1.5% hard stop)",
+            "target_profile": "Liquidity Sweep Fade (LONG & SHORT)"
         }
     else:
         wick_thresh = 0.40
@@ -60,13 +58,13 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         max_bars = 6
         trials = 120
         thesis_props = {
-            "thesis": "Prop Firm Challenge VSA Wick Rejection with Volume Z-Score > 1.0 filter",
-            "counterparty": "Sellers dumping into passive buy liquidity absorption",
-            "invalidation": "Candle close below wick low (-1.2% Risk Limit)",
-            "target_profile": "Prop Firm Challenge"
+            "thesis": "Prop Firm Challenge Dual VSA Wick Rejection with Volume Z-Score > 1.0 filter",
+            "counterparty": "Aggressive market orders dumping/buying into passive liquidity absorption",
+            "invalidation": "Candle close beyond wick extreme (-1.2% Risk Limit)",
+            "target_profile": "Prop Firm Challenge (LONG & SHORT)"
         }
 
-    # 3. Primary Execution: Sequential Trade Simulation with TP/SL & Non-overlapping Execution
+    # 3. Primary Execution: Dual-Directional Sequential Simulation (LONG & SHORT)
     trade_markers = []
     trades_detail = []
     
@@ -77,6 +75,8 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             
             df_c['total_range'] = (df_c['high'] - df_c['low']).replace(0, 1e-6)
             df_c['lower_wick'] = (np.minimum(df_c['close'], df_c['open']) - df_c['low']) / df_c['total_range']
+            df_c['upper_wick'] = (df_c['high'] - np.maximum(df_c['close'], df_c['open'])) / df_c['total_range']
+            
             vol_mean = df_c['volume'].rolling(20).mean()
             vol_std = df_c['volume'].rolling(20).std().replace(0, 1e-6)
             df_c['vol_z'] = (df_c['volume'] - vol_mean) / vol_std
@@ -86,14 +86,23 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             while i < n - 2:
                 c = df_c.iloc[i]
                 lower_wick = float(c['lower_wick']) if not np.isnan(c['lower_wick']) else 0.0
+                upper_wick = float(c['upper_wick']) if not np.isnan(c['upper_wick']) else 0.0
                 vol_z = float(c['vol_z']) if not np.isnan(c['vol_z']) else 0.0
                 
-                # Check Entry Condition on candle i
-                if lower_wick > wick_thresh and vol_z > vol_thresh:
+                is_long = lower_wick > wick_thresh and vol_z > vol_thresh
+                is_short = upper_wick > wick_thresh and vol_z > vol_thresh
+                
+                if is_long or is_short:
+                    side = "LONG" if is_long else "SHORT"
                     entry_time = int(c['timestamp'])
                     entry_price = float(c['close'])
-                    stop_loss = round(entry_price * (1.0 - stoploss_pct), 2)
-                    take_profit = round(entry_price * (1.0 + takeprofit_pct), 2)
+                    
+                    if side == "LONG":
+                        stop_loss = round(entry_price * (1.0 - stoploss_pct), 2)
+                        take_profit = round(entry_price * (1.0 + takeprofit_pct), 2)
+                    else:
+                        stop_loss = round(entry_price * (1.0 + stoploss_pct), 2)
+                        take_profit = round(entry_price * (1.0 - takeprofit_pct), 2)
                     
                     # Sequential exit resolution
                     exit_idx = i + 1
@@ -106,17 +115,27 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                         curr_high = float(bar_curr['high'])
                         curr_close = float(bar_curr['close'])
                         
-                        if curr_low <= stop_loss:
-                            exit_price = stop_loss
-                            exit_reason = "STOP_LOSS"
-                            break
-                        elif curr_high >= take_profit:
-                            exit_price = take_profit
-                            exit_reason = "TAKE_PROFIT"
-                            break
-                        else:
-                            exit_price = curr_close
-                            exit_idx += 1
+                        if side == "LONG":
+                            if curr_low <= stop_loss:
+                                exit_price = stop_loss
+                                exit_reason = "STOP_LOSS"
+                                break
+                            elif curr_high >= take_profit:
+                                exit_price = take_profit
+                                exit_reason = "TAKE_PROFIT"
+                                break
+                        else: # SHORT
+                            if curr_high >= stop_loss:
+                                exit_price = stop_loss
+                                exit_reason = "STOP_LOSS"
+                                break
+                            elif curr_low <= take_profit:
+                                exit_price = take_profit
+                                exit_reason = "TAKE_PROFIT"
+                                break
+                        
+                        exit_price = curr_close
+                        exit_idx += 1
                             
                     if exit_idx >= n:
                         exit_idx = n - 1
@@ -124,29 +143,37 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                         
                     exit_bar = df_c.iloc[exit_idx]
                     exit_time = int(exit_bar['timestamp'])
-                    pnl_pct = round(((exit_price - entry_price) / entry_price) * 100.0, 2)
                     
+                    if side == "LONG":
+                        pnl_pct = round(((exit_price - entry_price) / entry_price) * 100.0, 2)
+                    else:
+                        pnl_pct = round(((entry_price - exit_price) / entry_price) * 100.0, 2)
+                    
+                    # Entry Marker
                     trade_markers.append({
                         "time": entry_time,
-                        "position": "belowBar",
-                        "color": "#26a69a",
-                        "shape": "arrowUp",
-                        "text": f"BUY ${entry_price/1000:.1f}k",
+                        "position": "belowBar" if side == "LONG" else "aboveBar",
+                        "color": "#26a69a" if side == "LONG" else "#ef5350",
+                        "shape": "arrowUp" if side == "LONG" else "arrowDown",
+                        "text": f"{side} ${entry_price/1000:.1f}k",
                         "entry_price": entry_price,
                         "stop_loss": stop_loss,
-                        "take_profit": take_profit
+                        "take_profit": take_profit,
+                        "side": side
                     })
                     
+                    # Exit Marker
                     trade_markers.append({
                         "time": exit_time,
-                        "position": "aboveBar",
-                        "color": "#ef5350" if pnl_pct < 0 else "#26a69a",
-                        "shape": "arrowDown",
+                        "position": "aboveBar" if side == "LONG" else "belowBar",
+                        "color": "#26a69a" if pnl_pct >= 0 else "#ef5350",
+                        "shape": "arrowDown" if side == "LONG" else "arrowUp",
                         "text": f"EXIT {pnl_pct:+.1f}%"
                     })
                     
                     trades_detail.append({
                         "id": len(trades_detail) + 1,
+                        "side": side,
                         "entry_time": entry_time,
                         "entry_price": entry_price,
                         "stop_loss": stop_loss,

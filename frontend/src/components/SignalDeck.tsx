@@ -300,8 +300,8 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
               <div className={`p-4 rounded-lg border flex flex-col justify-between gap-3 ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-slate-400 font-bold uppercase">{activeSig.pair || 'BTC/USDT 15m'}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${activeSig.action === 'BUY' ? 'bg-emerald-950 text-emerald-400 border border-emerald-700' : 'bg-rose-950 text-rose-400 border border-rose-700'}`}>
-                    {activeSig.action === 'BUY' ? '⬆ LONG ENTRY' : '⬇ SHORT ENTRY'}
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${(activeSig.side || activeSig.action) === 'SHORT' || activeSig.action === 'SELL' ? 'bg-rose-950 text-rose-400 border border-rose-700' : 'bg-emerald-950 text-emerald-400 border border-emerald-700'}`}>
+                    {(activeSig.side || activeSig.action) === 'SHORT' || activeSig.action === 'SELL' ? '⬇ SHORT ENTRY' : '⬆ LONG ENTRY'}
                   </span>
                 </div>
                 <div>
@@ -413,7 +413,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                     <td colSpan={10} className="p-4 text-center text-slate-500">No signals recorded yet.</td>
                   </tr>
                 ) : allSignals.map((sig, idx) => {
-                  const isBuy = sig.action === 'BUY';
+                  const isLong = (sig.side || sig.action) === 'LONG' || sig.action === 'BUY';
                   const pnl = sig.pnl_pct ?? 0.0;
                   const isOpen = sig.status === 'ACTIVE_IN_POSITION';
                   return (
@@ -429,8 +429,8 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                       </td>
                       <td className="p-2.5 text-indigo-400 font-bold">{(sig.strategy || cleanName).replace('Strategy', '')}</td>
                       <td className="p-2.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'}`}>
-                          {isBuy ? '⬆' : '⬇'} {sig.action || 'BUY'}
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isLong ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'}`}>
+                          {isLong ? '⬆ LONG' : '⬇ SHORT'}
                         </span>
                       </td>
                       <td className="p-2.5 text-sky-400 font-bold">${sig.price ? sig.price.toFixed(0) : '—'}</td>

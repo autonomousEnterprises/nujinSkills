@@ -78,12 +78,15 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
             <Cpu className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className={`text-xs font-semibold uppercase ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>
                 SINGLE SOURCE OF TRUTH METRICS
               </span>
               <span className="px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-700 text-indigo-400 text-[10px] font-bold">
                 INSPECTING: {cleanSelectedName}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-sky-950/80 border border-sky-700 text-sky-400 text-[10px] font-bold">
+                MODE: DUAL LONG &amp; SHORT
               </span>
               <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-700 text-emerald-400 text-[10px] font-bold">
                 SYSTEM DEPLOYED: {activeName} ({activeState?.status || 'ACTIVE_DEPLOYED'})
@@ -396,6 +399,7 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   <thead className={`sticky top-0 ${isDark ? 'bg-[#0d1117] text-slate-300' : 'bg-slate-100 text-slate-700'}`}>
                     <tr>
                       <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Trade #</th>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Side</th>
                       <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Entry Price</th>
                       <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Stop Loss (SL)</th>
                       <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Take Profit (TP)</th>
@@ -407,11 +411,21 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   <tbody>
                     {tradesDetail.map((t: any) => {
                       const isWin = t.pnl_pct >= 0;
+                      const isLong = (t.side || 'LONG') === 'LONG';
                       return (
                         <tr key={t.id} className={`border-b border-slate-200/50 dark:border-[#30363d]/50 ${
                           isDark ? 'hover:bg-[#21262d]' : 'hover:bg-slate-50'
                         }`}>
                           <td className="p-2 font-bold">#{t.id}</td>
+                          <td className="p-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              isLong
+                                ? 'bg-emerald-950/80 text-emerald-400 border-emerald-700'
+                                : 'bg-rose-950/80 text-rose-400 border-rose-700'
+                            }`}>
+                              {isLong ? '⬆ LONG' : '⬇ SHORT'}
+                            </span>
+                          </td>
                           <td className="p-2 text-sky-400 font-bold">${t.entry_price.toFixed(0)}</td>
                           <td className="p-2 text-rose-400">${t.stop_loss.toFixed(0)}</td>
                           <td className="p-2 text-emerald-400">${t.take_profit.toFixed(0)}</td>
