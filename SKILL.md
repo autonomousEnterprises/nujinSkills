@@ -82,6 +82,46 @@ To prevent context window bloat, high token costs, and context degradation durin
 
 ---
 
+## 🚀 First-Time Initialization & Interactive Onboarding Protocol
+
+When this skill is invoked for the first time (or when `.env` / system configuration is not yet established), the AI Agent SHOULD conduct a brief **Interactive Onboarding Interview** (or infer defaults from the user's initial prompt) to set up the system environment:
+
+### 1. Initial Onboarding Interview Questions:
+1. **Trading Objective & Risk Profile:**
+   - 🎯 **Prop Firm Challenge Pass:** Max DD $\le 4.5\%$, Win Rate $\ge 55\%$, Net Sharpe $\ge 1.8$, DSR $\ge 0.96$, tight stop-loss.
+   - 📈 **Crypto Swing Trading:** 15m/1h/4h multi-day trend capture, trailing stops, Hurst trend filter.
+   - 🛡️ **Conservative Wealth Preservation:** Low turnover, capital preservation, Max DD $\le 8.0\%$.
+   - ⚡ **News & Volatility Expansion:** Fading news spikes, wick rejections, fast holding windows.
+2. **Target Asset & Timeframe:**
+   - Default: `BTC/USDT 15m` (Binance REST API, zero mock data). Custom: `ETH/USDT`, `SOL/USDT`, etc.
+3. **Telegram 24/7 Signal Broadcast Setup (Optional):**
+   - *"Would you like live/paper signals streamed 24/7 to your Telegram app?"*
+   - If YES: Prompt user for `TELEGRAM_BOT_TOKEN` (from `@BotFather`) and `TELEGRAM_CHAT_ID`.
+   - Action: AI agent automatically saves these credentials to `.env`.
+4. **Execution Mode & Exchange API Credentials (Optional):**
+   - 📊 **Telemetry Dashboard & Backtest Preview Only** (default — zero risk, instant out-of-the-box backtests).
+   - 🧪 **Paper Trading / Dry-Run** (simulated exchange execution).
+   - ⚡ **Live Execution** (requires Exchange API Key & Secret written to `.env`).
+5. **Telemetry & Dashboard Ports:**
+   - API Server Port: `8000` (default)
+   - Web Dashboard Port: `3000` (default)
+
+### 2. Automated Env Setup & Out-of-the-Box Verification:
+If credentials are provided during onboarding, the AI agent populates/patches `.env`:
+```env
+TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+TELEGRAM_CHAT_ID=-100123456789
+EXCHANGE_NAME=binance
+EXCHANGE_API_KEY=your_api_key_here
+EXCHANGE_API_SECRET=your_api_secret_here
+TELEMETRY_PORT=8000
+DASHBOARD_PORT=3000
+```
+- **Zero-Key Verification:** The AI agent verifies that Binance public REST API (`https://api.binance.com`) is accessible for instant candle syncs without needing API keys.
+- **Pre-Built UI Verification:** The AI agent checks that `frontend/dist/` is ready to serve immediately via `python3 tools/frontend_control.py start`.
+
+---
+
 ## 🎯 User Intent & Strategy Profile Mapping
 *(Primary Reference: [`references/strategy_profiles.md`](file:///home/christonomous/Desktop/EdgeMiner/references/strategy_profiles.md))*
 
