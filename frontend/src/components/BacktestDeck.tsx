@@ -34,22 +34,10 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
   const cleanSelectedName = selectedStrategy.replace('.py', '');
   const activeName = activeState?.active_strategy || 'PropFirmVsaWickRejection';
 
-  const summary = selectedBacktestData?.summary || activeState?.backtest_summary || {
-    sharpe: 1.77,
-    win_rate: 0.556,
-    max_drawdown: 0.015,
-    mdd_99: 0.0331,
-    dsr: 0.96,
-    trades: 18,
-    expectancy_bps: 8.31
-  };
+  const summary = selectedBacktestData?.summary || activeState?.backtest_summary || null;
 
   const gates = selectedBacktestData?.falsification_gates;
-  const matrix = gates?.gate_2_parameter_stability?.matrix || [
-    [1.45, 1.59, 1.56],
-    [1.62, summary.sharpe || 1.77, 1.64],
-    [1.47, 1.64, 1.48]
-  ];
+  const matrix = gates?.gate_2_parameter_stability?.matrix || null;
 
   const tradesDetail = selectedBacktestData?.trades_detail || [];
 
