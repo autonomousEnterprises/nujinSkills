@@ -6,15 +6,13 @@
 
 ## 🌟 Key Capabilities
 
-- 🤖 **Agent-Agnostic AI Skill (`SKILL.md`):** Complete execution manual and dedicated reference knowledge base (`references/`) designed for AI agents (Google Antigravity, Hermes, OpenClaw, Claude Code, Cursor).
-- 💬 **Zero-Friction Prompting:** Prompt with simple requests like *"I need a prop firm strategy"* or *"Make me a BTC swing strategy"*. The AI automatically maps user intent, extracts features, mines alpha, backtests, and audits performance.
-- 🎨 **Unconstrained Creative Ideation:** **NOT limited to fixed strategy templates.** The AI invents creative mathematical combinations of bar geometry, VSA volume Z-scores, Parkinson volatility, Anchored VWAP, and Hurst regime metrics.
-- 🔁 **Relentless Persistence Loop:** If a candidate hypothesis fails falsification or DSR hurdles, the AI automatically logs the failure, blacklists the setup, mutates the hypothesis, and **persistently loops until a statistically vetted, profitable strategy is found**.
-- 🛠️ **Optional Execution Features (User Selected):** You decide what happens next:
-  - Generate production Freqtrade strategy code (`strategy_emitter.py`).
-  - Deploy dry-run / paper trading bots (`bot_control.py`).
-  - Activate 24/7 Telegram signal push alerts (`telegram_bot.py`).
-  - Open the interactive dual-screen web terminal (`frontend_control.py`).
+- 🔬 **Quantitative Research & Alpha Mining:** Multi-scale feature extraction across OHLCV datasets (bar geometry, VSA volume Z-scores, Parkinson volatility, Anchored VWAP, Hurst exponent regime classification).
+- 💡 **Creative Strategy Development:** Dialectic ideation that invents non-standard, out-of-the-box trading rules tailored to specific objectives (*Prop Firm*, *BTC Swing*, *Conservative Investment*, *News Volatility*).
+- 📊 **Rigorous Backtesting & Falsification:** Vectorized backtesting engine paired with an unyielding statistical audit hurdle (Deflated Sharpe Ratio $\text{DSR} \ge 0.95$, parameter grid stability, Monte Carlo drawdown risk checks).
+- 🤖 **Automated Trading Bot Execution:** Emits production-ready Freqtrade/Jesse `IStrategy` code and deploys paper or live trading bots via `bot_control.py`.
+- 💬 **24/7 Messenger Signal Gateway:** Integrated Telegram bot dispatcher broadcasting real-time trade signals, regime shifts, and PnL alerts to user messaging channels.
+- 🔁 **Relentless Persistence Loop:** If a hypothesis fails backtesting or statistical hurdles, the AI automatically blacklists the setup, mutates parameters, and loops continuously until a statistically vetted, profitable trading strategy is discovered and deployed.
+- 🖥️ **Dual-Screen Telemetry & Visual Terminal:** Interactive Web UI (`frontend_control.py`) featuring TradingView Lightweight Charts and live agent execution telemetry.
 
 ---
 
