@@ -23,13 +23,13 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
 - **Time Series Memory:** `hurst_proxy` ($H < 0.45$ anti-persistent chop vs. $H > 0.55$ persistent trend).
 - **Fair Value Anchors:** `avwap_zscore` (Anchored VWAP standard deviation distance).
 
-### 2. Relentless Persistence Loop Directive
+### 2. Relentless Persistence Loop Directive & Dynamic Exit Mutation
 > [!IMPORTANT]
-> **Directive for AI Agent:** Never declare failure or stop after 1 or 2 backtest trials. If a candidate hypothesis fails `vectorized_screener.py` hurdles or `validation_cynic.py` DSR audits:
-> 1. Log the failure cause (e.g., low trade count, negative expectancy, isolated cliff spike).
-> 2. Blacklist the failed feature/threshold combination in working memory.
-> 3. Formulate an alternative out-of-the-box hypothesis (mutating regime filters, altering counterparty trap triggers, or adjusting holding periods).
-> 4. **Repeat the loop relentlessly until a profitable strategy meeting the user's profile and passing DSR $\ge 0.95$ is found.**
+> **Directive for AI Agent:** Never declare success or stop after 1 or 2 backtest trials. Fixed rules (such as arbitrary 6-bar hold exit caps) can cut off profitable trends early or exit prematurely during chop. The AI agent MUST relentlessly iterate across parameter spaces, mutating:
+> 1. **Entry Rules & Filters:** Lower/upper wick thresholds, Volume Z-score, Hurst regime filters ($H < 0.45$ chop vs. $H > 0.55$ trend), AVWAP standard deviations.
+> 2. **Directional Bias:** Test **LONG-only**, **SHORT-only**, or **Dual LONG+SHORT** based on structural market asymmetry.
+> 3. **Exit Mechanics & Holding Windows:** Dynamically mutate max holding bars ($4 \le \text{bars} \le 48$), trailing stops, ATR volatility stops, and TP/SL risk-reward ratios.
+> 4. **Iterative Goal:** Log failure causes, blacklist failed combinations, and **repeat the loop relentlessly until a genuinely profitable strategy matching the user's prompt requirements and passing DSR $\ge 0.95$ is discovered**.
 
 ### 3. Subagent Parallelization & Orchestration Pattern
 If the execution environment supports subagents (e.g., Google Antigravity, OpenClaw, Hermes), the Orchestrator AI Agent SHOULD delegate tasks using a **Directed Acyclic Graph (DAG) pipeline**:
@@ -192,9 +192,9 @@ python tools/feature_miner.py --input data/candles_15m.csv --output data/feature
 2. **Failure Dissection:** Pinpoint microstructure conditions where that setup fails (absorption, liquidity sweep).
 3. **Lateral Synthesis:** Formulate entry/exit rule logic combining custom engineered features.
 
-### Step 3: Fast Vectorized Coarse Filter (Phase 3)
+### Step 3: Fast Vectorized Coarse Filter & Exit Mutation Loop (Phase 3)
 *(References: [`references/edge.md`](file:///home/christonomous/Desktop/EdgeMiner/references/edge.md) & [`references/process.md`](file:///home/christonomous/Desktop/EdgeMiner/references/process.md))*  
-Screen logic against In-Sample data with 5 bps fee and 2 bps slippage friction:
+Screen candidate rule combinations against In-Sample data with 5.0 bps fee and 2.0 bps slippage friction:
 ```bash
 python tools/vectorized_screener.py \
   --data data/features.csv \
@@ -202,18 +202,23 @@ python tools/vectorized_screener.py \
   --fee-bps 5.0 \
   --output data/candidate_returns.json
 ```
-* **Check Results:** If Sharpe $< 1.3$, Trades $< 100$, or Net Expectancy $\le 2\times$ fees, **do not stop**—autonomously iterate with a refined hypothesis.
+* **Iterative Screening Rule:** Do **NOT** rely on rigid exit rules (such as fixed 6-bar exits) that cut off profitable trends early. Mutate and test dynamic exit mechanics:
+  - Extend/shorten holding periods ($4 \le \text{max\_bars} \le 48$).
+  - Test trailing stop offsets ($0.5\% \le \text{trailing} \le 3.0\%$).
+  - Test ATR volatility stops and trend-invalidation closes.
+  - Test LONG-only, SHORT-only, or Dual LONG+SHORT directional setups.
+* **Hurdle Check:** If Sharpe $< 1.8$, Win Rate $< 55\%$, Trades $< 60$, or Net Expectancy $\le 25\text{ bps}$, **do NOT stop**—autonomously mutate the hypothesis, entry filters, and exit rules and re-run screening until target profitability is reached.
 
 ### Step 4: Adversarial Audit & DSR Gate (Phase 4)
 *(References: [`references/statistic_edge.md`](file:///home/christonomous/Desktop/EdgeMiner/references/statistic_edge.md) & [`references/riskmanagement.md`](file:///home/christonomous/Desktop/EdgeMiner/references/riskmanagement.md))*  
-Audit surviving returns against overfitting:
+Audit surviving candidate returns against overfitting and parameter fragility:
 ```bash
 python tools/validation_cynic.py \
   --returns data/candidate_returns.json \
   --trials 120 \
   --param-grid '{"lower_wick": [0.45, 0.50, 0.55, 0.60], "volume_zscore": [1.2, 1.5, 1.8]}'
 ```
-* **Gate Check:** DSR must be $\ge 0.95$, parameter surface must form a stable plateau, and OOS retention must be $\ge 65\%$. If failed, iterate logic.
+* **Gate Check:** Deflated Sharpe Ratio must be $\text{DSR} \ge 0.95$, parameter surface must form a stable plateau (no cliff-edge spikes), and Out-Of-Sample Sharpe retention must be $\ge 65\%$. If the audit fails or returns unpromising metrics, loop back to Step 2, blacklist failed setups, and synthesize an alternative out-of-the-box hypothesis.
 
 ### Step 5: Optional Deployment Features (User Selected)
 Once a strategy passes all falsification gates, activate user-selected deployment features:
