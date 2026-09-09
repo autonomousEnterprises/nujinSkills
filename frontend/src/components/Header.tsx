@@ -7,6 +7,8 @@ interface HeaderProps {
   isConnected: boolean;
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
+  selectedStrategy?: string;
+  activeStrategy?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -14,7 +16,9 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveScreen,
   isConnected,
   theme,
-  setTheme
+  setTheme,
+  selectedStrategy = 'PropFirmVsaWickRejection.py',
+  activeStrategy = 'PropFirmVsaWickRejection'
 }) => {
   const isDark = theme === 'dark';
 

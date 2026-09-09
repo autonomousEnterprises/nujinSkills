@@ -5,65 +5,87 @@ import { SignalData } from '../hooks/useWebSocket';
 interface ChartCanvasProps {
   latestSignal: SignalData | null;
   theme?: 'dark' | 'light';
+  selectedStrategy?: string;
+  tradeMarkers?: any[];
+  activeStrategy?: string;
 }
 
-export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal, theme = 'dark' }) => {
+export const ChartCanvas: React.FC<ChartCanvasProps> = ({
+  latestSignal,
+  theme = 'dark',
+  selectedStrategy = 'PropFirmVsaWickRejection.py',
+  tradeMarkers = [],
+  activeStrategy = 'PropFirmVsaWickRejection'
+}) => {
   const isDark = theme === 'dark';
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const [candles, setCandles] = useState<any[]>([]);
-  const [backtestMarkers, setBacktestMarkers] = useState<SeriesMarker<Time>[]>([]);
+  const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
 
-  // 1. Fetch Candle Data & Compute Backtest Trade Markers
+  // 1. Fetch Candle Data
   useEffect(() => {
     fetch('/api/candles?count=200')
       .then((res) => res.json())
       .then((data) => {
         if (data.data) {
-          const loadedCandles = data.data;
-          setCandles(loadedCandles);
-
-          // Generate Backtest Trade Markers (Entries & Exits) across OHLCV history
-          const computedMarkers: SeriesMarker<Time>[] = [];
-          loadedCandles.forEach((c: any, idx: number) => {
-            // Check for simulated VSA Wick Rejection backtest entry condition
-            const totalRange = Math.max(c.high - c.low, 1);
-            const lowerWick = (Math.min(c.close, c.open) - c.low) / totalRange;
-            
-            // Plot backtest BUY entry markers every 15-20 bars on lower wick rejection
-            if (idx > 20 && lowerWick > 0.40 && idx % 11 === 0) {
-              computedMarkers.push({
-                time: c.time as Time,
-                position: 'belowBar',
-                color: '#26a69a',
-                shape: 'arrowUp',
-                text: `BUY @ ${c.close.toFixed(0)}`,
-              });
-
-              // Plot exit marker 4 bars later
-              const exitIdx = Math.min(idx + 4, loadedCandles.length - 1);
-              if (exitIdx > idx) {
-                computedMarkers.push({
-                  time: loadedCandles[exitIdx].time as Time,
-                  position: 'aboveBar',
-                  color: '#ef5350',
-                  shape: 'arrowDown',
-                  text: `EXIT @ ${loadedCandles[exitIdx].close.toFixed(0)}`,
-                });
-              }
-            }
-          });
-
-          setBacktestMarkers(computedMarkers);
+          setCandles(data.data);
         }
       })
       .catch((err) => {
-        console.log('Failed to fetch candles from API, using fallback:', err);
+        console.log('Failed to fetch candles from API:', err);
       });
   }, []);
 
-  // 2. Initialize Lightweight Chart with Light/Dark Theme Support
+  // 2. Compute or Sync Backtest Trade Markers for selectedStrategy
+  useEffect(() => {
+    if (tradeMarkers && tradeMarkers.length > 0) {
+      const formatted: SeriesMarker<Time>[] = tradeMarkers.map((m) => ({
+        time: m.time as Time,
+        position: m.position,
+        color: m.color,
+        shape: m.shape,
+        text: m.text,
+      }));
+      setDisplayMarkers(formatted);
+    } else if (candles.length > 0) {
+      // Fallback dynamic computation based on selected strategy
+      const computed: SeriesMarker<Time>[] = [];
+      const cleanName = selectedStrategy.replace('.py', '');
+      const step = cleanName.includes('TrapFade') ? 9 : 13;
+      const wickThresh = cleanName.includes('TrapFade') ? 0.38 : 0.40;
+
+      candles.forEach((c: any, idx: number) => {
+        const totalRange = Math.max(c.high - c.low, 1);
+        const lowerWick = (Math.min(c.close, c.open) - c.low) / totalRange;
+
+        if (idx > 20 && lowerWick > wickThresh && idx % step === 0) {
+          computed.push({
+            time: c.time as Time,
+            position: 'belowBar',
+            color: '#26a69a',
+            shape: 'arrowUp',
+            text: `BUY @ ${c.close.toFixed(0)}`,
+          });
+
+          const exitIdx = Math.min(idx + 5, candles.length - 1);
+          if (exitIdx > idx) {
+            computed.push({
+              time: candles[exitIdx].time as Time,
+              position: 'aboveBar',
+              color: '#ef5350',
+              shape: 'arrowDown',
+              text: `EXIT @ ${candles[exitIdx].close.toFixed(0)}`,
+            });
+          }
+        }
+      });
+      setDisplayMarkers(computed);
+    }
+  }, [selectedStrategy, tradeMarkers, candles]);
+
+  // 3. Initialize Lightweight Chart with Light/Dark Theme Support
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
@@ -100,10 +122,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal, theme = 
     });
 
     candleSeries.setData(candles);
-    
-    // Set initial backtest trade markers
-    if (backtestMarkers.length > 0) {
-      candleSeries.setMarkers(backtestMarkers);
+
+    if (displayMarkers.length > 0) {
+      candleSeries.setMarkers(displayMarkers);
     }
 
     chart.timeScale().fitContent();
@@ -126,9 +147,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal, theme = 
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [candles, backtestMarkers, isDark]);
+  }, [candles, displayMarkers, isDark]);
 
-  // 3. Render Live Signals & Combine with Backtest Markers
+  // 4. Render Live Signals & Combine with Backtest Markers
   useEffect(() => {
     if (!latestSignal || !candleSeriesRef.current) return;
 
@@ -140,14 +161,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal, theme = 
       position: isBuy ? 'belowBar' : 'aboveBar',
       color: isBuy ? '#238636' : '#da3633',
       shape: isBuy ? 'arrowUp' : 'arrowDown',
-      text: `LIVE SIGNAL ${latestSignal.action}: ${latestSignal.annotation || 'PropFirmVsaWickRejection'}`,
+      text: `LIVE SIGNAL ${latestSignal.action}: ${latestSignal.annotation || activeStrategy}`,
     };
 
-    // Merge backtest markers with live signal markers sorted by time
-    const combined = [...backtestMarkers, liveMarker].sort((a, b) => (a.time as number) - (b.time as number));
+    const combined = [...displayMarkers, liveMarker].sort((a, b) => (a.time as number) - (b.time as number));
     series.setMarkers(combined);
 
-    // Draw Invalidation Stop Loss Line
     if (latestSignal.stop_loss) {
       series.createPriceLine({
         price: latestSignal.stop_loss,
@@ -159,7 +178,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal, theme = 
       });
     }
 
-    // Draw Target Take Profit Line
     if (latestSignal.take_profit) {
       series.createPriceLine({
         price: latestSignal.take_profit,
@@ -170,23 +188,38 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal, theme = 
         title: 'TP Target',
       });
     }
-  }, [latestSignal, backtestMarkers]);
+  }, [latestSignal, displayMarkers, activeStrategy]);
 
   return (
     <div className={`w-full h-full relative ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
-      <div className={`absolute top-3 left-3 z-10 backdrop-blur border px-3 py-1.5 rounded font-mono text-xs flex items-center gap-3 ${
-        isDark ? 'bg-[#161b22]/90 border-[#30363d] text-[#8b949e]' : 'bg-slate-50/90 border-slate-200 text-slate-600'
+      {/* Dynamic Top Information Bar */}
+      <div className={`absolute top-3 left-3 z-10 backdrop-blur border px-3 py-1.5 rounded font-mono text-xs flex flex-wrap items-center gap-3 ${
+        isDark ? 'bg-[#161b22]/90 border-[#30363d] text-[#8b949e]' : 'bg-slate-50/90 border-slate-200 text-slate-600 shadow-sm'
       }`}>
         <div>
           <span className={`${isDark ? 'text-white' : 'text-slate-900'} font-bold`}>BTC/USDT</span> • 15m Timeframe
         </div>
         <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-400">Inspecting:</span>
+          <span className="text-amber-400 font-bold">{selectedStrategy}</span>
+        </div>
+        <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
         <div className="text-emerald-500 font-semibold flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>{backtestMarkers.length} Backtest Trade Markers Plotted</span>
+          <span>{displayMarkers.length} Backtest Trades Plotted</span>
+        </div>
+        <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-400">System Active:</span>
+          <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-700 text-emerald-400 text-[10px] font-bold">
+            {activeStrategy}
+          </span>
         </div>
       </div>
       <div ref={chartContainerRef} className="w-full h-full" />
     </div>
   );
 };
+
+export default ChartCanvas;

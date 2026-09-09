@@ -70,11 +70,22 @@ async def broadcast_event(envelope: EventEnvelope):
 
 @app.post("/api/bot/deploy")
 async def deploy_bot(req: DeployBotRequest):
-    return bot_supervisor.deploy_strategy(req.strategy, req.mode)
+    logger.info(f"Activating & deploying strategy for system: {req.strategy}")
+    bt_result = run_real_backtest(req.strategy, save_as_active=True)
+    res = bot_supervisor.deploy_strategy(req.strategy, req.mode)
+    await manager.broadcast({"event_type": "STATE_UPDATED", "payload": bt_result["state"]})
+    return {**res, "state": bt_result["state"]}
 
 @app.post("/api/bot/stop")
 async def stop_bot():
-    return bot_supervisor.stop_bot()
+    res = bot_supervisor.stop_bot()
+    state_file = os.path.join(os.getcwd(), "data", "state.json")
+    current_state = await get_system_state()
+    current_state["status"] = "STOPPED"
+    with open(state_file, "w") as f:
+        json.dump(current_state, f, indent=2)
+    await manager.broadcast({"event_type": "STATE_UPDATED", "payload": current_state})
+    return res
 
 @app.get("/api/bot/status")
 async def get_bot_status():
@@ -82,9 +93,8 @@ async def get_bot_status():
 
 @app.post("/api/strategies/select")
 async def select_and_run_strategy(req: SelectStrategyRequest):
-    logger.info(f"Strategy selected via UI: {req.strategy}")
-    result = run_real_backtest(req.strategy)
-    await manager.broadcast({"event_type": "STATE_UPDATED", "payload": result["state"]})
+    logger.info(f"Strategy backtest preview requested: {req.strategy}")
+    result = run_real_backtest(req.strategy, save_as_active=False)
     await manager.broadcast({"event_type": "BACKTEST_UPDATED", "payload": result})
     return result
 
@@ -124,7 +134,7 @@ class UpdateStateRequest(BaseModel):
 @app.post("/api/state")
 async def update_system_state(req: UpdateStateRequest):
     if req.active_strategy:
-        result = run_real_backtest(req.active_strategy)
+        result = run_real_backtest(req.active_strategy, save_as_active=True)
         return {"status": "SUCCESS", "state": result["state"]}
 
     state_file = os.path.join(os.getcwd(), "data", "state.json")
@@ -145,10 +155,12 @@ async def update_system_state(req: UpdateStateRequest):
     return {"status": "SUCCESS", "state": current_state}
 
 @app.get("/api/backtest")
-async def get_backtest_results():
+async def get_backtest_results(strategy: Optional[str] = None):
+    if strategy:
+        return run_real_backtest(strategy, save_as_active=False)
     state = await get_system_state()
     active_strat = state.get("active_strategy", "PropFirmVsaWickRejection")
-    return run_real_backtest(active_strat)
+    return run_real_backtest(active_strat, save_as_active=False)
 
 @app.get("/api/strategies")
 async def list_strategies():
