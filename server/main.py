@@ -10,6 +10,7 @@ from server.websocket import manager
 from server.telegram_bot import telegram_gateway
 from server.bot_runner import bot_supervisor
 from server.data_manager import generate_sample_ohlcv
+from server.backtest_engine import run_real_backtest
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("NujinSkillsServer")
@@ -37,6 +38,9 @@ class DeployBotRequest(BaseModel):
     strategy: str
     mode: Optional[str] = "dry-run"
 
+class SelectStrategyRequest(BaseModel):
+    strategy: str
+
 @app.get("/api/health")
 async def health_check():
     return {
@@ -57,22 +61,16 @@ async def get_widgets():
 @app.post("/api/broadcast")
 async def broadcast_event(envelope: EventEnvelope):
     logger.info(f"Broadcast event received: {envelope.event_type}")
-    
-    # 1. Dispatch to WebSockets
     await manager.broadcast(envelope.model_dump())
-    
-    # 2. Relay to Telegram Gateway if signal or audit alert
     if envelope.event_type in ["SIGNAL_TRIGGERED", "TELEGRAM_ALERT"]:
         telegram_gateway.format_and_send_signal(envelope.payload)
     elif envelope.event_type == "UPSERT_WIDGET" and envelope.payload.get("component") == "MetricCard":
         telegram_gateway.format_and_send_dsr_alert(envelope.payload)
-        
     return {"status": "SUCCESS", "event_type": envelope.event_type}
 
 @app.post("/api/bot/deploy")
 async def deploy_bot(req: DeployBotRequest):
-    result = bot_supervisor.deploy_strategy(req.strategy, req.mode)
-    return result
+    return bot_supervisor.deploy_strategy(req.strategy, req.mode)
 
 @app.post("/api/bot/stop")
 async def stop_bot():
@@ -81,6 +79,14 @@ async def stop_bot():
 @app.get("/api/bot/status")
 async def get_bot_status():
     return bot_supervisor.get_status()
+
+@app.post("/api/strategies/select")
+async def select_and_run_strategy(req: SelectStrategyRequest):
+    logger.info(f"Strategy selected via UI: {req.strategy}")
+    result = run_real_backtest(req.strategy)
+    await manager.broadcast({"event_type": "STATE_UPDATED", "payload": result["state"]})
+    await manager.broadcast({"event_type": "BACKTEST_UPDATED", "payload": result})
+    return result
 
 @app.get("/api/state")
 async def get_system_state():
@@ -117,11 +123,13 @@ class UpdateStateRequest(BaseModel):
 
 @app.post("/api/state")
 async def update_system_state(req: UpdateStateRequest):
+    if req.active_strategy:
+        result = run_real_backtest(req.active_strategy)
+        return {"status": "SUCCESS", "state": result["state"]}
+
     state_file = os.path.join(os.getcwd(), "data", "state.json")
     current_state = await get_system_state()
     
-    if req.active_strategy:
-        current_state["active_strategy"] = req.active_strategy
     if req.target_profile:
         current_state["target_profile"] = req.target_profile
     if req.status:
@@ -138,43 +146,9 @@ async def update_system_state(req: UpdateStateRequest):
 
 @app.get("/api/backtest")
 async def get_backtest_results():
-    data_dir = os.path.join(os.getcwd(), "data")
-    returns_file = os.path.join(data_dir, "candidate_returns.json")
-    rules_file = os.path.join(data_dir, "final_rules.json")
-    
-    candidate_returns = {}
-    final_rules = {}
-    
-    if os.path.exists(returns_file):
-        try:
-            with open(returns_file, "r") as f:
-                candidate_returns = json.load(f)
-        except Exception as e:
-            logger.error(f"Error reading candidate_returns.json: {e}")
-            
-    if os.path.exists(rules_file):
-        try:
-            with open(rules_file, "r") as f:
-                final_rules = json.load(f)
-        except Exception as e:
-            logger.error(f"Error reading final_rules.json: {e}")
-            
-    return {
-        "candidate_returns": candidate_returns,
-        "final_rules": final_rules,
-        "falsification_gates": {
-            "gate_1_dsr": {"dsr": 0.96, "status": "PASS", "threshold": 0.95},
-            "gate_2_parameter_stability": {
-                "plateau_status": "STABLE_PLATEAU",
-                "status": "PASS",
-                "matrix": [[1.45, 1.59, 1.56], [1.62, 1.77, 1.64], [1.47, 1.64, 1.48]],
-                "x_axis": ["0.38", "0.40", "0.42"],
-                "y_axis": ["0.9", "1.0", "1.1"]
-            },
-            "gate_3_monte_carlo": {"mdd_99": 0.0331, "status": "PASS", "max_allowed": 0.045},
-            "gate_4_oos_walkforward": {"retention_pct": 78.0, "status": "PASS"}
-        }
-    }
+    state = await get_system_state()
+    active_strat = state.get("active_strategy", "PropFirmVsaWickRejection")
+    return run_real_backtest(active_strat)
 
 @app.get("/api/strategies")
 async def list_strategies():

@@ -4,9 +4,11 @@ import { SignalData } from '../hooks/useWebSocket';
 
 interface ChartCanvasProps {
   latestSignal: SignalData | null;
+  theme?: 'dark' | 'light';
 }
 
-export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal }) => {
+export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal, theme = 'dark' }) => {
+  const isDark = theme === 'dark';
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -36,7 +38,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal }) => {
                 position: 'belowBar',
                 color: '#26a69a',
                 shape: 'arrowUp',
-                text: `BACKTEST BUY @ ${c.close.toFixed(0)}`,
+                text: `BUY @ ${c.close.toFixed(0)}`,
               });
 
               // Plot exit marker 4 bars later
@@ -47,7 +49,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal }) => {
                   position: 'aboveBar',
                   color: '#ef5350',
                   shape: 'arrowDown',
-                  text: `EXIT (Target/TP) @ ${loadedCandles[exitIdx].close.toFixed(0)}`,
+                  text: `EXIT @ ${loadedCandles[exitIdx].close.toFixed(0)}`,
                 });
               }
             }
@@ -61,31 +63,31 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal }) => {
       });
   }, []);
 
-  // 2. Initialize Lightweight Chart
+  // 2. Initialize Lightweight Chart with Light/Dark Theme Support
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0d1117' },
-        textColor: '#8b949e',
+        background: { type: ColorType.Solid, color: isDark ? '#0d1117' : '#ffffff' },
+        textColor: isDark ? '#8b949e' : '#334155',
         fontFamily: 'JetBrains Mono, monospace',
       },
       grid: {
-        vertLines: { color: '#161b22' },
-        horzLines: { color: '#161b22' },
+        vertLines: { color: isDark ? '#161b22' : '#f1f5f9' },
+        horzLines: { color: isDark ? '#161b22' : '#f1f5f9' },
       },
       crosshair: {
-        vertLine: { color: '#30363d' },
-        horzLine: { color: '#30363d' },
+        vertLine: { color: isDark ? '#30363d' : '#cbd5e1' },
+        horzLine: { color: isDark ? '#30363d' : '#cbd5e1' },
       },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: '#30363d',
+        borderColor: isDark ? '#30363d' : '#e2e8f0',
       },
       rightPriceScale: {
-        borderColor: '#30363d',
+        borderColor: isDark ? '#30363d' : '#e2e8f0',
       },
     });
 
@@ -124,7 +126,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal }) => {
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [candles, backtestMarkers]);
+  }, [candles, backtestMarkers, isDark]);
 
   // 3. Render Live Signals & Combine with Backtest Markers
   useEffect(() => {
@@ -171,14 +173,16 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal }) => {
   }, [latestSignal, backtestMarkers]);
 
   return (
-    <div className="w-full h-full relative bg-[#0d1117]">
-      <div className="absolute top-3 left-3 z-10 bg-[#161b22]/90 backdrop-blur border border-[#30363d] px-3 py-1.5 rounded font-mono text-xs text-[#8b949e] flex items-center gap-3">
+    <div className={`w-full h-full relative ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
+      <div className={`absolute top-3 left-3 z-10 backdrop-blur border px-3 py-1.5 rounded font-mono text-xs flex items-center gap-3 ${
+        isDark ? 'bg-[#161b22]/90 border-[#30363d] text-[#8b949e]' : 'bg-slate-50/90 border-slate-200 text-slate-600'
+      }`}>
         <div>
-          <span className="text-white font-bold">BTC/USDT</span> • 15m Timeframe
+          <span className={`${isDark ? 'text-white' : 'text-slate-900'} font-bold`}>BTC/USDT</span> • 15m Timeframe
         </div>
-        <div className="h-3 w-[1px] bg-[#30363d]" />
-        <div className="text-emerald-400 font-semibold flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+        <div className="text-emerald-500 font-semibold flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span>{backtestMarkers.length} Backtest Trade Markers Plotted</span>
         </div>
       </div>
@@ -186,4 +190,3 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ latestSignal }) => {
     </div>
   );
 };
-
