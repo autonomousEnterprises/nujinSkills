@@ -64,7 +64,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   // 1. Fetch Initial Candles (Live or Backtest mode)
   const fetchCandles = () => {
-    const url = `/api/candles?symbol=${encodeURIComponent(selectedSymbol)}&count=500&mode=${chartMode === 'LIVE' ? 'live' : 'backtest'}`;
+    const url = `/api/candles?symbol=${encodeURIComponent(selectedSymbol)}&count=2880&mode=${chartMode === 'LIVE' ? 'live' : 'backtest'}`;
     fetch(url)
       .then((res) => res.json())
       .then((data) => {

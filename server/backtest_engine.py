@@ -6,26 +6,36 @@ import numpy as np
 from datetime import datetime, timezone
 from server.state_manager import state_manager
 
+import time
+from server.data_manager import sync_30d_candles
+
 logger = logging.getLogger("BacktestEngine")
 
 def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     """
     Executes real quantitative backtest and DSR cynic audit on the selected strategy.
     Zero split-brain metrics. Uses a single source of truth trade execution simulation
-    to compute summary metrics, trade details, equity curves, return distributions, and regime breakdowns.
+    on the last 30 days of real market data (2,880 15m candles up to current timestamp).
     """
-    logger.info(f"[BacktestEngine] Running real backtest for strategy: {strategy_name} (save_as_active={save_as_active})")
+    logger.info(f"[BacktestEngine] Running real 30-day backtest for strategy: {strategy_name} (save_as_active={save_as_active})")
     cwd = os.getcwd()
     data_dir = os.path.join(cwd, "data")
     features_file = os.path.join(data_dir, "features.csv")
     candles_file = os.path.join(data_dir, "candles_15m.csv")
     returns_file = os.path.join(data_dir, "candidate_returns.json")
     
-    # 1. Ensure features.csv exists
-    if not os.path.exists(features_file):
-        logger.info("[BacktestEngine] Generating features.csv...")
-        cmd_feat = ["python3", "tools/feature_miner.py", "--input", "data/candles_15m.csv", "--output", "data/features.csv"]
-        subprocess.run(cmd_feat, cwd=cwd, check=True)
+    # 1. Sync 30 days of real market candles (2,880 15m bars up to current timestamp) if needed
+    if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
+        logger.info("[BacktestEngine] Syncing 30 days of real market data from Binance...")
+        try:
+            sync_30d_candles(symbol="BTC/USDT", output_path=candles_file)
+        except Exception as e_sync:
+            logger.warning(f"[BacktestEngine] Sync 30d candles warning: {e_sync}")
+
+    # Always generate fresh features.csv from real candles_15m.csv
+    logger.info("[BacktestEngine] Generating fresh feature set from 30-day market data...")
+    cmd_feat = ["python3", "tools/feature_miner.py", "--input", "data/candles_15m.csv", "--output", "data/features.csv"]
+    subprocess.run(cmd_feat, cwd=cwd, check=True)
         
     # 2. Derive rule parameters & thesis based on strategy file name
     clean_name = strategy_name.replace(".py", "")
