@@ -13,7 +13,7 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, setActiveScreen, i
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 font-bold text-white tracking-wide">
           <Terminal className="w-4 h-4 text-emerald-400" />
-          <span>NujinSkill_CORE</span>
+          <span>NujinSkills_CORE</span>
         </div>
         <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-[#0d1117] border border-[#30363d]">
           <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-500'}`} />
@@ -30,8 +30,8 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, setActiveScreen, i
         <button
           onClick={() => setActiveScreen('CHART')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all font-mono ${activeScreen === 'CHART'
-              ? 'bg-[#238636] text-white font-bold shadow-lg shadow-emerald-950/50 border border-emerald-500/50'
-              : 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]'
+            ? 'bg-[#238636] text-white font-bold shadow-lg shadow-emerald-950/50 border border-emerald-500/50'
+            : 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]'
             }`}
         >
           <BarChart2 className="w-3.5 h-3.5" />
@@ -41,8 +41,8 @@ export const Header: React.FC<HeaderProps> = ({ activeScreen, setActiveScreen, i
         <button
           onClick={() => setActiveScreen('AGENT_DECK')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all font-mono ${activeScreen === 'AGENT_DECK'
-              ? 'bg-[#238636] text-white font-bold shadow-lg shadow-emerald-950/50 border border-emerald-500/50'
-              : 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]'
+            ? 'bg-[#238636] text-white font-bold shadow-lg shadow-emerald-950/50 border border-emerald-500/50'
+            : 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]'
             }`}
         >
           <LayoutGrid className="w-3.5 h-3.5" />

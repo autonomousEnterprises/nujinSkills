@@ -1,7 +1,7 @@
 # Reference: Python Libraries & CLI Tool Contracts
 
 ## Overview
-NujinSkill uses deterministic Python scripts to decouple strategy mining logic from framework orchestration.
+NujinSkills uses deterministic Python scripts to decouple strategy mining logic from framework orchestration.
 
 ---
 

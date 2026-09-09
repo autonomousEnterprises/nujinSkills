@@ -1,7 +1,7 @@
 # Reference: End-to-End Edge Mining Operational Process
 
 ## Overview
-The NujinSkill mining process is an automated, 5-phase statistical assembly line designed to transform raw market data into mathematically vetted execution code.
+The NujinSkills mining process is an automated, 5-phase statistical assembly line designed to transform raw market data into mathematically vetted execution code.
 
 ---
 

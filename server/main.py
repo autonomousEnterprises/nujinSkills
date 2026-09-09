@@ -10,10 +10,10 @@ from server.bot_runner import bot_supervisor
 from server.data_manager import generate_sample_ohlcv
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("NujinSkillServer")
+logger = logging.getLogger("NujinSkillsServer")
 
 app = FastAPI(
-    title="NujinSkill Telemetry & Signal Gateway API",
+    title="NujinSkills Telemetry & Signal Gateway API",
     version="1.0.0",
     description="24/7 Backend Telemetry Hub, WebSocket Dispatcher, and Telegram Signal Gateway"
 )
@@ -39,7 +39,7 @@ class DeployBotRequest(BaseModel):
 async def health_check():
     return {
         "status": "ONLINE",
-        "service": "NujinSkill Telemetry Server",
+        "service": "NujinSkills Telemetry Server",
         "connections": len(manager.active_connections),
         "bot_status": bot_supervisor.get_status()
     }

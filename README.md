@@ -1,4 +1,4 @@
-# ⚡ NujinSkill: Autonomous Quant Edge Mining Engine & Signal Gateway
+# ⚡ NujinSkills: Autonomous Quant Edge Mining Engine & Signal Gateway
 
 > **An agent-agnostic quantitative alpha discovery engine, 24/7 Telegram signal gateway, and interactive dual-screen telemetry dashboard for OHLCV market data.**
 
@@ -18,24 +18,24 @@
 
 ## 🤖 Integration & Usage Guide Across AI Environments
 
-NujinSkill is built around a standard agent-agnostic `SKILL.md` contract and local CLI tools.
+NujinSkills is built around a standard agent-agnostic `SKILL.md` contract and local CLI tools.
 
 ### 1. Google Antigravity IDE
 
 Antigravity automatically discovers and loads skills from customization roots:
 
 - **Global Customizations Skill (Available in All Workspaces):**
-  Place NujinSkill in `~/.gemini/config/skills/NujinSkill/` (containing `SKILL.md`).
+  Place NujinSkills in `~/.gemini/config/skills/NujinSkills/` (containing `SKILL.md`).
   ```bash
-  mkdir -p ~/.gemini/config/skills/NujinSkill
-  cp -r * ~/.gemini/config/skills/NujinSkill/
+  mkdir -p ~/.gemini/config/skills/NujinSkills
+  cp -r * ~/.gemini/config/skills/NujinSkills/
   ```
 
 - **Workspace-Scoped Skill (Project Specific):**
-  Place NujinSkill in `.agents/skills/NujinSkill/` inside your project root.
+  Place NujinSkills in `.agents/skills/NujinSkills/` inside your project root.
   ```bash
-  mkdir -p .agents/skills/NujinSkill
-  cp -r * .agents/skills/NujinSkill/
+  mkdir -p .agents/skills/NujinSkills
+  cp -r * .agents/skills/NujinSkills/
   ```
 
 ---
@@ -46,7 +46,7 @@ Register the repository directly into your CLI agent's skill directory:
 # Register skill into OpenClaw / Hermes
 openclaw skill add ./
 # Or symlink to global skills directory
-ln -s $(pwd) ~/.openclaw/skills/NujinSkill
+ln -s $(pwd) ~/.openclaw/skills/NujinSkills
 ```
 
 ---
@@ -140,7 +140,7 @@ You do not need to specify technical formulas or command-line flags. Simply prom
 ## 📂 Repository Architecture
 
 ```
-NujinSkill/
+NujinSkills/
 ├── SKILL.md                     <-- Master Skill Contract & Execution Manual
 ├── PROJECT.md                   <-- Master Development Roadmap & Checklist
 ├── requirements.txt             <-- Clean Python dependencies (polars, vectorbt, uvicorn, etc.)
@@ -198,7 +198,7 @@ NujinSkill/
 ### 1. Installation
 Clone the repository and install Python dependencies:
 ```bash
-cd NujinSkill
+cd NujinSkills
 pip install -r requirements.txt
 ```
 

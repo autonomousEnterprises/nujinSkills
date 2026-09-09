@@ -1,7 +1,7 @@
 # Reference: Trading Bot Execution Contracts (Freqtrade & Jesse)
 
 ## Overview
-NujinSkill emits strategy files for standardized trading bot frameworks that handle order routing, trailing stops, emergency cancellations, and exchange connectivity via CCXT.
+NujinSkills emits strategy files for standardized trading bot frameworks that handle order routing, trailing stops, emergency cancellations, and exchange connectivity via CCXT.
 
 ---
 

@@ -1,7 +1,7 @@
-# NujinSkill: Autonomous Quant Edge Mining Engine & Signal Gateway
+# NujinSkills: Autonomous Quant Edge Mining Engine & Signal Gateway
 
 ## Overview
-NujinSkill is a complete, standalone quantitative alpha discovery engine, strategy execution package, 24/7 Telegram signal gateway, and dynamic dual-screen user terminal. This repository itself acts as an agent-agnostic skill through the root `SKILL.md` contract.
+NujinSkills is a complete, standalone quantitative alpha discovery engine, strategy execution package, 24/7 Telegram signal gateway, and dynamic dual-screen user terminal. This repository itself acts as an agent-agnostic skill through the root `SKILL.md` contract.
 
 Everything is driven by executable CLI scripts in `tools/`:
 - `python tools/feature_miner.py` (Bar geometry, VSA volume Z-scores, Hurst proxy, Parkinson volatility, AVWAP)
@@ -18,7 +18,7 @@ Everything is driven by executable CLI scripts in `tools/`:
 ## Directory Layout
 
 ```
-NujinSkill/
+NujinSkills/
 ├── SKILL.md                     <-- Master skill contract & CLI usage guide
 ├── PROJECT.md                   <-- Master project roadmap & checklist
 ├── requirements.txt             <-- Minimal Python dependencies

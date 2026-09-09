@@ -1,7 +1,7 @@
 # Reference: Quantitative Risk Management & Invalidation Rules
 
 ## Overview
-Proper risk management separates profitable strategies from account blowups. Every strategy emitted by NujinSkill must enforce hard invalidation stop-losses, profit targets, and trailing stop rules.
+Proper risk management separates profitable strategies from account blowups. Every strategy emitted by NujinSkills must enforce hard invalidation stop-losses, profit targets, and trailing stop rules.
 
 ---
 

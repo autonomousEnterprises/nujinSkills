@@ -1,7 +1,7 @@
 # Reference: Third-Party Dataset Integration & Microstructure Proxies
 
 ## Overview
-While NujinSkill operates primarily on raw OHLCV price data, integrating third-party market metrics provides additional signal confirmation.
+While NujinSkills operates primarily on raw OHLCV price data, integrating third-party market metrics provides additional signal confirmation.
 
 ---
 

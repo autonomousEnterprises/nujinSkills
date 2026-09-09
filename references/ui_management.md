@@ -1,7 +1,7 @@
 # Reference: UI Management & Dynamic Viewport Control
 
 ## Overview
-The NujinSkill web terminal runs on a 100vw / 100vh layout featuring two primary screens:
+The NujinSkills web terminal runs on a 100vw / 100vh layout featuring two primary screens:
 1. **Screen 1 (Lightweight Chart Canvas):** TradingView Lightweight Charts displaying OHLCV candlesticks, signal markers, stop-loss lines, and take-profit lines.
 2. **Screen 2 (Agent Audit Deck):** Server-Driven UI widget grid displaying live DSR scores, parameter stability heatmaps, edge thesis logs, and Telegram push history.
 
