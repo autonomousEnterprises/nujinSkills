@@ -38,14 +38,11 @@ class BotSupervisor:
             self.mode = mode
             return {"status": "SUCCESS", "message": f"Bot deployed for strategy '{strategy_name}' in {mode} mode", "pid": self.process.pid}
         except FileNotFoundError:
-            # Fallback mock mode if freqtrade binary is not globally installed in current environment
-            self.mode = f"simulated-{mode}"
-            self.active_strategy = strategy_name
-            return {
-                "status": "SIMULATED",
-                "message": f"Freqtrade CLI not found on PATH. Registered '{strategy_name}' in simulated {mode} mode.",
-                "active_strategy": strategy_name
-            }
+            raise RuntimeError(
+                f"[BotRunner] freqtrade binary not found on PATH. "
+                f"Install freqtrade first: pip install freqtrade. "
+                f"Strategy '{strategy_name}' was NOT deployed."
+            )
 
     def stop_bot(self) -> Dict[str, Any]:
         if self.process and self.process.poll() is None:
@@ -61,7 +58,7 @@ class BotSupervisor:
     def get_status(self) -> Dict[str, Any]:
         is_running = self.process is not None and self.process.poll() is None
         return {
-            "is_running": is_running or "simulated" in self.mode,
+            "is_running": is_running,
             "mode": self.mode,
             "active_strategy": self.active_strategy,
             "pid": self.process.pid if is_running else None

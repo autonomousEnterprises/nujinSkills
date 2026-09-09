@@ -90,7 +90,12 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         sharpe = float((mean_ret / max(std_ret, 1e-6)) * np.sqrt(252 * 24))
         expectancy_bps = float(mean_ret * 10000)
     else:
-        win_rate, profit_factor, max_dd, sharpe, expectancy_bps = 0.556, 1.44, 0.015, 1.77, 8.31
+        raise RuntimeError(
+            "[BacktestEngine] Backtest produced zero trades. "
+            "Check that data/candles_15m.csv contains real OHLCV data and that "
+            "the strategy entry conditions fire on this dataset. "
+            "No fake fallback metrics will be used."
+        )
 
     dsr = round(min(0.99, max(0.60, 0.50 + sharpe * 0.25)), 2)
     mdd_99 = round(max(0.01, max_dd * 2.2), 4)

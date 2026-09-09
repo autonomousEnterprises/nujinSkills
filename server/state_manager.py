@@ -11,6 +11,9 @@ Consumers:
 
 All reads/writes go through StateManager and SignalStore.
 File locking prevents corruption from concurrent writes.
+
+NO mock/fallback/synthetic data is ever returned.
+Empty collections are valid and intentional when no real data exists yet.
 """
 
 from __future__ import annotations
@@ -206,53 +209,27 @@ class SignalStore:
         signal_store.add({"action": "BUY", "price": 63404, ...})
         all_sigs = signal_store.get_all()
         stats     = signal_store.get_stats()
-    """
 
-    FALLBACK_SIGNALS = [
-        {
-            "id": 1, "time": 1725883200, "pair": "BTC/USDT",
-            "action": "BUY", "price": 63404.0,
-            "stop_loss": 61819.0, "take_profit": 65948.0,
-            "status": "ACTIVE_IN_POSITION", "exit_price": None,
-            "exit_reason": None, "pnl_pct": 1.25,
-            "annotation": "VSA Wick Rejection",
-            "reasoning_md": "Lower wick expansion (> 40%) with Volume Z-Score > 1.0.",
-            "strategy": "PropFirmVsaWickRejectionStrategy"
-        },
-        {
-            "id": 2, "time": 1725868800, "pair": "BTC/USDT",
-            "action": "BUY", "price": 62150.0,
-            "stop_loss": 60907.0, "take_profit": 64325.0,
-            "status": "CLOSED", "exit_price": 64325.0,
-            "exit_reason": "TAKE_PROFIT", "pnl_pct": 3.50,
-            "annotation": "Trap Fade Sweep",
-            "reasoning_md": "Asian Session Low sweep reversal into passive limit buy.",
-            "strategy": "TrapFadeStrategy"
-        }
-    ]
+    Returns empty list [] when no real signals have been recorded yet.
+    Never returns mock or fallback data.
+    """
 
     def __init__(self, path: str = SIGNALS_FILE):
         self._path = path
 
     def get_all(self) -> List[Dict[str, Any]]:
-        """Return all signals. Returns built-in fallback if file is empty/missing."""
-        data = _read_json_locked(self._path, [])
-        if not data:
-            return list(self.FALLBACK_SIGNALS)
-        return data
+        """Return all real signals from disk. Returns [] if no signals yet — never fake data."""
+        return _read_json_locked(self._path, [])
 
     def get_active(self) -> Optional[Dict[str, Any]]:
-        """Return the current ACTIVE_IN_POSITION signal, or the most recent signal."""
+        """Return the current ACTIVE_IN_POSITION signal, or None if no real signals exist."""
         signals = self.get_all()
-        active = next((s for s in signals if s.get("status") == "ACTIVE_IN_POSITION"), None)
-        return active or (signals[0] if signals else None)
+        return next((s for s in signals if s.get("status") == "ACTIVE_IN_POSITION"), None)
 
     def add(self, signal: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Prepend a new signal entry, auto-assign id, write, return all signals."""
+        """Prepend a new real signal, auto-assign id, write, return all signals."""
         signals = self.get_all()
-        # Exclude fallback seed data when writing real signals
-        real_signals = [s for s in signals if s.get("id", 0) > len(self.FALLBACK_SIGNALS)]
-        new_id = (real_signals[0]["id"] if real_signals else 0) + 1
+        new_id = (signals[0]["id"] + 1) if signals else 1
         entry = {
             "id": new_id,
             "time": signal.get("time", int(time.time())),

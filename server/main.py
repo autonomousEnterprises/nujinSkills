@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from server.websocket import manager
 from server.telegram_bot import telegram_gateway
 from server.bot_runner import bot_supervisor
-from server.data_manager import generate_sample_ohlcv, fetch_real_binance_klines
+from server.data_manager import fetch_real_binance_klines
 from server.backtest_engine import run_real_backtest
 
 # ── Unified State Manager — single source of truth for all consumers ──────────
@@ -55,10 +55,20 @@ async def health_check():
 
 @app.get("/api/candles")
 async def get_candles(symbol: str = "BTC/USDT", count: int = 500, mode: str = "live"):
-    if mode == "live":
+    """
+    Returns real OHLCV candles from Binance.
+    mode='live'    — most recent {count} candles (15m)
+    mode='backtest'— same feed, longer history (uses count param)
+    Raises HTTP 503 if Binance is unreachable. Never returns synthetic data.
+    """
+    try:
         data = fetch_real_binance_klines(symbol=symbol, interval="15m", count=count)
-    else:
-        data = generate_sample_ohlcv(symbol, count)
+    except Exception as e:
+        logger.error(f"[Candles] Failed to fetch real data for {symbol}: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Real market data unavailable for {symbol}. Binance API error: {str(e)}"
+        )
     return {"symbol": symbol, "mode": mode, "data": data}
 
 
