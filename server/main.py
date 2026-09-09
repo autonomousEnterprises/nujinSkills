@@ -50,7 +50,26 @@ async def health_check():
         "status": "ONLINE",
         "service": "NujinSkills Telemetry Server",
         "connections": len(manager.active_connections),
-        "bot_status": bot_supervisor.get_status()
+        "bot_status": bot_supervisor.get_status(),
+        "telegram_status": {
+            "configured": telegram_gateway.is_configured,
+            "has_token": bool(telegram_gateway.bot_token),
+            "has_chat_id": bool(telegram_gateway.chat_id)
+        }
+    }
+
+@app.get("/api/system/status")
+async def get_system_status():
+    return {
+        "status": "ONLINE",
+        "connections": len(manager.active_connections),
+        "bot": bot_supervisor.get_status(),
+        "telegram": {
+            "configured": telegram_gateway.is_configured,
+            "has_token": bool(telegram_gateway.bot_token),
+            "has_chat_id": bool(telegram_gateway.chat_id)
+        },
+        "active_strategy": state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
     }
 
 @app.get("/api/candles")

@@ -46,7 +46,12 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
     active_signal: null
   });
   const [liveStats, setLiveStats] = useState<LiveStats | null>(null);
+  const [systemStatus, setSystemStatus] = useState<{
+    bot?: { is_running: boolean; mode: string; pid: number | null };
+    telegram?: { configured: boolean; has_token: boolean; has_chat_id: boolean };
+  } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [liveBinancePrice, setLiveBinancePrice] = useState<number | null>(null);
   const [priceFlash, setPriceFlash] = useState<'up' | 'down' | null>(null);
   const prevPrice = React.useRef<number | null>(null);
@@ -54,21 +59,52 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
   const fetchSignals = async () => {
     try {
       setLoading(true);
-      const [sigRes, statsRes] = await Promise.all([
+      const [sigRes, statsRes, sysRes] = await Promise.all([
         fetch('/api/signals'),
-        fetch('/api/signals/stats')
+        fetch('/api/signals/stats'),
+        fetch('/api/system/status')
       ]);
       const sigData = await sigRes.json();
       const statsData = await statsRes.json();
+      const sysData = await sysRes.json();
       setSignalState({
         signals: sigData.signals || [],
         active_signal: sigData.active_signal || null
       });
       setLiveStats(statsData);
+      setSystemStatus(sysData);
     } catch (e) {
-      console.error('Error fetching signals or stats:', e);
+      console.error('Error fetching signals, stats, or status:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeployBot = async () => {
+    try {
+      setActionLoading(true);
+      await fetch('/api/bot/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: activeState?.active_strategy || selectedStrategy, mode: 'dry-run' })
+      });
+      await fetchSignals();
+    } catch (e) {
+      console.error('Deploy bot failed:', e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleStopBot = async () => {
+    try {
+      setActionLoading(true);
+      await fetch('/api/bot/stop', { method: 'POST' });
+      await fetchSignals();
+    } catch (e) {
+      console.error('Stop bot failed:', e);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -151,20 +187,35 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                 <span className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   SIGNAL DECK — LIVE STRATEGY TELEMETRY
                 </span>
-                <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-700 text-emerald-400 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-700 text-indigo-400 text-[10px] font-bold">
                   STRATEGY: {cleanName}
                 </span>
-                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${activeState?.status === 'ACTIVE_DEPLOYED' ? 'bg-emerald-950/80 border-emerald-700 text-emerald-400' : 'bg-amber-950/80 border-amber-700 text-amber-400'}`}>
-                  {activeState?.status || 'ACTIVE_DEPLOYED'}
+                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${
+                  systemStatus?.bot?.is_running
+                    ? 'bg-emerald-950/80 border-emerald-700 text-emerald-400'
+                    : 'bg-slate-800/80 border-slate-700 text-slate-400'
+                }`}>
+                  {systemStatus?.bot?.is_running
+                    ? `🟢 BOT: RUNNING (PID ${systemStatus.bot.pid} | ${systemStatus.bot.mode})`
+                    : '🔴 BOT: STOPPED / SIMULATION'}
+                </span>
+                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${
+                  systemStatus?.telegram?.configured
+                    ? 'bg-emerald-950/80 border-emerald-700 text-emerald-400'
+                    : 'bg-amber-950/80 border-amber-700 text-amber-400'
+                }`}>
+                  {systemStatus?.telegram?.configured
+                    ? '💬 TELEGRAM: CONNECTED'
+                    : '⚪ TELEGRAM: NOT CONFIGURED'}
                 </span>
               </div>
               <div className={`text-[11px] mt-0.5 ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>
-                Live trade signals, real-time R/R targets &amp; historical signal audit feed
+                Live trade signals, real-time R/R targets &amp; Telegram alert gateway status
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {/* Live BTC Price */}
             <div className={`px-3 py-1.5 rounded border text-center transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
               <div className="text-[9px] text-slate-500 uppercase">BTC/USDT LIVE</div>
@@ -172,6 +223,27 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                 {liveBinancePrice ? `$${liveBinancePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>
             </div>
+
+            {/* Deploy / Stop Bot Controls */}
+            {systemStatus?.bot?.is_running ? (
+              <button
+                onClick={handleStopBot}
+                disabled={actionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border bg-rose-950 border-rose-700 text-rose-300 hover:bg-rose-900 transition-all text-xs font-bold"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Stop Bot</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleDeployBot}
+                disabled={actionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded border bg-emerald-950 border-emerald-700 text-emerald-300 hover:bg-emerald-900 transition-all text-xs font-bold"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Deploy Bot</span>
+              </button>
+            )}
 
             <button
               onClick={fetchSignals}
