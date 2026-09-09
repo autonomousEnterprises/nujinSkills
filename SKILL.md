@@ -31,6 +31,15 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
 > 3. Formulate an alternative out-of-the-box hypothesis (mutating regime filters, altering counterparty trap triggers, or adjusting holding periods).
 > 4. **Repeat the loop relentlessly until a profitable strategy meeting the user's profile and passing DSR $\ge 0.95$ is found.**
 
+### 3. Subagent Parallelization & Orchestration Pattern
+If the execution environment supports subagents (e.g., Google Antigravity, OpenClaw, Hermes), the Orchestrator AI Agent SHOULD delegate tasks across specialized subagents:
+
+* 🤖 **Subagent 1 (Data & Feature Miner):** Runs `tools/feature_miner.py` concurrently across multi-timeframe OHLCV datasets (15m, 1h, 4h).
+* 🤖 **Subagent 2 (Exploration Swarm A — Mean Reversion & Trap Specialist):** Formulates and screens liquidity-sweep, VSA absorption, and wick rejection hypotheses using `tools/vectorized_screener.py`.
+* 🤖 **Subagent 3 (Exploration Swarm B — Trend & Volatility Specialist):** Formulates and screens Hurst exponent regime shifts and Parkinson volatility expansion hypotheses using `tools/vectorized_screener.py`.
+* 🤖 **Subagent 4 (Adversarial Cynic Auditor):** Runs `tools/validation_cynic.py` on surviving candidates to audit Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$), parameter surface plateaus, and Monte Carlo drawdown risks.
+* 🤖 **Subagent 5 (Deployment & Gateway Operations):** Emits production Freqtrade/Jesse code (`tools/strategy_emitter.py`), deploys paper/live bots (`tools/bot_control.py`), and manages Telegram notifications & frontend UI daemons (`tools/server_control.py`, `tools/frontend_control.py`).
+
 ---
 
 ## 🎯 User Intent & Strategy Profile Mapping

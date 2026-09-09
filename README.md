@@ -12,6 +12,7 @@
 - 🤖 **Automated Trading Bot Execution:** Emits production-ready Freqtrade/Jesse `IStrategy` code and deploys paper or live trading bots via `bot_control.py`.
 - 💬 **24/7 Messenger Signal Gateway:** Integrated Telegram bot dispatcher broadcasting real-time trade signals, regime shifts, and PnL alerts to user messaging channels.
 - 🔁 **Relentless Persistence Loop:** If a hypothesis fails backtesting or statistical hurdles, the AI automatically blacklists the setup, mutates parameters, and loops continuously until a statistically vetted, profitable trading strategy is discovered and deployed.
+- 👥 **Multi-Subagent Parallelization:** Supports subagent delegation across parallel feature mining, exploration swarms (mean reversion vs. trend hypotheses), adversarial DSR auditing, and daemon operations.
 - 🖥️ **Dual-Screen Telemetry & Visual Terminal:** Interactive Web UI (`frontend_control.py`) featuring TradingView Lightweight Charts and live agent execution telemetry.
 
 ---
