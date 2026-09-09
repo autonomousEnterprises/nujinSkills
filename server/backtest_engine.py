@@ -3,6 +3,7 @@ import json
 import subprocess
 import logging
 import numpy as np
+from datetime import datetime, timezone
 from server.state_manager import state_manager
 
 logger = logging.getLogger("BacktestEngine")
@@ -220,7 +221,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         "status": "ACTIVE_DEPLOYED",
         "backtest_summary": backtest_summary,
         "signals_count": len(trades_detail) if len(trades_detail) > 0 else trades,
-        "last_updated": "Just now"
+        "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     }
 
     # Generate Equity Curve, Return Distribution, & Market Regime Breakdown

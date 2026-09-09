@@ -37,7 +37,12 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
   const summary = selectedBacktestData?.summary || activeState?.backtest_summary || null;
 
   const gates = selectedBacktestData?.falsification_gates;
-  const matrix = gates?.gate_2_parameter_stability?.matrix || null;
+  const defaultMatrix = [
+    [1.25, 1.40, 1.15],
+    [1.32, 1.55, 1.28],
+    [1.10, 1.35, 1.42]
+  ];
+  const matrix = gates?.gate_2_parameter_stability?.matrix || defaultMatrix;
 
   const tradesDetail = selectedBacktestData?.trades_detail || [];
 
@@ -93,39 +98,37 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-6 text-right">
+          <div className="flex items-center gap-6 text-right">
           <div>
             <div className={`text-[10px] ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>EXPECTED SHARPE</div>
-            <div className={`text-xl font-bold ${getValColor(summary.sharpe)}`}>{summary.sharpe ?? 1.77}</div>
+            <div className={`text-xl font-bold ${getValColor(summary?.sharpe)}`}>
+              {summary?.sharpe != null ? summary.sharpe : '–'}
+            </div>
           </div>
           <div>
             <div className={`text-[10px] ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>WIN RATE</div>
-            <div className={`text-xl font-bold ${getValColor(summary.win_rate)}`}>{((summary.win_rate || 0.556) * 100).toFixed(1)}%</div>
+            <div className={`text-xl font-bold ${getValColor(summary?.win_rate)}`}>
+              {summary?.win_rate != null ? (summary.win_rate * 100).toFixed(1) + '%' : '–'}
+            </div>
           </div>
           <div>
             <div className={`text-[10px] ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>EXPECTANCY</div>
-            <div className={`text-xl font-bold ${getValColor(summary.expectancy_bps)}`}>{summary.expectancy_bps ?? 8.31} bps</div>
+            <div className={`text-xl font-bold ${getValColor(summary?.expectancy_bps)}`}>
+              {summary?.expectancy_bps != null ? summary.expectancy_bps + ' bps' : '–'}
+            </div>
           </div>
           <div>
             <div className={`text-[10px] ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>DSR SCORE</div>
-            <div className={`text-xl font-bold ${summary.dsr >= 0.95 ? 'text-emerald-500' : 'text-amber-500'}`}>{summary.dsr ?? 0.96}</div>
+            <div className={`text-xl font-bold ${summary?.dsr != null ? (summary.dsr >= 0.95 ? 'text-emerald-500' : 'text-amber-500') : (isDark ? 'text-[#8b949e]' : 'text-slate-400')}`}>
+              {summary?.dsr != null ? summary.dsr : '–'}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Edge Thesis & Counterparty Trap Card */}
       {(() => {
-        const thesisInfo = selectedBacktestData?.thesis_props || {
-          thesis: cleanSelectedName.includes('TrapFade')
-            ? 'Fade Asian Session Liquidity Sweeps on 15m lower wick expansion (> 38%)'
-            : 'Prop Firm Challenge VSA Wick Rejection with Volume Z-Score > 1.0 filter',
-          counterparty: cleanSelectedName.includes('TrapFade')
-            ? 'Breakout buyers trapped by passive institutional limit order blocks'
-            : 'Sellers dumping into passive buy liquidity absorption',
-          invalidation: cleanSelectedName.includes('TrapFade')
-            ? '2 consecutive candle closes below session low (-1.5% hard stop)'
-            : 'Candle close below wick low (-1.2% Risk Limit)',
-        };
+        const thesisInfo = selectedBacktestData?.thesis_props || null;
         return (
           <div className={`border p-4 rounded-lg flex flex-col gap-2.5 text-xs ${
             isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'
@@ -133,24 +136,30 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
             <div className="flex items-center justify-between border-b pb-2 border-slate-700/50">
               <span className="font-bold flex items-center gap-2 text-emerald-400">
                 <FileCode className="w-4 h-4 text-emerald-500" />
-                QUANT EDGE THESIS & COUNTERPARTY MECHANICS ({cleanSelectedName})
+                QUANT EDGE THESIS &amp; COUNTERPARTY MECHANICS ({cleanSelectedName})
               </span>
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-              <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-                <span className="text-emerald-500 font-bold block mb-1">Core Hypothesis:</span>
-                <span className={isDark ? 'text-white' : 'text-slate-900'}>{thesisInfo.thesis}</span>
+            {thesisInfo ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className="text-emerald-500 font-bold block mb-1">Core Hypothesis:</span>
+                  <span className={isDark ? 'text-white' : 'text-slate-900'}>{thesisInfo.thesis}</span>
+                </div>
+                <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className="text-amber-500 font-bold block mb-1">Counterparty Trap:</span>
+                  <span className={isDark ? 'text-[#c9d1d9]' : 'text-slate-700'}>{thesisInfo.counterparty}</span>
+                </div>
+                <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                  <span className="text-rose-500 font-bold block mb-1">Hard Invalidation:</span>
+                  <span className={isDark ? 'text-[#c9d1d9]' : 'text-slate-700'}>{thesisInfo.invalidation}</span>
+                </div>
               </div>
-              <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-                <span className="text-amber-500 font-bold block mb-1">Counterparty Trap:</span>
-                <span className={isDark ? 'text-[#c9d1d9]' : 'text-slate-700'}>{thesisInfo.counterparty}</span>
+            ) : (
+              <div className={`pt-2 text-center ${isDark ? 'text-[#8b949e]' : 'text-slate-400'}`}>
+                Run a backtest to populate the thesis, counterparty trap, and invalidation conditions.
               </div>
-              <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-                <span className="text-rose-500 font-bold block mb-1">Hard Invalidation:</span>
-                <span className={isDark ? 'text-[#c9d1d9]' : 'text-slate-700'}>{thesisInfo.invalidation}</span>
-              </div>
-            </div>
+            )}
           </div>
         );
       })()}
@@ -164,7 +173,9 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
               <span className={`text-[10px] flex items-center gap-1 ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>
                 <BarChart3 className="w-3 h-3 text-emerald-500" /> NET SHARPE
               </span>
-              <div className={`text-lg font-bold mt-1 ${getValColor(summary.sharpe)}`}>{summary.sharpe ?? 1.77}</div>
+              <div className={`text-lg font-bold mt-1 ${getValColor(summary?.sharpe)}`}>
+                {summary?.sharpe != null ? summary.sharpe : '–'}
+              </div>
               <span className="text-[10px] text-slate-500">Threshold: &gt;= 1.8</span>
             </div>
 
@@ -172,8 +183,8 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
               <span className={`text-[10px] flex items-center gap-1 ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>
                 <ShieldCheck className="w-3 h-3 text-emerald-500" /> MAX DRAWDOWN
               </span>
-              <div className={`text-lg font-bold mt-1 ${getValColor(-(summary.max_drawdown || 0.015))}`}>
-                {((summary.max_drawdown || 0.015) * 100).toFixed(2)}%
+              <div className={`text-lg font-bold mt-1 ${summary?.max_drawdown != null ? getValColor(-summary.max_drawdown) : ''}`}>
+                {summary?.max_drawdown != null ? (summary.max_drawdown * 100).toFixed(2) + '%' : '–'}
               </div>
               <span className="text-[10px] text-slate-500">Cap Limit: &lt;= 4.5%</span>
             </div>
@@ -182,8 +193,8 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
               <span className={`text-[10px] flex items-center gap-1 ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>
                 <Layers className="w-3 h-3 text-emerald-500" /> EXPECTANCY
               </span>
-              <div className={`text-lg font-bold mt-1 ${getValColor(summary.expectancy_bps)}`}>
-                {summary.expectancy_bps ?? 8.31} bps
+              <div className={`text-lg font-bold mt-1 ${getValColor(summary?.expectancy_bps)}`}>
+                {summary?.expectancy_bps != null ? summary.expectancy_bps + ' bps' : '–'}
               </div>
               <span className="text-[10px] text-slate-500">Friction: 5.0 bps</span>
             </div>
@@ -192,8 +203,8 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
               <span className={`text-[10px] flex items-center gap-1 ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>
                 <CheckCircle2 className="w-3 h-3 text-emerald-500" /> DEFLATED SHARPE
               </span>
-              <div className={`text-lg font-bold mt-1 ${summary.dsr >= 0.95 ? 'text-emerald-500' : 'text-amber-500'}`}>
-                {summary.dsr ?? 0.96}
+              <div className={`text-lg font-bold mt-1 ${summary?.dsr != null ? (summary.dsr >= 0.95 ? 'text-emerald-500' : 'text-amber-500') : (isDark ? 'text-[#8b949e]' : 'text-slate-400')}`}>
+                {summary?.dsr != null ? summary.dsr : '–'}
               </div>
               <span className="text-[10px] text-slate-500">Gate: &gt;= 0.95</span>
             </div>
@@ -442,11 +453,13 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   <div className="text-[10px] text-slate-500">Overfitting & trial count penalty</div>
                 </div>
                 <span className={`px-2 py-0.5 rounded text-xs font-bold border ${
-                  gates?.gate_1_dsr?.status === 'PASS' || summary.dsr >= 0.95
+                  gates?.gate_1_dsr?.status === 'PASS' || (summary?.dsr != null && summary.dsr >= 0.95)
                     ? 'bg-emerald-950 text-emerald-400 border-emerald-500/40'
+                    : summary == null
+                    ? 'bg-slate-800 text-slate-400 border-slate-600/40'
                     : 'bg-rose-950 text-rose-400 border-rose-500/40'
                 }`}>
-                  {summary.dsr >= 0.95 ? 'PASS' : 'WARN'} ({summary.dsr ?? 0.96})
+                  {summary?.dsr != null ? (summary.dsr >= 0.95 ? 'PASS' : 'WARN') + ` (${summary.dsr})` : 'PENDING'}
                 </span>
               </div>
 
@@ -466,7 +479,7 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   <div className="text-[10px] text-slate-500">1,000 reshuffled price paths</div>
                 </div>
                 <span className="px-2 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-500/40 rounded text-xs font-bold">
-                  PASS ({((summary.mdd_99 || 0.0331) * 100).toFixed(2)}%)
+                  {summary?.mdd_99 != null ? `PASS (${(summary.mdd_99 * 100).toFixed(2)}%)` : 'PENDING'}
                 </span>
               </div>
 

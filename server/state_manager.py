@@ -6,7 +6,7 @@ Single Source of Truth for EdgeMiner runtime state.
 Consumers:
   • server/main.py          (FastAPI server)
   • server/backtest_engine.py
-  • tools/state_cli.py      (AI agent CLI)
+  • tools/state_control.py  (AI agent CLI)
   • tools/run_backtest_audit.py
 
 All reads/writes go through StateManager and SignalStore.
