@@ -34,6 +34,7 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
 ---
 
 ## 🎯 User Intent & Strategy Profile Mapping
+*(Primary Reference: [`references/strategy_profiles.md`](file:///home/christonomous/Desktop/EdgeMiner/references/strategy_profiles.md))*
 
 | User Request | Target Strategy Profile | Mining & Risk Constraints |
 | --- | --- | --- |
@@ -52,27 +53,27 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
                                        │
                                        ▼
                        ┌───────────────────────────────┐
-                       │  1. Map Strategy Profile &    │
+                       │  1. Map Strategy Profile &    │  <-- Ref: references/strategy_profiles.md
                        │     Set Target Constraints    │
                        └───────────────┬───────────────┘
                                        │
                                        ▼
                        ┌───────────────────────────────┐
-                       │  2. Feature Extraction &      │
-                       │     Regime Scan (Phase 1)     │
+                       │  2. Feature Extraction &      │  <-- Ref: references/pricedataonly_edge_mining.md
+                       │     Regime Scan (Phase 1)     │       Ref: references/thirdparty_edge_mining.md
                        │     python tools/feature_...  │
                        └───────────────┬───────────────┘
                                        │
                                        ▼
                        ┌───────────────────────────────┐
-                       │  3. Creative Dialectic        │
-                       │     Out-of-the-Box Ideation   │
+                       │  3. Creative Dialectic        │  <-- Ref: references/outofthebox_solutions_finding.md
+                       │     Out-of-the-Box Ideation   │       Ref: references/indicator_usage.md
                        └───────────────┬───────────────┘
                                        │
                                        ▼
                        ┌───────────────────────────────┐
-                       │  4. Fast Vectorized Screen    │
-                       │     python tools/vectoriz...  │
+                       │  4. Fast Vectorized Screen    │  <-- Ref: references/edge.md
+                       │     python tools/vectoriz...  │       Ref: references/process.md
                        └───────────────┬───────────────┘
                                        │
                          Pass Hurdles? │
@@ -82,8 +83,8 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
                        │                               │
                        ▼                               ▼
      ┌─────────────────────────────────┐ ┌───────────────────────────┐
-     │ Refine Rules / Blacklist Failed │ │ 5. Adversarial DSR Audit  │
-     │ Setup & Loop Back to Step 3     │ │    python tools/valid...  │
+     │ Refine Rules / Blacklist Failed │ │ 5. Adversarial DSR Audit  │ <-- Ref: references/statistic_edge.md
+     │ Setup & Loop Back to Step 3     │ │    python tools/valid...  │      Ref: references/riskmanagement.md
      └─────────────────────────────────┘ └─────────────┬─────────────┘
                                                        │
                                           DSR >= 0.95? │
@@ -93,10 +94,10 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
                                          │                           │
                                          ▼                           ▼
                        ┌───────────────────────────────────┐ ┌───────────────────────────────┐
-                       │ Adjust Parameters & Re-Audit      │ │ 6. Emit Code & Deploy Options │
-                       │ Loop Back to Step 3               │ │    (User Chooses Deployment): │
-                       └───────────────────────────────────┘ │    - Emit Freqtrade Strategy   │
-                                                             │    - Launch Paper Trading Bot │
+                       │ Adjust Parameters & Re-Audit      │ │ 6. Emit Code & Deploy Options │ <-- Ref: references/tradingbot.md
+                       │ Loop Back to Step 3               │ │    (User Chooses Deployment): │      Ref: references/signals_gateway.md
+                       └───────────────────────────────────┘ │    - Emit Freqtrade Strategy   │      Ref: references/dashboard.md
+                                                             │    - Launch Paper Trading Bot │      Ref: references/ui_management.md
                                                              │    - Activate Telegram Alerts │
                                                              │    - Spin Up Web Dashboard    │
                                                              └───────────────────────────────┘
@@ -105,6 +106,7 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
 ---
 
 ## ⚙️ Environment Preparation & Prerequisites
+*(Primary Reference: [`references/libs_clis.md`](file:///home/christonomous/Desktop/EdgeMiner/references/libs_clis.md))*
 
 Before executing any tools, the AI agent **MUST verify and prepare the runtime environment**:
 
@@ -124,19 +126,21 @@ Before executing any tools, the AI agent **MUST verify and prepare the runtime e
 
 ## 🛠️ Step-by-Step Execution Contract
 
-### Step 1: Feature Extraction (Phase 1)
+### Step 1: Feature Extraction & Regime Scan (Phase 1)
+*(References: [`references/pricedataonly_edge_mining.md`](file:///home/christonomous/Desktop/EdgeMiner/references/pricedataonly_edge_mining.md) & [`references/thirdparty_edge_mining.md`](file:///home/christonomous/Desktop/EdgeMiner/references/thirdparty_edge_mining.md))*  
 Extract bar geometry, VSA Volume Z-scores, Parkinson volatility, and rolling Hurst exponent proxy:
 ```bash
 python tools/feature_miner.py --input data/candles_15m.csv --output data/features.csv
 ```
 
 ### Step 2: Out-of-the-Box Dialectic Ideation (Phase 2)
-Consult `references/outofthebox_solutions_finding.md`:
+*(References: [`references/outofthebox_solutions_finding.md`](file:///home/christonomous/Desktop/EdgeMiner/references/outofthebox_solutions_finding.md) & [`references/indicator_usage.md`](file:///home/christonomous/Desktop/EdgeMiner/references/indicator_usage.md))*  
 1. **Consensus Mapping:** Identify retail herd setup (e.g., buying Bollinger Band breakouts).
 2. **Failure Dissection:** Pinpoint microstructure conditions where that setup fails (absorption, liquidity sweep).
 3. **Lateral Synthesis:** Formulate entry/exit rule logic combining custom engineered features.
 
 ### Step 3: Fast Vectorized Coarse Filter (Phase 3)
+*(References: [`references/edge.md`](file:///home/christonomous/Desktop/EdgeMiner/references/edge.md) & [`references/process.md`](file:///home/christonomous/Desktop/EdgeMiner/references/process.md))*  
 Screen logic against In-Sample data with 5 bps fee and 2 bps slippage friction:
 ```bash
 python tools/vectorized_screener.py \
@@ -148,6 +152,7 @@ python tools/vectorized_screener.py \
 * **Check Results:** If Sharpe $< 1.3$, Trades $< 100$, or Net Expectancy $\le 2\times$ fees, **do not stop**—autonomously iterate with a refined hypothesis.
 
 ### Step 4: Adversarial Audit & DSR Gate (Phase 4)
+*(References: [`references/statistic_edge.md`](file:///home/christonomous/Desktop/EdgeMiner/references/statistic_edge.md) & [`references/riskmanagement.md`](file:///home/christonomous/Desktop/EdgeMiner/references/riskmanagement.md))*  
 Audit surviving returns against overfitting:
 ```bash
 python tools/validation_cynic.py \
@@ -160,26 +165,49 @@ python tools/validation_cynic.py \
 ### Step 5: Optional Deployment Features (User Selected)
 Once a strategy passes all falsification gates, activate user-selected deployment features:
 
-1. **Emit Freqtrade Production Code:**
+1. **Emit Freqtrade Production Code:** *(References: [`references/tradingbot.md`](file:///home/christonomous/Desktop/EdgeMiner/references/tradingbot.md) & [`references/libs_clis.md`](file:///home/christonomous/Desktop/EdgeMiner/references/libs_clis.md))*
    ```bash
    python tools/strategy_emitter.py --thesis "<THESIS>" --rules data/final_rules.json --framework freqtrade --out user_data/strategies/MyStrategy.py
    ```
 
-2. **Activate 24/7 Telegram Signal Chatbot (Optional):**
+2. **Activate 24/7 Telegram Signal Chatbot (Optional):** *(Reference: [`references/signals_gateway.md`](file:///home/christonomous/Desktop/EdgeMiner/references/signals_gateway.md))*
    ```bash
    python tools/server_control.py start --port 8000 --daemon
    python tools/ui_dispatcher.py --event SIGNAL_TRIGGERED --payload '<SIGNAL_JSON>'
    ```
 
-3. **Launch Paper/Live Execution Bot (Optional):**
+3. **Launch Paper/Live Execution Bot (Optional):** *(Reference: [`references/tradingbot.md`](file:///home/christonomous/Desktop/EdgeMiner/references/tradingbot.md))*
    ```bash
    python tools/bot_control.py deploy --strategy MyStrategy --mode dry-run
    ```
 
-4. **Spin Up Dual-Screen Web Dashboard (Optional):**
+4. **Spin Up Dual-Screen Web Dashboard (Optional):** *(References: [`references/dashboard.md`](file:///home/christonomous/Desktop/EdgeMiner/references/dashboard.md) & [`references/ui_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/ui_management.md))*
    ```bash
    python tools/frontend_control.py start --port 3000 --daemon
    ```
+
+---
+
+## 📚 Master Reference Knowledge Base
+
+| Topic / Phase | Reference File | Focus & Guidelines |
+| --- | --- | --- |
+| **Strategy Profiles** | [`references/strategy_profiles.md`](file:///home/christonomous/Desktop/EdgeMiner/references/strategy_profiles.md) | Intent mapping, target constraints for Prop Firm, Swing, Conservative & News. |
+| **Price Data Mining** | [`references/pricedataonly_edge_mining.md`](file:///home/christonomous/Desktop/EdgeMiner/references/pricedataonly_edge_mining.md) | Bar physics, volume Z-scores, Hurst regime metrics, Parkinson volatility. |
+| **Third-Party Mining** | [`references/thirdparty_edge_mining.md`](file:///home/christonomous/Desktop/EdgeMiner/references/thirdparty_edge_mining.md) | External order book depth, social sentiment, and macro data integrations. |
+| **Creative Ideation** | [`references/outofthebox_solutions_finding.md`](file:///home/christonomous/Desktop/EdgeMiner/references/outofthebox_solutions_finding.md) | Dialectic reasoning, retail consensus trap mapping, anti-fragile rules. |
+| **Indicator Guidelines** | [`references/indicator_usage.md`](file:///home/christonomous/Desktop/EdgeMiner/references/indicator_usage.md) | Non-standard indicator usage, avoiding lagging signal traps. |
+| **Edge Criteria** | [`references/edge.md`](file:///home/christonomous/Desktop/EdgeMiner/references/edge.md) | Mathematical edge formulation, trade expectancy, fee drag protection. |
+| **Mining Process** | [`references/process.md`](file:///home/christonomous/Desktop/EdgeMiner/references/process.md) | End-to-end multi-phase workflow pipeline specification. |
+| **Statistical Audit** | [`references/statistic_edge.md`](file:///home/christonomous/Desktop/EdgeMiner/references/statistic_edge.md) | Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$), p-value evaluation, over-fitting audit. |
+| **Risk Management** | [`references/riskmanagement.md`](file:///home/christonomous/Desktop/EdgeMiner/references/riskmanagement.md) | Position sizing, drawdown caps, stop-loss and trailing take-profit rules. |
+| **Trading Bot Execution**| [`references/tradingbot.md`](file:///home/christonomous/Desktop/EdgeMiner/references/tradingbot.md) | Freqtrade/Jesse bot deployment, paper/dry-run execution, live safeguards. |
+| **Libraries & CLIs** | [`references/libs_clis.md`](file:///home/christonomous/Desktop/EdgeMiner/references/libs_clis.md) | CLI dependency guidelines (`polars`, `vectorbt`, `fastapi`, `vite`). |
+| **Signal Chatbot** | [`references/signals_gateway.md`](file:///home/christonomous/Desktop/EdgeMiner/references/signals_gateway.md) | 24/7 Telegram bot setup, Webhook ingestion, real-time alert dispatching. |
+| **Visual Dashboard** | [`references/dashboard.md`](file:///home/christonomous/Desktop/EdgeMiner/references/dashboard.md) | Dual-screen UI architecture, TradingView canvas, agent deck stream. |
+| **UI Management** | [`references/ui_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/ui_management.md) | Dashboard state machine, view hotkeys, background daemon controls. |
+| **Simple Utilities** | [`references/simple_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/simple_tools_ideas.md) | Lightweight helper script concepts and data formatting tools. |
+| **Extended Tools** | [`references/extended_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extended_tools_ideas.md) | Future expansion blueprints (advanced ML models, multi-exchange routers). |
 
 ---
 
