@@ -137,6 +137,7 @@ export const App: React.FC = () => {
           theme={theme}
           selectedStrategy={selectedStrategy}
           tradeMarkers={selectedBacktestData?.trade_markers || []}
+          tradesDetail={selectedBacktestData?.trades_detail || []}
           activeStrategy={activeState?.active_strategy || 'PropFirmVsaWickRejection'}
         />
       </main>

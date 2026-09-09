@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, BarChart3, Layers, CheckCircle2, Cpu, FileCode, Play, Activity, Check } from 'lucide-react';
+import { ShieldCheck, BarChart3, Layers, CheckCircle2, Cpu, FileCode, Play, Activity, Check, ListFilter } from 'lucide-react';
 
 interface StrategyFile {
   name: string;
@@ -49,6 +49,8 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
     [1.62, summary.sharpe || 1.77, 1.64],
     [1.47, 1.64, 1.48]
   ];
+
+  const tradesDetail = selectedBacktestData?.trades_detail || [];
 
   // Helper for strictly coloring negative numbers red and positive numbers green
   const getValColor = (val: number | undefined) => {
@@ -166,6 +168,65 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
               <span className="text-[10px] text-slate-500">Gate: &gt;= 0.95</span>
             </div>
           </div>
+
+          {/* Sequential Backtest Trades Log Table with Entry, TP, and SL fields */}
+          {tradesDetail.length > 0 && (
+            <div className={`border rounded-lg p-4 ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
+              <h3 className={`text-xs font-bold mb-3 flex items-center justify-between ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                <span className="flex items-center gap-2">
+                  <ListFilter className="w-4 h-4 text-emerald-500" />
+                  SEQUENTIAL TRADE LOG ({tradesDetail.length} Trades Simulated)
+                </span>
+                <span className="text-[10px] text-slate-500">Zero Overlapping Executions</span>
+              </h3>
+
+              <div className="overflow-x-auto max-h-48 overflow-y-auto border border-slate-200 dark:border-[#30363d] rounded">
+                <table className="w-full text-left text-[11px] font-mono">
+                  <thead className={`sticky top-0 ${isDark ? 'bg-[#0d1117] text-slate-300' : 'bg-slate-100 text-slate-700'}`}>
+                    <tr>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Trade #</th>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Entry Price</th>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Stop Loss (SL)</th>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Take Profit (TP)</th>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Exit Price</th>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Reason</th>
+                      <th className="p-2 border-b border-slate-200 dark:border-[#30363d]">Net PnL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tradesDetail.map((t: any) => {
+                      const isWin = t.pnl_pct >= 0;
+                      return (
+                        <tr key={t.id} className={`border-b border-slate-200/50 dark:border-[#30363d]/50 ${
+                          isDark ? 'hover:bg-[#21262d]' : 'hover:bg-slate-50'
+                        }`}>
+                          <td className="p-2 font-bold">#{t.id}</td>
+                          <td className="p-2 text-sky-400 font-bold">${t.entry_price.toFixed(0)}</td>
+                          <td className="p-2 text-rose-400">${t.stop_loss.toFixed(0)}</td>
+                          <td className="p-2 text-emerald-400">${t.take_profit.toFixed(0)}</td>
+                          <td className="p-2">${t.exit_price.toFixed(0)}</td>
+                          <td className="p-2">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              t.exit_reason === 'TAKE_PROFIT'
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                : t.exit_reason === 'STOP_LOSS'
+                                ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                                : 'bg-slate-800 text-slate-300'
+                            }`}>
+                              {t.exit_reason}
+                            </span>
+                          </td>
+                          <td className={`p-2 font-bold ${isWin ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {t.pnl_pct > 0 ? `+${t.pnl_pct.toFixed(2)}%` : `${t.pnl_pct.toFixed(2)}%`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Falsification Gates Audit */}
           <div className={`border rounded-lg p-4 flex-1 ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>

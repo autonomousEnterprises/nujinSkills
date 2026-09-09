@@ -105,37 +105,106 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         "expectancy_bps": round(expectancy_bps, 2)
     }
     
-    # Generate strategy-specific trade markers across OHLCV history for Chart view
+    # Generate sequential backtest trades and markers with explicit TP and SL
     trade_markers = []
+    trades_detail = []
     if os.path.exists(candles_file):
         try:
             import pandas as pd
             df_c = pd.read_csv(candles_file)
-            step = 9 if "TrapFade" in clean_name else 13
-            wick_thresh = 0.38 if "TrapFade" in clean_name else 0.40
             
-            for idx in range(20, len(df_c)):
-                c = df_c.iloc[idx]
-                total_range = max(c['high'] - c['low'], 1.0)
-                lower_wick = (min(c['close'], c['open']) - c['low']) / total_range
+            # Strategy parameters
+            wick_thresh = 0.38 if "TrapFade" in clean_name else 0.40
+            stoploss_pct = 0.02 if "TrapFade" in clean_name else 0.025
+            takeprofit_pct = 0.035 if "TrapFade" in clean_name else 0.040
+            max_bars = 8 if "TrapFade" in clean_name else 6
+            
+            df_c['total_range'] = (df_c['high'] - df_c['low']).replace(0, 1e-6)
+            df_c['lower_wick'] = (np.minimum(df_c['close'], df_c['open']) - df_c['low']) / df_c['total_range']
+            vol_mean = df_c['volume'].rolling(20).mean()
+            vol_std = df_c['volume'].rolling(20).std().replace(0, 1e-6)
+            df_c['vol_z'] = (df_c['volume'] - vol_mean) / vol_std
+            
+            n = len(df_c)
+            i = 20
+            while i < n - 2:
+                c = df_c.iloc[i]
+                lower_wick = float(c['lower_wick']) if not np.isnan(c['lower_wick']) else 0.0
+                vol_z = float(c['vol_z']) if not np.isnan(c['vol_z']) else 0.0
                 
-                if lower_wick > wick_thresh and idx % step == 0:
+                # Check Entry Condition on candle i
+                if lower_wick > wick_thresh and vol_z > 0.8:
+                    entry_time = int(c['timestamp'])
+                    entry_price = float(c['close'])
+                    stop_loss = round(entry_price * (1.0 - stoploss_pct), 2)
+                    take_profit = round(entry_price * (1.0 + takeprofit_pct), 2)
+                    
+                    # Sequential exit resolution
+                    exit_idx = i + 1
+                    exit_price = entry_price
+                    exit_reason = "BARS_HOLD"
+                    
+                    while exit_idx < min(i + max_bars + 1, n):
+                        bar_curr = df_c.iloc[exit_idx]
+                        curr_low = float(bar_curr['low'])
+                        curr_high = float(bar_curr['high'])
+                        curr_close = float(bar_curr['close'])
+                        
+                        if curr_low <= stop_loss:
+                            exit_price = stop_loss
+                            exit_reason = "STOP_LOSS"
+                            break
+                        elif curr_high >= take_profit:
+                            exit_price = take_profit
+                            exit_reason = "TAKE_PROFIT"
+                            break
+                        else:
+                            exit_price = curr_close
+                            exit_idx += 1
+                            
+                    if exit_idx >= n:
+                        exit_idx = n - 1
+                        exit_price = float(df_c.iloc[exit_idx]['close'])
+                        
+                    exit_bar = df_c.iloc[exit_idx]
+                    exit_time = int(exit_bar['timestamp'])
+                    pnl_pct = round(((exit_price - entry_price) / entry_price) * 100.0, 2)
+                    
                     trade_markers.append({
-                        "time": int(c['timestamp']),
+                        "time": entry_time,
                         "position": "belowBar",
                         "color": "#26a69a",
                         "shape": "arrowUp",
-                        "text": f"BUY @ {c['close']:.0f}"
+                        "text": f"BUY ${entry_price/1000:.1f}k",
+                        "entry_price": entry_price,
+                        "stop_loss": stop_loss,
+                        "take_profit": take_profit
                     })
-                    exit_idx = min(idx + 5, len(df_c) - 1)
-                    exit_c = df_c.iloc[exit_idx]
+                    
                     trade_markers.append({
-                        "time": int(exit_c['timestamp']),
+                        "time": exit_time,
                         "position": "aboveBar",
-                        "color": "#ef5350",
+                        "color": "#ef5350" if pnl_pct < 0 else "#26a69a",
                         "shape": "arrowDown",
-                        "text": f"EXIT @ {exit_c['close']:.0f}"
+                        "text": f"EXIT {pnl_pct:+.1f}%"
                     })
+                    
+                    trades_detail.append({
+                        "id": len(trades_detail) + 1,
+                        "entry_time": entry_time,
+                        "entry_price": entry_price,
+                        "stop_loss": stop_loss,
+                        "take_profit": take_profit,
+                        "exit_time": exit_time,
+                        "exit_price": exit_price,
+                        "exit_reason": exit_reason,
+                        "pnl_pct": pnl_pct
+                    })
+                    
+                    # Advance index past exit candle to prevent overlapping trades!
+                    i = exit_idx + 1
+                else:
+                    i += 1
         except Exception as err:
             logger.error(f"Error computing trade markers: {err}")
 
@@ -144,7 +213,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         "target_profile": thesis_props["target_profile"],
         "status": "ACTIVE_DEPLOYED",
         "backtest_summary": backtest_summary,
-        "signals_count": trades,
+        "signals_count": len(trades_detail) if len(trades_detail) > 0 else trades,
         "last_updated": "Just now"
     }
     
@@ -168,6 +237,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         "summary": backtest_summary,
         "thesis_props": thesis_props,
         "trade_markers": trade_markers,
+        "trades_detail": trades_detail,
         "falsification_gates": {
             "gate_1_dsr": {"dsr": dsr, "status": "PASS" if dsr >= 0.95 else "WARN", "threshold": 0.95},
             "gate_2_parameter_stability": {

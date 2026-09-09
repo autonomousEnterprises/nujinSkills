@@ -2,11 +2,39 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, SeriesMarker, Time } from 'lightweight-charts';
 import { SignalData } from '../hooks/useWebSocket';
 
+interface TradeDetail {
+  id: number;
+  entry_time: number;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  exit_time: number;
+  exit_price: number;
+  exit_reason: string;
+  pnl_pct: number;
+}
+
+interface PositionBoxCoord {
+  id: number;
+  x: number;
+  width: number;
+  yEntry: number;
+  yProfitTop: number;
+  profitHeight: number;
+  yLossTop: number;
+  lossHeight: number;
+  tpPrice: number;
+  slPrice: number;
+  entryPrice: number;
+  pnlPct: number;
+}
+
 interface ChartCanvasProps {
   latestSignal: SignalData | null;
   theme?: 'dark' | 'light';
   selectedStrategy?: string;
   tradeMarkers?: any[];
+  tradesDetail?: TradeDetail[];
   activeStrategy?: string;
 }
 
@@ -15,6 +43,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   theme = 'dark',
   selectedStrategy = 'PropFirmVsaWickRejection.py',
   tradeMarkers = [],
+  tradesDetail = [],
   activeStrategy = 'PropFirmVsaWickRejection'
 }) => {
   const isDark = theme === 'dark';
@@ -23,69 +52,180 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const [candles, setCandles] = useState<any[]>([]);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
+  const [positionBoxes, setPositionBoxes] = useState<PositionBoxCoord[]>([]);
+  const [activeTradeLevels, setActiveTradeLevels] = useState<{ entry: number; sl: number; tp: number; rr: string } | null>(null);
 
-  // 1. Fetch Candle Data
-  useEffect(() => {
+  // 1. Fetch Candle Data & Live Ticker Polling (3s interval)
+  const fetchCandles = () => {
     fetch('/api/candles?count=200')
       .then((res) => res.json())
       .then((data) => {
-        if (data.data) {
+        if (data.data && data.data.length > 0) {
           setCandles(data.data);
+          if (candleSeriesRef.current) {
+            candleSeriesRef.current.setData(data.data);
+          }
         }
       })
-      .catch((err) => {
-        console.log('Failed to fetch candles from API:', err);
-      });
+      .catch((err) => console.log('Failed to fetch candles:', err));
+  };
+
+  useEffect(() => {
+    fetchCandles();
+    const interval = setInterval(fetchCandles, 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  // 2. Compute or Sync Backtest Trade Markers for selectedStrategy
+  // 2. Strictly filter trade markers to visible candle time range ONLY (eliminates left margin tower!)
   useEffect(() => {
+    if (candles.length === 0) return;
+    const minTime = candles[0].time as number;
+    const maxTime = candles[candles.length - 1].time as number;
+
     if (tradeMarkers && tradeMarkers.length > 0) {
-      const formatted: SeriesMarker<Time>[] = tradeMarkers.map((m) => ({
-        time: m.time as Time,
-        position: m.position,
-        color: m.color,
-        shape: m.shape,
-        text: m.text,
-      }));
-      setDisplayMarkers(formatted);
-    } else if (candles.length > 0) {
-      // Fallback dynamic computation based on selected strategy
+      const validMarkers: SeriesMarker<Time>[] = tradeMarkers
+        .filter((m) => (m.time as number) >= minTime && (m.time as number) <= maxTime)
+        .map((m) => ({
+          time: m.time as Time,
+          position: m.position,
+          color: m.color,
+          shape: m.shape,
+          text: m.text,
+        }));
+      setDisplayMarkers(validMarkers);
+
+      const buyMarkers = tradeMarkers.filter((m) => m.stop_loss && m.take_profit);
+      if (buyMarkers.length > 0) {
+        const lastBuy = buyMarkers[buyMarkers.length - 1];
+        const entry = lastBuy.entry_price || 63404;
+        const sl = lastBuy.stop_loss;
+        const tp = lastBuy.take_profit;
+        const risk = Math.abs(entry - sl);
+        const reward = Math.abs(tp - entry);
+        const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.60';
+        setActiveTradeLevels({ entry, sl, tp, rr });
+      }
+    } else {
       const computed: SeriesMarker<Time>[] = [];
       const cleanName = selectedStrategy.replace('.py', '');
-      const step = cleanName.includes('TrapFade') ? 9 : 13;
       const wickThresh = cleanName.includes('TrapFade') ? 0.38 : 0.40;
+      const stoplossPct = cleanName.includes('TrapFade') ? 0.02 : 0.025;
+      const takeprofitPct = cleanName.includes('TrapFade') ? 0.035 : 0.040;
+      const maxBars = cleanName.includes('TrapFade') ? 8 : 6;
 
-      candles.forEach((c: any, idx: number) => {
+      let i = 20;
+      let lastLevels = null;
+
+      while (i < candles.length - 2) {
+        const c = candles[i];
         const totalRange = Math.max(c.high - c.low, 1);
         const lowerWick = (Math.min(c.close, c.open) - c.low) / totalRange;
 
-        if (idx > 20 && lowerWick > wickThresh && idx % step === 0) {
-          computed.push({
-            time: c.time as Time,
-            position: 'belowBar',
-            color: '#26a69a',
-            shape: 'arrowUp',
-            text: `BUY @ ${c.close.toFixed(0)}`,
-          });
+        if (lowerWick > wickThresh) {
+          const entryPrice = c.close;
+          const sl = Math.round(entryPrice * (1.0 - stoplossPct));
+          const tp = Math.round(entryPrice * (1.0 + takeprofitPct));
+          const rr = (takeprofitPct / stoplossPct).toFixed(2);
+          lastLevels = { entry: entryPrice, sl, tp, rr };
 
-          const exitIdx = Math.min(idx + 5, candles.length - 1);
-          if (exitIdx > idx) {
+          if ((c.time as number) >= minTime && (c.time as number) <= maxTime) {
             computed.push({
-              time: candles[exitIdx].time as Time,
-              position: 'aboveBar',
-              color: '#ef5350',
-              shape: 'arrowDown',
-              text: `EXIT @ ${candles[exitIdx].close.toFixed(0)}`,
+              time: c.time as Time,
+              position: 'belowBar',
+              color: '#26a69a',
+              shape: 'arrowUp',
+              text: `BUY $${(entryPrice / 1000).toFixed(1)}k`,
             });
           }
+
+          const exitIdx = Math.min(i + maxBars, candles.length - 1);
+          const exitC = candles[exitIdx];
+          const pnl = (((exitC.close - entryPrice) / entryPrice) * 100).toFixed(1);
+
+          if ((exitC.time as number) >= minTime && (exitC.time as number) <= maxTime) {
+            computed.push({
+              time: exitC.time as Time,
+              position: 'aboveBar',
+              color: exitC.close >= entryPrice ? '#26a69a' : '#ef5350',
+              shape: 'arrowDown',
+              text: `EXIT ${pnl}%`,
+            });
+          }
+
+          i = exitIdx + 1;
+        } else {
+          i++;
         }
-      });
+      }
+
       setDisplayMarkers(computed);
+      if (lastLevels) setActiveTradeLevels(lastLevels);
     }
   }, [selectedStrategy, tradeMarkers, candles]);
 
-  // 3. Initialize Lightweight Chart with Light/Dark Theme Support
+  // 3. TradingView Position Box Coordinate Resolution (Renders Position Box on Right Edge to Latest Bar)
+  const updateBoxCoordinates = () => {
+    if (!chartRef.current || !candleSeriesRef.current || candles.length === 0) return;
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+
+    // Pick current / latest trade for position box
+    const targetTrade: TradeDetail | null = tradesDetail.length > 0 ? tradesDetail[tradesDetail.length - 1] : (
+      activeTradeLevels ? {
+        id: 99,
+        entry_time: candles[Math.max(0, candles.length - 30)]?.time || 1788523533,
+        entry_price: activeTradeLevels.entry,
+        stop_loss: activeTradeLevels.sl,
+        take_profit: activeTradeLevels.tp,
+        exit_time: candles[candles.length - 1]?.time || 1788555933,
+        exit_price: activeTradeLevels.entry * 1.01,
+        exit_reason: 'ACTIVE_TRADE',
+        pnl_pct: 1.0
+      } : null
+    );
+
+    if (!targetTrade) {
+      setPositionBoxes([]);
+      return;
+    }
+
+    const x1 = chart.timeScale().timeToCoordinate(targetTrade.entry_time as Time);
+    const x2 = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
+    const yEntry = series.priceToCoordinate(targetTrade.entry_price);
+    const ySL = series.priceToCoordinate(targetTrade.stop_loss);
+    const yTP = series.priceToCoordinate(targetTrade.take_profit);
+
+    if (yEntry !== null && ySL !== null && yTP !== null) {
+      const startX = x1 !== null ? Math.max(x1, 60) : 100;
+      const endX = x2 !== null ? Math.max(x2, startX + 50) : startX + 150;
+      const width = Math.max(endX - startX, 40);
+
+      const yProfitTop = Math.min(yEntry, yTP);
+      const profitHeight = Math.max(Math.abs(yEntry - yTP), 2);
+
+      const yLossTop = Math.min(yEntry, ySL);
+      const lossHeight = Math.max(Math.abs(yEntry - ySL), 2);
+
+      setPositionBoxes([
+        {
+          id: targetTrade.id,
+          x: startX,
+          width,
+          yEntry,
+          yProfitTop,
+          profitHeight,
+          yLossTop,
+          lossHeight,
+          tpPrice: targetTrade.take_profit,
+          slPrice: targetTrade.stop_loss,
+          entryPrice: targetTrade.entry_price,
+          pnlPct: targetTrade.pnl_pct
+        }
+      ]);
+    }
+  };
+
+  // 4. Initialize Lightweight Chart & Price Lines
   useEffect(() => {
     if (!chartContainerRef.current || candles.length === 0) return;
 
@@ -127,10 +267,51 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       candleSeries.setMarkers(displayMarkers);
     }
 
+    // Horizontal Price Lines on Price Scale
+    if (activeTradeLevels) {
+      if (activeTradeLevels.tp) {
+        candleSeries.createPriceLine({
+          price: activeTradeLevels.tp,
+          color: '#26a69a',
+          lineWidth: 2,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: `TP: $${activeTradeLevels.tp.toFixed(0)}`,
+        });
+      }
+      if (activeTradeLevels.entry) {
+        candleSeries.createPriceLine({
+          price: activeTradeLevels.entry,
+          color: '#38bdf8',
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `Entry: $${activeTradeLevels.entry.toFixed(0)}`,
+        });
+      }
+      if (activeTradeLevels.sl) {
+        candleSeries.createPriceLine({
+          price: activeTradeLevels.sl,
+          color: '#ef5350',
+          lineWidth: 2,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: `SL: $${activeTradeLevels.sl.toFixed(0)}`,
+        });
+      }
+    }
+
     chart.timeScale().fitContent();
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
+
+    const handleRangeChange = () => {
+      requestAnimationFrame(updateBoxCoordinates);
+    };
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleRangeChange);
+    chart.timeScale().subscribeVisibleTimeRangeChange(handleRangeChange);
 
     const resizeObserver = new ResizeObserver(() => {
       if (chartContainerRef.current && chartRef.current) {
@@ -138,18 +319,28 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           width: chartContainerRef.current.clientWidth,
           height: chartContainerRef.current.clientHeight,
         });
+        updateBoxCoordinates();
       }
     });
 
     resizeObserver.observe(chartContainerRef.current);
+    setTimeout(updateBoxCoordinates, 100);
 
     return () => {
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleRangeChange);
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(handleRangeChange);
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [candles, displayMarkers, isDark]);
+  }, [candles, displayMarkers, activeTradeLevels, isDark]);
 
-  // 4. Render Live Signals & Combine with Backtest Markers
+  useEffect(() => {
+    if (chartRef.current && candleSeriesRef.current) {
+      setTimeout(updateBoxCoordinates, 50);
+    }
+  }, [tradesDetail, activeTradeLevels, displayMarkers]);
+
+  // 5. Live Signal Handling
   useEffect(() => {
     if (!latestSignal || !candleSeriesRef.current) return;
 
@@ -161,20 +352,26 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       position: isBuy ? 'belowBar' : 'aboveBar',
       color: isBuy ? '#238636' : '#da3633',
       shape: isBuy ? 'arrowUp' : 'arrowDown',
-      text: `LIVE SIGNAL ${latestSignal.action}: ${latestSignal.annotation || activeStrategy}`,
+      text: `LIVE ${latestSignal.action}`,
     };
 
-    const combined = [...displayMarkers, liveMarker].sort((a, b) => (a.time as number) - (b.time as number));
-    series.setMarkers(combined);
+    const minTime = candles[0]?.time as number;
+    const maxTime = candles[candles.length - 1]?.time as number;
+
+    const validMarkers = [...displayMarkers, liveMarker]
+      .filter((m) => (m.time as number) >= minTime && (m.time as number) <= maxTime)
+      .sort((a, b) => (a.time as number) - (b.time as number));
+
+    series.setMarkers(validMarkers);
 
     if (latestSignal.stop_loss) {
       series.createPriceLine({
         price: latestSignal.stop_loss,
         color: '#ef5350',
-        lineWidth: 1,
-        lineStyle: 2,
+        lineWidth: 2,
+        lineStyle: 0,
         axisLabelVisible: true,
-        title: 'SL Invalidation',
+        title: `LIVE SL: $${latestSignal.stop_loss}`,
       });
     }
 
@@ -182,41 +379,156 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       series.createPriceLine({
         price: latestSignal.take_profit,
         color: '#26a69a',
-        lineWidth: 1,
-        lineStyle: 2,
+        lineWidth: 2,
+        lineStyle: 0,
         axisLabelVisible: true,
-        title: 'TP Target',
+        title: `LIVE TP: $${latestSignal.take_profit}`,
       });
     }
-  }, [latestSignal, displayMarkers, activeStrategy]);
+  }, [latestSignal, displayMarkers, candles]);
 
   return (
     <div className={`w-full h-full relative ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
-      {/* Dynamic Top Information Bar */}
-      <div className={`absolute top-3 left-3 z-10 backdrop-blur border px-3 py-1.5 rounded font-mono text-xs flex flex-wrap items-center gap-3 ${
-        isDark ? 'bg-[#161b22]/90 border-[#30363d] text-[#8b949e]' : 'bg-slate-50/90 border-slate-200 text-slate-600 shadow-sm'
-      }`}>
-        <div>
-          <span className={`${isDark ? 'text-white' : 'text-slate-900'} font-bold`}>BTC/USDT</span> • 15m Timeframe
+      {/* Sleek Top Banner & Trade Parameters Panel */}
+      <div className="absolute top-3 left-3 z-20 flex flex-col gap-2 font-mono text-xs select-none">
+        <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex items-center gap-3 shadow-lg ${
+          isDark ? 'bg-[#161b22]/90 border-[#30363d] text-[#8b949e]' : 'bg-white/90 border-slate-200 text-slate-700 shadow'
+        }`}>
+          <div>
+            <span className={`${isDark ? 'text-white' : 'text-slate-900'} font-bold`}>BTC/USDT</span> • 15m
+          </div>
+          <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Inspecting Strategy:</span>
+            <span className="text-amber-400 font-bold">{selectedStrategy}</span>
+          </div>
+          <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">System Active:</span>
+            <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-700 text-emerald-400 text-[10px] font-bold">
+              {activeStrategy}
+            </span>
+          </div>
         </div>
-        <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-400">Inspecting:</span>
-          <span className="text-amber-400 font-bold">{selectedStrategy}</span>
-        </div>
-        <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-        <div className="text-emerald-500 font-semibold flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>{displayMarkers.length} Backtest Trades Plotted</span>
-        </div>
-        <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-400">System Active:</span>
-          <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-700 text-emerald-400 text-[10px] font-bold">
-            {activeStrategy}
-          </span>
-        </div>
+
+        {activeTradeLevels && (
+          <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex items-center gap-4 shadow-lg ${
+            isDark ? 'bg-[#161b22]/90 border-[#30363d]' : 'bg-white/90 border-slate-200 shadow'
+          }`}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 text-[10px] uppercase font-bold">Entry:</span>
+              <span className="text-sky-400 font-bold">${activeTradeLevels.entry.toFixed(0)}</span>
+            </div>
+            <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 text-[10px] uppercase font-bold">Stop Loss (SL):</span>
+              <span className="text-rose-400 font-bold">${activeTradeLevels.sl.toFixed(0)}</span>
+            </div>
+            <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 text-[10px] uppercase font-bold">Take Profit (TP):</span>
+              <span className="text-emerald-400 font-bold">${activeTradeLevels.tp.toFixed(0)}</span>
+            </div>
+            <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 text-[10px] uppercase font-bold">R : R Ratio:</span>
+              <span className="text-indigo-400 font-bold">1 : {activeTradeLevels.rr}</span>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* SVG Overlay: Native TradingView Position Box (Shaded Green Profit & Red Loss Zones) */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
+        <defs>
+          <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#26a69a" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#26a69a" stopOpacity="0.08" />
+          </linearGradient>
+          <linearGradient id="lossGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef5350" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#ef5350" stopOpacity="0.25" />
+          </linearGradient>
+        </defs>
+
+        {positionBoxes.map((box) => (
+          <g key={box.id}>
+            {/* Green Profit Zone Box */}
+            <rect
+              x={box.x}
+              y={box.yProfitTop}
+              width={box.width}
+              height={box.profitHeight}
+              fill="url(#profitGrad)"
+              stroke="#26a69a"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+            />
+            {/* Red Loss Zone Box */}
+            <rect
+              x={box.x}
+              y={box.yLossTop}
+              width={box.width}
+              height={box.lossHeight}
+              fill="url(#lossGrad)"
+              stroke="#ef5350"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+            />
+            {/* Entry Price Line */}
+            <line
+              x1={box.x}
+              y1={box.yEntry}
+              x2={box.x + box.width}
+              y2={box.yEntry}
+              stroke="#38bdf8"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+            />
+            {/* Labels on Right Side of Position Box */}
+            <rect
+              x={box.x + box.width - 64}
+              y={box.yProfitTop + 2}
+              width="60"
+              height="16"
+              rx="3"
+              fill="rgba(38, 166, 154, 0.9)"
+            />
+            <text
+              x={box.x + box.width - 34}
+              y={box.yProfitTop + 13}
+              fill="#ffffff"
+              fontSize="9"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              TP: ${box.tpPrice.toFixed(0)}
+            </text>
+
+            <rect
+              x={box.x + box.width - 64}
+              y={box.yLossTop + box.lossHeight - 18}
+              width="60"
+              height="16"
+              rx="3"
+              fill="rgba(239, 83, 80, 0.9)"
+            />
+            <text
+              x={box.x + box.width - 34}
+              y={box.yLossTop + box.lossHeight - 7}
+              fill="#ffffff"
+              fontSize="9"
+              fontWeight="bold"
+              fontFamily="monospace"
+              textAnchor="middle"
+            >
+              SL: ${box.slPrice.toFixed(0)}
+            </text>
+          </g>
+        ))}
+      </svg>
+
       <div ref={chartContainerRef} className="w-full h-full" />
     </div>
   );
