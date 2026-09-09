@@ -196,7 +196,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                     : 'bg-slate-800/80 border-slate-700 text-slate-400'
                 }`}>
                   {systemStatus?.bot?.is_running
-                    ? `🟢 BOT: RUNNING (PID ${systemStatus.bot.pid} | ${systemStatus.bot.mode})`
+                    ? `🟢 BOT: RUNNING (${systemStatus.bot.pid ? `PID ${systemStatus.bot.pid} | ` : ''}${systemStatus.bot.mode})`
                     : '🔴 BOT: STOPPED / SIMULATION'}
                 </span>
                 <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${
