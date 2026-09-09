@@ -58,15 +58,104 @@ async def get_candles(symbol: str = "BTC/USDT", count: int = 200):
 async def get_widgets():
     return {"widgets": list(manager.widget_state.values())}
 
+@app.get("/api/signals")
+async def get_signals():
+    signals_file = os.path.join(os.getcwd(), "data", "signals.json")
+    signals_list = []
+    if os.path.exists(signals_file):
+        try:
+            with open(signals_file, "r") as f:
+                signals_list = json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading signals file: {e}")
+
+    # Fallback initial sample signals if file is empty
+    if len(signals_list) == 0:
+        signals_list = [
+            {
+                "id": 1,
+                "time": 1725883200,
+                "pair": "BTC/USDT",
+                "action": "BUY",
+                "price": 63404.0,
+                "stop_loss": 61819.0,
+                "take_profit": 65948.0,
+                "status": "ACTIVE_IN_POSITION",
+                "exit_price": None,
+                "exit_reason": None,
+                "pnl_pct": 1.25,
+                "annotation": "VSA Wick Rejection",
+                "reasoning_md": "Lower wick expansion (> 40%) with Volume Z-Score > 1.0 absorbing seller liquidity.",
+                "strategy": "PropFirmVsaWickRejectionStrategy"
+            },
+            {
+                "id": 2,
+                "time": 1725868800,
+                "pair": "BTC/USDT",
+                "action": "BUY",
+                "price": 62150.0,
+                "stop_loss": 60907.0,
+                "take_profit": 64325.0,
+                "status": "CLOSED",
+                "exit_price": 64325.0,
+                "exit_reason": "TAKE_PROFIT",
+                "pnl_pct": 3.50,
+                "annotation": "Trap Fade Sweep",
+                "reasoning_md": "Asian Session Low sweep reversal into passive limit buy order block.",
+                "strategy": "TrapFadeStrategy"
+            }
+        ]
+
+    active = next((s for s in signals_list if s.get("status") == "ACTIVE_IN_POSITION"), signals_list[0] if len(signals_list) > 0 else None)
+    return {"signals": signals_list, "active_signal": active}
+
 @app.post("/api/broadcast")
 async def broadcast_event(envelope: EventEnvelope):
     logger.info(f"Broadcast event received: {envelope.event_type}")
     await manager.broadcast(envelope.model_dump())
-    if envelope.event_type in ["SIGNAL_TRIGGERED", "TELEGRAM_ALERT"]:
+
+    if envelope.event_type == "SIGNAL_TRIGGERED":
+        telegram_gateway.format_and_send_signal(envelope.payload)
+        
+        # Persist to data/signals.json on disk
+        signals_file = os.path.join(os.getcwd(), "data", "signals.json")
+        signals_list = []
+        if os.path.exists(signals_file):
+            try:
+                with open(signals_file, "r") as f:
+                    signals_list = json.load(f)
+            except Exception as e:
+                logger.error(f"Error reading signals file before write: {e}")
+
+        # Construct persistent signal entry
+        sig_data = envelope.payload
+        sig_entry = {
+            "id": len(signals_list) + 1,
+            "time": sig_data.get("time", 1725883200),
+            "pair": sig_data.get("pair", "BTC/USDT"),
+            "action": sig_data.get("action", "BUY"),
+            "price": float(sig_data.get("price", 63404.0)),
+            "stop_loss": float(sig_data.get("stop_loss", sig_data.get("price", 63404.0) * 0.975)),
+            "take_profit": float(sig_data.get("take_profit", sig_data.get("price", 63404.0) * 1.04)),
+            "status": sig_data.get("status", "ACTIVE_IN_POSITION"),
+            "exit_price": sig_data.get("exit_price"),
+            "exit_reason": sig_data.get("exit_reason"),
+            "pnl_pct": float(sig_data.get("pnl_pct", 0.0)),
+            "annotation": sig_data.get("annotation", "AI Live Signal"),
+            "reasoning_md": sig_data.get("reasoning_md", "AI Agent executed live signal rule condition."),
+            "strategy": sig_data.get("strategy", "PropFirmVsaWickRejectionStrategy")
+        }
+        signals_list.insert(0, sig_entry)
+        
+        with open(signals_file, "w") as f:
+            json.dump(signals_list, f, indent=2)
+            
+    elif envelope.event_type == "TELEGRAM_ALERT":
         telegram_gateway.format_and_send_signal(envelope.payload)
     elif envelope.event_type == "UPSERT_WIDGET" and envelope.payload.get("component") == "MetricCard":
         telegram_gateway.format_and_send_dsr_alert(envelope.payload)
     return {"status": "SUCCESS", "event_type": envelope.event_type}
+
 
 @app.post("/api/bot/deploy")
 async def deploy_bot(req: DeployBotRequest):

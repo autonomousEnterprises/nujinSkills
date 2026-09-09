@@ -125,11 +125,53 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
         </div>
       </div>
 
+      {/* Edge Thesis & Counterparty Trap Card */}
+      {(() => {
+        const thesisInfo = selectedBacktestData?.thesis_props || {
+          thesis: cleanSelectedName.includes('TrapFade')
+            ? 'Fade Asian Session Liquidity Sweeps on 15m lower wick expansion (> 38%)'
+            : 'Prop Firm Challenge VSA Wick Rejection with Volume Z-Score > 1.0 filter',
+          counterparty: cleanSelectedName.includes('TrapFade')
+            ? 'Breakout buyers trapped by passive institutional limit order blocks'
+            : 'Sellers dumping into passive buy liquidity absorption',
+          invalidation: cleanSelectedName.includes('TrapFade')
+            ? '2 consecutive candle closes below session low (-1.5% hard stop)'
+            : 'Candle close below wick low (-1.2% Risk Limit)',
+        };
+        return (
+          <div className={`border p-4 rounded-lg flex flex-col gap-2.5 text-xs ${
+            isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'
+          }`}>
+            <div className="flex items-center justify-between border-b pb-2 border-slate-700/50">
+              <span className="font-bold flex items-center gap-2 text-emerald-400">
+                <FileCode className="w-4 h-4 text-emerald-500" />
+                QUANT EDGE THESIS & COUNTERPARTY MECHANICS ({cleanSelectedName})
+              </span>
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+              <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                <span className="text-emerald-500 font-bold block mb-1">Core Hypothesis:</span>
+                <span className={isDark ? 'text-white' : 'text-slate-900'}>{thesisInfo.thesis}</span>
+              </div>
+              <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                <span className="text-amber-500 font-bold block mb-1">Counterparty Trap:</span>
+                <span className={isDark ? 'text-[#c9d1d9]' : 'text-slate-700'}>{thesisInfo.counterparty}</span>
+              </div>
+              <div className={`p-2.5 rounded border ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                <span className="text-rose-500 font-bold block mb-1">Hard Invalidation:</span>
+                <span className={isDark ? 'text-[#c9d1d9]' : 'text-slate-700'}>{thesisInfo.invalidation}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Main Layout: Full Width */}
       <div className="flex flex-col gap-4 flex-1 w-full">
+        {/* Key Metrics Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
 
-          {/* Key Metrics Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className={`border p-3 rounded-lg ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
               <span className={`text-[10px] flex items-center gap-1 ${isDark ? 'text-[#8b949e]' : 'text-slate-500'}`}>
                 <BarChart3 className="w-3 h-3 text-emerald-500" /> NET SHARPE

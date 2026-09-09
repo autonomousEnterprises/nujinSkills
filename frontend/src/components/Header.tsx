@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Activity, BarChart2, LayoutGrid, Terminal, ShieldCheck, Sun, Moon, FileCode, ChevronDown, Check, Play, BarChart3, X } from 'lucide-react';
+import { Activity, BarChart2, LayoutGrid, Terminal, ShieldCheck, Sun, Moon, FileCode, ChevronDown, Check, Play, BarChart3, X, Send } from 'lucide-react';
+
 
 interface StrategyFile {
   name: string;
@@ -198,8 +199,9 @@ export const Header: React.FC<HeaderProps> = ({
             : isDark ? 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]' : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-300'
             }`}
         >
-          <LayoutGrid className="w-3.5 h-3.5" />
-          <span>Agent Deck (F2)</span>
+          <Send className="w-3.5 h-3.5" />
+          <span>Signals (F2)</span>
+
         </button>
 
         <button

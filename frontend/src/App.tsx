@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { ChartCanvas } from './components/ChartCanvas';
-import { AgentDeck } from './components/AgentDeck';
+import { SignalDeck } from './components/SignalDeck';
+
 import { BacktestDeck } from './components/BacktestDeck';
 import { useWebSocket } from './hooks/useWebSocket';
 
@@ -146,9 +147,9 @@ export const App: React.FC = () => {
         />
       </main>
 
-      {/* Viewport 2: Server-Driven UI Agent Audit Deck & Mining Telemetry (F2) */}
+      {/* Viewport 2: 24/7 AI Quant Signal Telemetry & History Deck (F2) */}
       <main className={`w-full flex-1 overflow-hidden ${activeScreen === 'AGENT_DECK' ? 'block' : 'hidden'}`}>
-        <AgentDeck
+        <SignalDeck
           widgets={widgets}
           signals={signals}
           theme={theme}
@@ -157,6 +158,7 @@ export const App: React.FC = () => {
           activeState={activeState}
         />
       </main>
+
 
       {/* Viewport 3: Backtest Analytics, DSR Audit Gates & Strategy Repository (F3) */}
       <main className={`w-full flex-1 overflow-hidden ${activeScreen === 'BACKTEST' ? 'block' : 'hidden'}`}>
