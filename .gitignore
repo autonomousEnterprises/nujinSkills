@@ -29,7 +29,6 @@ frontend_server.log
 # --- Node.js & Frontend Build Artifacts ---
 node_modules/
 frontend/node_modules/
-frontend/dist/
 frontend/dist-ssr/
 frontend/.vite/
 npm-debug.log*

@@ -161,10 +161,14 @@ Before executing any tools, the AI agent **MUST verify and prepare the runtime e
    pip install -r requirements.txt
    ```
 
-2. **Check & Install Frontend Dependencies (If Web UI requested):**
-   If launching the visual telemetry dashboard (`frontend_control.py`), ensure Node modules are installed:
+2. **Pre-Built Production Dashboard (`frontend/dist/`):**
+   The production UI bundle is pre-compiled and tracked directly in `frontend/dist/` within the git repository. The AI Agent can launch the visual telemetry dashboard instantly:
    ```bash
-   cd frontend && npm install && cd ..
+   python3 tools/frontend_control.py start --port 3000 --daemon
+   ```
+   If modifying frontend React components (`frontend/src/`), the AI Agent rebuilds the production bundle using:
+   ```bash
+   python3 tools/frontend_control.py build
    ```
 
 ---
