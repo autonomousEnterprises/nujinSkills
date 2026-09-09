@@ -254,6 +254,8 @@ Once a strategy passes all falsification gates, activate user-selected deploymen
 | **State Management** | [`references/state_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/state_management.md) | Single source of truth: `StateManager`, `SignalStore`, `state_control.py` CLI, state & signal schemas, file lock safety. |
 | **Simple Utilities** | [`references/simple_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/simple_tools_ideas.md) | Lightweight helper script concepts and data formatting tools. |
 | **Extended Tools** | [`references/extended_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extended_tools_ideas.md) | Future expansion blueprints (advanced ML models, multi-exchange routers). |
+| **Extend Frontend** | [`references/extending_frontend.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extending_frontend.md) | How to add screens, WS events, chart overlays, TypeScript interfaces, and new REST consumers. Data flow, component anatomy, build workflow. |
+| **Extend Backend** | [`references/extending_backend.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extending_backend.md) | How to add REST endpoints, WS events, state fields, backtest metrics, strategy rules, and AI tools. Signal lifecycle, data fetching, golden rules. |
 
 ---
 
