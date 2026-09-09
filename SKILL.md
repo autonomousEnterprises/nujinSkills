@@ -375,7 +375,8 @@ if __name__ == "__main__":
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/api/health` | GET | System health: bot status, WS connections |
+| `/api/health` | GET | System health: bot status, Telegram gateway connectivity, WS connections |
+| `/api/system/status` | GET | Comprehensive status: active strategy, bot supervisor state (PID/mode), Telegram gateway connection status |
 | `/api/candles` | GET | Live or synthetic OHLCV candles (BTC/USDT 15m via Binance) |
 | `/api/signals` | GET | All persisted signals + current active open signal |
 | `/api/signals/stats` | GET | **Live performance stats since activation:** win rate, profit factor, Sharpe (annualized), total PnL %, avg win/loss, max consecutive losses |
