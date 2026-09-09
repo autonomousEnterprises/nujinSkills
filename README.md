@@ -25,17 +25,17 @@ NujinSkill is built around a standard agent-agnostic `SKILL.md` contract and loc
 Antigravity automatically discovers and loads skills from customization roots:
 
 - **Global Customizations Skill (Available in All Workspaces):**
-  Place NujinSkill in `~/.gemini/config/skills/quant-edge-mining/` (containing `SKILL.md`).
+  Place NujinSkill in `~/.gemini/config/skills/NujinSkill/` (containing `SKILL.md`).
   ```bash
-  mkdir -p ~/.gemini/config/skills/quant-edge-mining
-  cp -r * ~/.gemini/config/skills/quant-edge-mining/
+  mkdir -p ~/.gemini/config/skills/NujinSkill
+  cp -r * ~/.gemini/config/skills/NujinSkill/
   ```
 
 - **Workspace-Scoped Skill (Project Specific):**
-  Place NujinSkill in `.agents/skills/quant-edge-mining/` inside your project root.
+  Place NujinSkill in `.agents/skills/NujinSkill/` inside your project root.
   ```bash
-  mkdir -p .agents/skills/quant-edge-mining
-  cp -r * .agents/skills/quant-edge-mining/
+  mkdir -p .agents/skills/NujinSkill
+  cp -r * .agents/skills/NujinSkill/
   ```
 
 ---
@@ -46,7 +46,7 @@ Register the repository directly into your CLI agent's skill directory:
 # Register skill into OpenClaw / Hermes
 openclaw skill add ./
 # Or symlink to global skills directory
-ln -s $(pwd) ~/.openclaw/skills/quant-edge-mining
+ln -s $(pwd) ~/.openclaw/skills/NujinSkill
 ```
 
 ---

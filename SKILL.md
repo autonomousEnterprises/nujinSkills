@@ -1,7 +1,7 @@
 # Skill: NujinSkill Quant Agent Engine
 
 ## Metadata
-- **Name:** `quant-edge-mining`
+- **Name:** `NujinSkill`
 - **Version:** `1.0.0`
 - **Runtime:** Python 3.10+ & Node.js 18+
 - **Execution:** Direct CLI tool calls via `python tools/<tool_name>.py [args]`
