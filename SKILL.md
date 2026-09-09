@@ -104,6 +104,24 @@ The AI agent is encouraged to invent non-consensus strategy logic combining orth
 
 ---
 
+## ⚙️ Environment Preparation & Prerequisites
+
+Before executing any tools, the AI agent **MUST verify and prepare the runtime environment**:
+
+1. **Check & Install Python Dependencies:**
+   Run the following command to ensure all required quantitative libraries (`polars`, `numpy`, `scipy`, `vectorbt`, `fastapi`, `python-telegram-bot`) are installed:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Check & Install Frontend Dependencies (If Web UI requested):**
+   If launching the visual telemetry dashboard (`frontend_control.py`), ensure Node modules are installed:
+   ```bash
+   cd frontend && npm install && cd ..
+   ```
+
+---
+
 ## 🛠️ Step-by-Step Execution Contract
 
 ### Step 1: Feature Extraction (Phase 1)
