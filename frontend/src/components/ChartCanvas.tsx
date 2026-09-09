@@ -166,15 +166,15 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         }));
       setDisplayMarkers(validMarkers);
 
-      const buyMarkers = tradeMarkers.filter((m) => m.stop_loss && m.take_profit);
+      const buyMarkers = tradeMarkers.filter((m) => m.stop_loss && m.take_profit && m.entry_price);
       if (buyMarkers.length > 0) {
         const lastBuy = buyMarkers[buyMarkers.length - 1];
-        const entry = lastBuy.entry_price || 63404;
+        const entry = lastBuy.entry_price;
         const sl = lastBuy.stop_loss;
         const tp = lastBuy.take_profit;
         const risk = Math.abs(entry - sl);
         const reward = Math.abs(tp - entry);
-        const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.60';
+        const rr = risk > 0 ? (reward / risk).toFixed(2) : '0.00';
         setActiveTradeLevels({ entry, sl, tp, rr });
       }
     } else {
