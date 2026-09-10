@@ -1,5 +1,5 @@
 //@version=6
-indicator("Goat Funded Trader XAUUSD Momentum Scalper [GIT-15]", "GFT Gold Scalper [v6]", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+indicator("Goat Funded Trader XAUUSD Momentum Scalper [GIT-15]", "GFT Gold Scalper [v6]", overlay=true, scale=scale.right, format=format.price, precision=2, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 // 1. CONSTANTS & PALETTE DEFINITIONS
