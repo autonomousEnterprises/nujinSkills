@@ -114,20 +114,16 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Live asset price via Binance WebSocket (paxgusdt 1m if XAU/Gold strategy active, else btcusdt 15m)
-  const isXauStrategy = (activeState?.active_strategy || '').toLowerCase().includes('xau') || (activeState?.active_strategy || '').toLowerCase().includes('goat');
+  // Live asset price: CME COMEX Gold (GC=F) if Gold/XAU strategy active, else Binance BTC 15m
+  const isXauStrategy = (activeState?.active_strategy || selectedStrategy || '').toLowerCase().includes('xau') || (activeState?.active_strategy || selectedStrategy || '').toLowerCase().includes('goat');
   useEffect(() => {
-    const wsUrl = isXauStrategy 
-      ? 'wss://stream.binance.com:9443/ws/paxgusdt@kline_1m' 
-      : 'wss://stream.binance.com:9443/ws/btcusdt@kline_15m';
-    let ws: WebSocket | null = null;
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
+    if (isXauStrategy) {
+      const fetchComexQuote = async () => {
         try {
-          const msg = JSON.parse(event.data);
-          if (msg?.k?.c) {
-            const newPrice = parseFloat(msg.k.c);
+          const res = await fetch('/api/xauusd/quote');
+          const data = await res.json();
+          if (data?.quote?.price) {
+            const newPrice = parseFloat(data.quote.price);
             if (prevPrice.current !== null) {
               setPriceFlash(newPrice >= prevPrice.current ? 'up' : 'down');
               setTimeout(() => setPriceFlash(null), 600);
@@ -137,8 +133,32 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
           }
         } catch {}
       };
-    } catch {}
-    return () => { if (ws) ws.close(); };
+
+      fetchComexQuote();
+      const interval = setInterval(fetchComexQuote, 2000);
+      return () => clearInterval(interval);
+    } else {
+      const wsUrl = 'wss://stream.binance.com:9443/ws/btcusdt@kline_15m';
+      let ws: WebSocket | null = null;
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg?.k?.c) {
+              const newPrice = parseFloat(msg.k.c);
+              if (prevPrice.current !== null) {
+                setPriceFlash(newPrice >= prevPrice.current ? 'up' : 'down');
+                setTimeout(() => setPriceFlash(null), 600);
+              }
+              prevPrice.current = newPrice;
+              setLiveBinancePrice(newPrice);
+            }
+          } catch {}
+        };
+      } catch {}
+      return () => { if (ws) ws.close(); };
+    }
   }, [isXauStrategy]);
 
   const allSignals = [...wsSignals, ...(signalState.signals || [])];
@@ -221,7 +241,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
           <div className="flex items-center gap-3">
             {/* Live BTC Price */}
             <div className={`px-3 py-1.5 rounded border text-center transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="text-[9px] text-slate-500 uppercase">{isXauStrategy ? 'XAU/USD LIVE' : 'BTC/USDT LIVE'}</div>
+              <div className="text-[9px] text-slate-500 uppercase">{isXauStrategy ? 'COMEX GOLD (GC=F) LIVE' : 'BTC/USDT LIVE'}</div>
               <div className={`text-base font-bold transition-colors ${priceFlash === 'up' ? 'text-emerald-300' : priceFlash === 'down' ? 'text-rose-300' : 'text-sky-400'}`}>
                 {liveBinancePrice ? `$${liveBinancePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>

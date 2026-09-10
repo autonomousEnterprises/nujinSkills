@@ -101,9 +101,41 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       return;
     }
 
-    const isGold = selectedSymbol.toLowerCase().includes('xau') || selectedSymbol.toLowerCase().includes('gold');
-    const cleanSym = isGold ? 'paxgusdt' : selectedSymbol.replace('/', '').toLowerCase();
-    const interval = isGold ? '1m' : '15m';
+    const isGold = selectedSymbol.toLowerCase().includes('xau') || selectedSymbol.toLowerCase().includes('gold') || selectedSymbol.toLowerCase().includes('gc');
+
+    if (isGold) {
+      setIsWsConnected(true);
+      const pollComexGold = async () => {
+        try {
+          const res = await fetch('/api/xauusd/quote');
+          const data = await res.json();
+          if (data?.quote?.price) {
+            const p = data.quote.price;
+            const t = (data.quote.timestamp || Math.floor(Date.now() / 1000)) as Time;
+            setLastLivePrice(p);
+            if (candleSeriesRef.current) {
+              candleSeriesRef.current.update({
+                time: t,
+                open: p,
+                high: p,
+                low: p,
+                close: p,
+                volume: data.quote.volume_1m || 10.0,
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Error polling COMEX Gold quote:', e);
+        }
+      };
+
+      pollComexGold();
+      const intv = setInterval(pollComexGold, 2000);
+      return () => clearInterval(intv);
+    }
+
+    const cleanSym = selectedSymbol.replace('/', '').toLowerCase();
+    const interval = '15m';
     const wsUrl = `wss://stream.binance.com:9443/ws/${cleanSym}@kline_${interval}`;
     let ws: WebSocket | null = null;
 
@@ -120,7 +152,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           if (msg.e === 'kline') {
             const k = msg.k;
             const updatedCandle = {
-              time: Math.floor(k.t / 1000),
+              time: Math.floor(k.t / 1000) as Time,
               open: parseFloat(k.o),
               high: parseFloat(k.h),
               low: parseFloat(k.l),
@@ -135,7 +167,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             }
           }
         } catch (e) {
-          console.error('Error parsing Binance WS kline:', e);
+          console.error('Error parsing WS kline:', e);
         }
       };
 

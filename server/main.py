@@ -90,15 +90,19 @@ async def get_candles(symbol: Optional[str] = None, count: int = 1500, mode: str
         is_gold = ("XAU" in active_strat.upper()) or ("GOAT" in active_strat.upper())
         symbol = "XAU/USD" if is_gold else "BTC/USDT"
 
-    is_xau = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper()) or ("PAXG" in symbol.upper())
+    is_xau = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper()) or ("PAXG" in symbol.upper()) or ("GC" in symbol.upper())
     interval = "1m" if is_xau else "15m"
     try:
-        data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
+        if is_xau:
+            from server.data_manager import fetch_real_comex_gold_candles
+            data = fetch_real_comex_gold_candles(interval=interval, count=count)
+        else:
+            data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
     except Exception as e:
         logger.error(f"[Candles] Failed to fetch real data for {symbol}: {e}")
         raise HTTPException(
             status_code=503,
-            detail=f"Real market data unavailable for {symbol}. Binance API error: {str(e)}"
+            detail=f"Real market data unavailable for {symbol}. Error: {str(e)}"
         )
     return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
 
