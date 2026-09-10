@@ -213,8 +213,9 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
             </div>
           </div>
 
-          {/* Equity Growth Curve — full width */}
-          <div className="grid grid-cols-1 gap-3">
+          {/* Equity Growth Curve & Return Distribution — original 2-column side-by-side */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* SVG Equity Growth Curve */}
             <div className={`border rounded-lg p-4 flex flex-col justify-between ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
 
               {/* Header: title + period badges */}
@@ -235,7 +236,6 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                         <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">{days}D BACKTEST</span>
                         <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono">BTC/USDT · 15m</span>
                         <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] font-mono">{fmt(firstTs)} → {fmt(lastTs)}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">100% Base Capital</span>
                       </div>
                     );
                   }
@@ -243,7 +243,6 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                     <div className="flex items-center gap-1.5">
                       <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">30D BACKTEST</span>
                       <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono">BTC/USDT · 15m</span>
-                      <span className="text-[10px] text-slate-500 font-mono">100% Base Capital</span>
                     </div>
                   );
                 })()}
@@ -297,10 +296,7 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                 );
               })()}
             </div>
-          </div>
 
-          {/* Trade Return Distribution Histogram — full width row */}
-          <div className="grid grid-cols-1 gap-3">
             {/* SVG Trade Return Distribution Histogram */}
             <div className={`border rounded-lg p-4 flex flex-col justify-between ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-2">
