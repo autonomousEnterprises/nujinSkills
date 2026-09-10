@@ -1,0 +1,253 @@
+//@version=6
+indicator("Goat Funded Trader XAUUSD Momentum Scalper [GIT-15]", "GFT Gold Scalper [v6]", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// 1. INPUTS & PROP FIRM RISK PARAMETERS
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ── Trading Session Inputs ──
+grp_sessions    = "Institutional Trading Windows (UTC)"
+london_session  = input.session("0730-1030", "London Session Window", group=grp_sessions, tooltip="European liquidity expansion wave (07:30 - 10:30 UTC)")
+ny_session      = input.session("1245-1630", "New York Session Window", group=grp_sessions, tooltip="London/NY overlap & US open volume surge (12:45 - 16:30 UTC)")
+show_session_bg = input.bool(true, "Highlight Active Session Background", group=grp_sessions)
+col_london_bg   = input.color(color.new(color.blue, 94), "London Background", group=grp_sessions)
+col_ny_bg       = input.color(color.new(color.purple, 94), "New York Background", group=grp_sessions)
+
+// ── Strategy Technical Parameters ──
+grp_strategy    = "Momentum Train Parameters (1m Timeframe)"
+range_len       = input.int(15, "Dynamic Range Length (Bars)", minval=5, maxval=60, group=grp_strategy, tooltip="Lookback window for 15-minute range high/low expansion")
+ema_fast_len    = input.int(9, "Fast Ribbon EMA", minval=3, group=grp_strategy)
+ema_med_len     = input.int(21, "Medium Ribbon EMA", minval=10, group=grp_strategy)
+ema_macro_len   = input.int(200, "Macro Trend Baseline EMA", minval=50, group=grp_strategy)
+use_macro_filt  = input.bool(false, "Filter By 200 EMA Trend", group=grp_strategy, tooltip="Require price above 200 EMA for longs, below for shorts")
+
+// ── Volume Surge Filter ──
+grp_vol         = "Volume Z-Score Surge Filter"
+vol_len         = input.int(20, "Volume Baseline Length", minval=5, group=grp_vol)
+vol_z_thresh    = input.float(0.40, "Volume Z-Score Threshold", minval=0.0, step=0.1, group=grp_vol, tooltip="Minimum volume standard deviations above mean to confirm institutional order flow")
+
+// ── Risk & Execution Parameters ──
+grp_risk        = "Risk, Target & Holding Rules"
+sl_pct          = input.float(0.25, "Stop Loss %", minval=0.05, maxval=2.0, step=0.05, group=grp_risk, tooltip="Structural stop loss distance (typically ~$11.00 Gold move, 0.50% account risk)")
+tp1_pct         = input.float(0.50, "Take Profit 1 % (1:2 R:R)", minval=0.10, maxval=5.0, step=0.05, group=grp_risk, tooltip="Primary scalp target (~$22.00 Gold move, 1:2 Risk/Reward)")
+tp2_pct         = input.float(0.75, "Take Profit 2 % (1:3 Runner)", minval=0.10, maxval=10.0, step=0.05, group=grp_risk, tooltip="Extended runner target (~$33.00 Gold move, 1:3 Risk/Reward)")
+min_hold_bars   = input.int(2, "Min Holding Bars (GFT Anti-Arbitrage)", minval=2, maxval=5, group=grp_risk, tooltip="Goat Funded Trader rule: Trades MUST be held for minimum 120 seconds (2 bars on 1m)")
+max_hold_bars   = input.int(15, "Max Holding Bars (Scalp Cutoff)", minval=5, maxval=30, group=grp_risk, tooltip="Maximum time to hold momentum scalp before closing at market to prevent session chop")
+
+// ── Goat Funded Trader Prop Firm Dashboard ──
+grp_gft         = "Goat Funded Trader (GFT) Account Dashboard"
+show_hud        = input.bool(true, "Show Prop Firm Risk HUD Table", group=grp_gft)
+account_size    = input.int(100000, "Account Size ($)", options=[25000, 50000, 100000, 200000], group=grp_gft)
+trade_risk_pct  = input.float(0.50, "Risk Per Trade %", minval=0.1, maxval=2.0, step=0.1, group=grp_gft, tooltip="Maximum risk allowed per trade (GFT optimal = 0.50%)")
+profit_tgt_pct  = input.float(8.0, "Phase 1 Profit Target %", group=grp_gft)
+consistency_pct = input.float(15.0, "GFT Consistency Cap %", group=grp_gft, tooltip="No single trading day may exceed 15% of total profit target")
+
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// 2. INDICATOR & SESSION COMPUTATION
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ── Session Time Detection (UTC) ──
+in_london       = not na(time(timeframe.period, london_session, "UTC"))
+in_ny           = not na(time(timeframe.period, ny_session, "UTC"))
+in_overlap      = in_london and in_ny
+session_valid   = in_london or in_ny
+
+// ── Session Background Highlight ──
+bgcolor(show_session_bg and in_overlap ? color.new(color.purple, 90) : show_session_bg and in_london ? col_london_bg : show_session_bg and in_ny ? col_ny_bg : na)
+
+// ── Moving Average Momentum Ribbon ──
+ema_fast        = ta.ema(close, ema_fast_len)
+ema_med         = ta.ema(close, ema_med_len)
+ema_macro       = ta.ema(close, ema_macro_len)
+
+// ── 15-Minute Dynamic Range Expansion Extremes ──
+hh_range        = ta.highest(high[1], range_len)
+ll_range        = ta.lowest(low[1], range_len)
+
+// ── Volume Z-Score ──
+vol_mean        = ta.sma(volume, vol_len)
+vol_std         = ta.stdev(volume, vol_len)
+vol_z           = vol_std > 0 ? (volume - vol_mean) / vol_std : 0.0
+
+// ── ATR (14) ──
+atr_val         = ta.atr(14)
+
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// 3. TRADE SIGNALS & STATE MACHINE
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+var int   trade_side        = 0      // 0 = Flat, 1 = Long, -1 = Short
+var float trade_entry_price = na
+var float trade_sl          = na
+var float trade_tp1         = na
+var float trade_tp2         = na
+var int   trade_entry_bar   = na
+
+// ── Entry Conditions ──
+macro_long_ok   = not use_macro_filt or (close > ema_macro)
+macro_short_ok  = not use_macro_filt or (close < ema_macro)
+
+long_entry_sig  = session_valid and (close > hh_range) and (ema_fast > ema_med) and (vol_z > vol_z_thresh) and macro_long_ok
+short_entry_sig = session_valid and (close < ll_range) and (ema_fast < ema_med) and (vol_z > vol_z_thresh) and macro_short_ok
+
+// Prevent entering new trade if one is active
+buy_trigger     = long_entry_sig and (trade_side == 0)
+sell_trigger    = short_entry_sig and (trade_side == 0)
+
+// ── Trade Activation ──
+if buy_trigger
+    trade_side        := 1
+    trade_entry_price := close
+    trade_sl          := math.round_to_mintick(close * (1.0 - sl_pct / 100.0))
+    trade_tp1         := math.round_to_mintick(close * (1.0 + tp1_pct / 100.0))
+    trade_tp2         := math.round_to_mintick(close * (1.0 + tp2_pct / 100.0))
+    trade_entry_bar   := bar_index
+
+if sell_trigger
+    trade_side        := -1
+    trade_entry_price := close
+    trade_sl          := math.round_to_mintick(close * (1.0 + sl_pct / 100.0))
+    trade_tp1         := math.round_to_mintick(close * (1.0 - tp1_pct / 100.0))
+    trade_tp2         := math.round_to_mintick(close * (1.0 - tp2_pct / 100.0))
+    trade_entry_bar   := bar_index
+
+// ── Trade Resolution & Holding Compliance Verification ──
+bars_held       = trade_side != 0 ? (bar_index - trade_entry_bar) : 0
+var string exit_msg = ""
+exit_trade      = false
+
+if trade_side == 1 // ACTIVE LONG
+    if close <= trade_sl
+        exit_msg    := "SL Hit (-" + str.tostring(sl_pct, "0.2") + "%)"
+        exit_trade  := true
+    else if close >= trade_tp1 and bars_held >= min_hold_bars
+        exit_msg    := "TP1 Hit (+" + str.tostring(tp1_pct, "0.2") + "% | " + str.tostring(bars_held) + "m hold)"
+        exit_trade  := true
+    else if bars_held >= max_hold_bars
+        exit_msg    := "Max 15m Cutoff (" + str.tostring((close - trade_entry_price) / trade_entry_price * 100.0, "+0.2") + "%)"
+        exit_trade  := true
+
+else if trade_side == -1 // ACTIVE SHORT
+    if close >= trade_sl
+        exit_msg    := "SL Hit (-" + str.tostring(sl_pct, "0.2") + "%)"
+        exit_trade  := true
+    else if close <= trade_tp1 and bars_held >= min_hold_bars
+        exit_msg    := "TP1 Hit (+" + str.tostring(tp1_pct, "0.2") + "% | " + str.tostring(bars_held) + "m hold)"
+        exit_trade  := true
+    else if bars_held >= max_hold_bars
+        exit_msg    := "Max 15m Cutoff (" + str.tostring((trade_entry_price - close) / trade_entry_price * 100.0, "+0.2") + "%)"
+        exit_trade  := true
+
+if exit_trade
+    trade_side := 0
+
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// 4. CHART PLOTS & VISUAL ANNOTATIONS
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+// ── Momentum Ribbon Plots ──
+p_fast  = plot(ema_fast, "EMA 9 (Fast)", color=color.new(color.teal, 10), linewidth=2)
+p_med   = plot(ema_med, "EMA 21 (Medium)", color=color.new(color.orange, 10), linewidth=2)
+fill(p_fast, p_med, color=ema_fast > ema_med ? color.new(color.teal, 85) : color.new(color.orange, 85), title="Momentum Ribbon Cloud")
+
+plot(ema_macro, "EMA 200 (Macro)", color=color.new(color.yellow, 20), linewidth=2)
+
+// ── 15-Minute Dynamic Extremes Plots ──
+plot(hh_range, "15m Highest High", color=color.new(color.emerald, 60), style=plot.style_linebr, linewidth=1)
+plot(ll_range, "15m Lowest Low", color=color.new(color.rose, 60), style=plot.style_linebr, linewidth=1)
+
+// ── Entry Shapes ──
+plotshape(buy_trigger, "Buy Signal", shape.triangleup, location.belowbar, color.emerald, size=size.normal)
+plotshape(sell_trigger, "Sell Signal", shape.triangledown, location.abovebar, color.rose, size=size.normal)
+
+// ── Trade Visual Labels ──
+if buy_trigger
+    label.new(
+         bar_index, low - atr_val,
+         "🟢 BUY SCALP\nEntry: $" + str.tostring(trade_entry_price, "#.##") +
+         "\nSL: $" + str.tostring(trade_sl, "#.##") + " (-" + str.tostring(sl_pct, "0.2") + "%)" +
+         "\nTP1: $" + str.tostring(trade_tp1, "#.##") + " (+" + str.tostring(tp1_pct, "0.2") + "%)" +
+         "\n🔒 Hold Lock: Min 2m | Max 15m",
+         color=color.new(#0d5242, 10), textcolor=color.white, style=label.style_label_up, size=size.small
+     )
+
+if sell_trigger
+    label.new(
+         bar_index, high + atr_val,
+         "🔴 SELL SCALP\nEntry: $" + str.tostring(trade_entry_price, "#.##") +
+         "\nSL: $" + str.tostring(trade_sl, "#.##") + " (-" + str.tostring(sl_pct, "0.2") + "%)" +
+         "\nTP1: $" + str.tostring(trade_tp1, "#.##") + " (+" + str.tostring(tp1_pct, "0.2") + "%)" +
+         "\n🔒 Hold Lock: Min 2m | Max 15m",
+         color=color.new(#5c1d1d, 10), textcolor=color.white, style=label.style_label_down, size=size.small
+     )
+
+if exit_trade
+    label.new(
+         bar_index, close,
+         "🏁 EXIT: " + exit_msg,
+         color=color.new(#1f242d, 15), textcolor=color.yellow,
+         style=label.style_label_left, size=size.tiny
+     )
+
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// 5. GOAT FUNDED TRADER (GFT) RISK HUD TABLE
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+var table hud = table.new(position.top_right, 2, 9, bgcolor=color.new(#0f141c, 10), border_color=color.new(#30363d, 0), border_width=1)
+
+if show_hud and barstate.islast
+    // Calculate GFT Sizing Metrics
+    risk_dollars       = account_size * (trade_risk_pct / 100.0)
+    sl_points          = (close * (sl_pct / 100.0))
+    // Gold: 1 Lot = 100 oz -> $1.00 move per lot = $100
+    suggested_lots     = math.round(risk_dollars / (sl_points * 100.0 + 1e-6), 2)
+    suggested_lots     := math.max(0.01, math.min(50.0, suggested_lots))
+    
+    daily_budget_soft  = account_size * 0.015 // 1.5% soft budget
+    daily_loss_hard    = account_size * 0.030 // 3.0% GFT hard daily cap
+    consistency_cap    = (account_size * (profit_tgt_pct / 100.0)) * (consistency_pct / 100.0)
+    
+    session_label      = in_overlap ? "🟢 LONDON / NY OVERLAP" : in_london ? "🔵 LONDON SESSION" : in_ny ? "🟣 NEW YORK SESSION" : "⚪ CLOSED / ASIAN DRIFT"
+    session_col        = in_overlap ? color.purple : in_london ? color.blue : in_ny ? color.fuchsia : color.gray
+    
+    table.cell(hud, 0, 0, "🐐 GOAT FUNDED TRADER", text_color=color.yellow, text_size=size.small, text_halign=text.halign_left)
+    table.cell(hud, 1, 0, "XAUUSD GIT-15", text_color=color.white, text_size=size.small, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 1, "Session Status", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 1, session_label, text_color=session_col, text_size=size.tiny, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 2, "Account Size", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 2, "$" + str.tostring(account_size, "#,###"), text_color=color.white, text_size=size.tiny, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 3, "Max Risk / Trade (0.5%)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 3, "$" + str.tostring(risk_dollars, "#,###") + " (" + str.tostring(suggested_lots, "0.00") + " Lots)", text_color=color.aqua, text_size=size.tiny, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 4, "Daily Loss Limit (3.0%)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 4, "-$" + str.tostring(daily_loss_hard, "#,###") + " (Safe: $" + str.tostring(daily_budget_soft, "#,###") + ")", text_color=color.rose, text_size=size.tiny, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 5, "15% Consistency Ceiling", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 5, "$" + str.tostring(consistency_cap, "#,###") + " Max Daily PnL", text_color=color.orange, text_size=size.tiny, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 6, "Min Hold Clock (Anti-Arb)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 6, "2 Minutes (120s Locked)", text_color=color.yellow, text_size=size.tiny, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 7, "Max Scalp Cutoff", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 7, "15 Minutes (Forced Exit)", text_color=color.orange, text_size=size.tiny, text_halign=text.halign_right)
+
+    table.cell(hud, 0, 8, "Vol Z-Score | ATR (14)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
+    table.cell(hud, 1, 8, str.tostring(vol_z, "+0.2") + "σ | $" + str.tostring(atr_val, "#.##"), text_color=vol_z > vol_z_thresh ? color.emerald : color.gray, text_size=size.tiny, text_halign=text.halign_right)
+
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// 6. ALERTS (TELEGRAM & WEBHOOK COMPATIBLE)
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+
+alertcondition(buy_trigger, title="GFT Buy Scalp Signal", message='{"event": "SIGNAL_TRIGGERED", "pair": "XAU/USD", "action": "BUY", "price": {{close}}, "strategy": "GoatFundedTraderXauusdScalper", "min_hold": "2m", "max_hold": "15m"}')
+
+alertcondition(sell_trigger, title="GFT Sell Scalp Signal", message='{"event": "SIGNAL_TRIGGERED", "pair": "XAU/USD", "action": "SELL", "price": {{close}}, "strategy": "GoatFundedTraderXauusdScalper", "min_hold": "2m", "max_hold": "15m"}')
+
+alertcondition(exit_trade, title="GFT Trade Exit", message='{"event": "TRADE_CLOSED", "pair": "XAU/USD", "price": {{close}}, "reason": "EXIT"}')
