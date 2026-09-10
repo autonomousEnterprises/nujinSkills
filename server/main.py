@@ -117,6 +117,12 @@ async def get_signals():
     active = signal_store.get_active()
     return {"signals": signals_list, "active_signal": active}
 
+@app.post("/api/signals/clear")
+async def clear_signals():
+    signal_store.clear()
+    await manager.broadcast({"event_type": "SIGNALS_CLEARED", "payload": []})
+    return {"status": "SUCCESS", "message": "All test signals cleared."}
+
 @app.post("/api/broadcast")
 async def broadcast_event(envelope: EventEnvelope):
     logger.info(f"Broadcast event received: {envelope.event_type}")

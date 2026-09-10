@@ -253,6 +253,13 @@ class SignalStore:
         logger.info(f"[SignalStore] Signal #{new_id} added: {entry['action']} @ {entry['price']}")
         return updated
 
+    def clear(self) -> List[Dict[str, Any]]:
+        """Clears all signals from disk and resets signals_count to 0."""
+        _write_json_locked(self._path, [])
+        state_manager.patch({"signals_count": 0})
+        logger.info("[SignalStore] All signals cleared.")
+        return []
+
     def get_stats(self) -> Dict[str, Any]:
         """
         Compute live performance stats from closed signals.

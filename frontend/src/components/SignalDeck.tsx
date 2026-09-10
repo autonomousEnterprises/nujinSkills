@@ -3,7 +3,7 @@ import { SignalData, WidgetData } from '../hooks/useWebSocket';
 import {
   Send, Zap, Cpu, CheckCircle2, ShieldCheck, ArrowUpRight, ArrowDownRight,
   Clock, Target, AlertTriangle, RefreshCw, Activity, MessageSquare,
-  TrendingUp, BarChart3, Award, Percent, DollarSign, XCircle
+  TrendingUp, BarChart3, Award, Percent, DollarSign, XCircle, Trash2
 } from 'lucide-react';
 
 interface SignalDeckProps {
@@ -103,6 +103,18 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
       await fetchSignals();
     } catch (e) {
       console.error('Stop bot failed:', e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleClearSignals = async () => {
+    try {
+      setActionLoading(true);
+      await fetch('/api/signals/clear', { method: 'POST' });
+      await fetchSignals();
+    } catch (e) {
+      console.error('Clear signals failed:', e);
     } finally {
       setActionLoading(false);
     }
@@ -275,6 +287,16 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
+            </button>
+
+            <button
+              onClick={handleClearSignals}
+              disabled={actionLoading}
+              title="Clear all signals"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border transition-all text-xs ${isDark ? 'bg-[#21262d] border-[#30363d] text-slate-400 hover:text-rose-400 hover:border-rose-800' : 'bg-slate-200 border-slate-300 text-slate-600 hover:text-rose-600'}`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear</span>
             </button>
           </div>
         </div>
