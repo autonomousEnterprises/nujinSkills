@@ -487,21 +487,21 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
 
       {/* ── AGGREGATED PORTFOLIO PERFORMANCE (TOP OF SCREEN) ──────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Card 1: Active Parallel Bots */}
+        {/* Card 1: Active Strategies in Bot */}
         <div className={`border p-3 rounded-lg flex flex-col justify-between ${
           isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
           <span className={`text-[10px] flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            <Play className="w-3.5 h-3.5 text-emerald-400" /> ACTIVE IN PARALLEL
+            <Play className="w-3.5 h-3.5 text-emerald-400" /> ACTIVE STRATEGIES IN BOT
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-bold text-emerald-400">{portfolio.active_count}</span>
-            <span className="text-[11px] text-emerald-500/80 font-bold">Concurrent Bots</span>
+            <span className="text-[11px] text-emerald-500/80 font-bold">Active Strategies</span>
           </div>
           <div className="text-[10px] text-slate-400 truncate mt-1">
             {portfolio.active_strategies.length > 0
               ? portfolio.active_strategies.join(', ')
-              : 'No strategies currently live'}
+              : 'No strategies currently active in bot'}
           </div>
         </div>
 
@@ -599,7 +599,7 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
-          <span>Leaderboard &amp; Parallel Bot Control</span>
+          <span>Leaderboard &amp; Strategy Control</span>
         </button>
 
         <button

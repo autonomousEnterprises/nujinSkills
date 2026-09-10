@@ -24,20 +24,19 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const isDark = theme === 'dark';
 
-  // Truly activated live bots (status: ACTIVE_LIVE)
-  const effectiveActiveBots = (activeBots && activeBots.length > 0)
+  // Truly activated live strategies within the bot (status: ACTIVE_LIVE)
+  const effectiveActiveStrategies = (activeBots && activeBots.length > 0)
     ? activeBots
     : (activeStrategy ? [activeStrategy] : []);
 
-  const hasActiveBot = effectiveActiveBots.length > 0;
-  const primaryActiveBot = hasActiveBot ? effectiveActiveBots[0].replace('.py', '') : null;
-  const otherActiveCount = effectiveActiveBots.length > 1 ? effectiveActiveBots.length - 1 : 0;
+  const activeCount = effectiveActiveStrategies.length;
+  const primaryActiveStrat = activeCount > 0 ? effectiveActiveStrategies[0].replace('.py', '') : null;
 
   // Currently viewed / inspected strategy (e.g. In Chart or Backtest)
   const cleanViewingName = viewingStrategy ? viewingStrategy.replace('.py', '') : '';
   const isViewingDifferent = Boolean(
     cleanViewingName &&
-    (!primaryActiveBot || cleanViewingName.toLowerCase() !== primaryActiveBot.toLowerCase())
+    (!primaryActiveStrat || cleanViewingName.toLowerCase() !== primaryActiveStrat.toLowerCase())
   );
 
   return (
@@ -59,31 +58,36 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        {/* Active bot(s) status badge */}
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded border transition-colors ${
-          hasActiveBot
-            ? (isDark ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-300' : 'bg-emerald-50 border-emerald-300 text-emerald-900')
-            : (isDark ? 'bg-[#0d1117] border-slate-800 text-slate-500' : 'bg-slate-100 border-slate-300 text-slate-500')
-        }`}>
+        {/* Active strategies total count badge */}
+        <div
+          title={
+            activeCount > 0
+              ? `Active strategies executing in bot: ${effectiveActiveStrategies.map((b) => b.replace('.py', '')).join(', ')}`
+              : 'No strategies currently active in bot'
+          }
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded border transition-colors ${
+            activeCount > 0
+              ? (isDark ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-300' : 'bg-emerald-50 border-emerald-300 text-emerald-900')
+              : (isDark ? 'bg-[#0d1117] border-slate-800 text-slate-500' : 'bg-slate-100 border-slate-300 text-slate-500')
+          }`}
+        >
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-            hasActiveBot ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+            activeCount > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
           }`} />
           <span className={`text-[10px] uppercase font-bold ${
-            hasActiveBot ? (isDark ? 'text-emerald-500' : 'text-emerald-700') : 'text-slate-500'
+            activeCount > 0 ? (isDark ? 'text-emerald-500' : 'text-emerald-700') : 'text-slate-500'
           }`}>
-            {hasActiveBot ? (otherActiveCount > 0 ? `Active Bots (${effectiveActiveBots.length}):` : 'Active Bot:') : 'Active Bot:'}
+            Active Strategies:
           </span>
-          <span className={`font-bold text-[11px] ${
-            hasActiveBot ? 'text-emerald-400' : 'text-slate-400'
+          <span className={`font-bold text-[11px] flex items-center gap-1 ${
+            activeCount > 0 ? 'text-emerald-400' : 'text-slate-400'
           }`}>
-            {hasActiveBot ? (
-              <span>
-                {primaryActiveBot}
-                {otherActiveCount > 0 && (
-                  <span className="text-emerald-500/80 font-normal ml-1">+{otherActiveCount} more</span>
-                )}
+            <span>{activeCount}</span>
+            {activeCount > 0 && primaryActiveStrat && (
+              <span className="text-[10px] text-emerald-500/80 font-normal truncate max-w-[200px] hidden md:inline">
+                ({primaryActiveStrat}{activeCount > 1 ? ` +${activeCount - 1}` : ''})
               </span>
-            ) : 'NONE (IDLE)'}
+            )}
           </span>
         </div>
 

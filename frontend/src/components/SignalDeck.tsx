@@ -350,7 +350,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                   SIGNAL DECK — MULTI-STRATEGY TELEMETRY GATEWAY
                 </span>
                 <span className="px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-700 text-indigo-400 text-[10px] font-bold">
-                  {activeBots.length} BOTS ACTIVE IN PARALLEL
+                  {activeBots.length} STRATEGIES ACTIVE IN BOT
                 </span>
                 <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${
                   systemStatus?.bot?.is_running
@@ -358,8 +358,8 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                     : 'bg-slate-800/80 border-slate-700 text-slate-400'
                 }`}>
                   {systemStatus?.bot?.is_running
-                    ? `🟢 SUPERVISOR: RUNNING (${activeBots.length} Active)`
-                    : '🔴 SUPERVISOR: IDLE / DRY-RUN'}
+                    ? `🟢 BOT: RUNNING (${activeBots.length} Active Strats)`
+                    : '🔴 BOT: STOPPED / IDLE'}
                 </span>
                 <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${
                   systemStatus?.telegram?.configured
@@ -506,7 +506,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                 disabled={actionLoading}
                 className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-all text-xs font-bold"
               >
-                <XCircle className="w-3 h-3" /> Stop All Active Bots
+                <XCircle className="w-3 h-3" /> Stop Bot Execution
               </button>
             )}
           </div>
