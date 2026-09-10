@@ -187,7 +187,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const activeCandleRef = useRef<{ time: Time; open: number; high: number; low: number; close: number; volume: number } | null>(null);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [positionBoxes, setPositionBoxes] = useState<PositionBoxCoord[]>([]);
-  const [selectedTradeIndex, setSelectedTradeIndex] = useState<number | null>(null);
   const [activeTradeLevels, setActiveTradeLevels] = useState<{
     entry: number;
     sl: number;
@@ -389,47 +388,44 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     };
   }, [selectedSymbol]);
 
-  // Sync Default Selected Historical Trade
-  useEffect(() => {
-    if (tradesDetail && tradesDetail.length > 0) {
-      setSelectedTradeIndex((prev) => {
-        if (prev === null || prev < 0 || prev >= tradesDetail.length) {
-          return tradesDetail.length - 1;
-        }
-        return prev;
-      });
-    } else {
-      setSelectedTradeIndex(null);
-    }
-  }, [tradesDetail]);
-
-  // Center Chart onto Given Trade
-  const centerOnTrade = (trade: TradeDetail) => {
-    if (!chartRef.current || !trade) return;
-    try {
-      const t = trade.entry_time;
-      const tExit = trade.exit_time || (t + 15 * 60);
-      const span = Math.max(tExit - t, 3600);
-      chartRef.current.timeScale().setVisibleRange({
-        from: (t - span * 3) as Time,
-        to: (tExit + span * 3) as Time,
-      });
-      setTimeout(updateBoxCoordinates, 50);
-    } catch (e) {}
-  };
-
-  // 3. Trade Markers & Active/Historical Trade Levels Resolution
+  // 3. Trade Markers & Active Signal Level Resolution
   useEffect(() => {
     if (candles.length === 0) return;
     const maxTime = candles[candles.length - 1].time as number;
     const candleTimeSet = new Set(candles.map((c) => c.time as number));
 
-    // A. Resolve Active Trade Levels for Entry, SL, TP Lines
-    if (latestSignal && latestSignal.entry_price && (latestSignal.status === 'ACTIVE_IN_POSITION' || !latestSignal.exit_price)) {
-      const entry = latestSignal.entry_price;
-      const isBuy = latestSignal.action === 'BUY' || latestSignal.action === 'LONG';
-      const sl = latestSignal.stop_loss || (isBuy ? entry * 0.9975 : entry * 1.0025);
-      const tp = latestSignal.take_profit || (isBuy ? entry * 1.0030 : entry * 0.9970);
+    // A. Resolve Active Signal for Entry, SL, TP Lines
+    // CRITICAL: Entry, SL, TP lines must ONLY be plotted when an ACTIVE signal currently exists.
+    let currentActiveSignal: any = null;
+
+    if (latestSignal) {
+      const isClosed = Boolean(
+        latestSignal.exit_price ||
+        latestSignal.exit_reason ||
+        latestSignal.status === 'COMPLETED' ||
+        latestSignal.status === 'CLOSED'
+      );
+      const entryPrice = Number(latestSignal.entry_price || latestSignal.price || 0);
+      if (!isClosed && entryPrice > 0 && latestSignal.status === 'ACTIVE_IN_POSITION') {
+        currentActiveSignal = latestSignal;
+      }
+    }
+
+    // Also check if any trade in tradesDetail is still actively in position
+    if (!currentActiveSignal && tradesDetail && tradesDetail.length > 0) {
+      const openTrade = tradesDetail.find(
+        (tr) => tr.exit_reason === 'ACTIVE_IN_POSITION' || tr.status === 'ACTIVE_IN_POSITION'
+      );
+      if (openTrade && openTrade.entry_price > 0) {
+        currentActiveSignal = openTrade;
+      }
+    }
+
+    if (currentActiveSignal) {
+      const entry = Number(currentActiveSignal.entry_price || currentActiveSignal.price);
+      const isBuy = currentActiveSignal.action === 'BUY' || currentActiveSignal.action === 'LONG' || currentActiveSignal.side === 'LONG';
+      const sl = Number(currentActiveSignal.stop_loss || (isBuy ? entry * 0.9975 : entry * 1.0025));
+      const tp = Number(currentActiveSignal.take_profit || (isBuy ? entry * 1.0030 : entry * 0.9970));
       const risk = Math.abs(entry - sl);
       const reward = Math.abs(tp - entry);
       const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.20';
@@ -438,40 +434,17 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         sl,
         tp,
         rr,
-        side: latestSignal.action || (isBuy ? 'LONG' : 'SHORT'),
-        tradeId: 'LIVE',
+        side: currentActiveSignal.action || currentActiveSignal.side || (isBuy ? 'LONG' : 'SHORT'),
+        tradeId: currentActiveSignal.id || 'LIVE',
         exitReason: 'ACTIVE_IN_POSITION',
         isLive: true,
       });
-    } else if (tradesDetail && tradesDetail.length > 0) {
-      const idx = selectedTradeIndex !== null && selectedTradeIndex >= 0 && selectedTradeIndex < tradesDetail.length
-        ? selectedTradeIndex
-        : tradesDetail.length - 1;
-      const tr = tradesDetail[idx];
-      if (tr) {
-        const entry = tr.entry_price;
-        const sl = tr.stop_loss;
-        const tp = tr.take_profit;
-        const risk = Math.abs(entry - sl);
-        const reward = Math.abs(tp - entry);
-        const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.20';
-        setActiveTradeLevels({
-          entry,
-          sl,
-          tp,
-          rr,
-          side: tr.side,
-          tradeId: tr.id,
-          exitReason: tr.exit_reason,
-          pnlPct: tr.pnl_pct,
-          isLive: false,
-        });
-      }
     } else {
+      // No active signal currently: do NOT plot Entry, SL, or TP lines
       setActiveTradeLevels(null);
     }
 
-    // B. Resolve Display Markers
+    // B. Resolve Historical & Live Display Markers
     const validMarkers: SeriesMarker<Time>[] = [];
     if (tradeMarkers && tradeMarkers.length > 0) {
       for (const m of tradeMarkers) {
@@ -488,54 +461,28 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       }
     }
 
-    // If live upcoming signal exists, add live signal marker
-    if (latestSignal && latestSignal.entry_price) {
-      const isBuy = latestSignal.action === 'BUY' || latestSignal.action === 'LONG';
-      const sigTs = latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : maxTime;
+    // If an active live signal exists, add live signal marker
+    if (currentActiveSignal) {
+      const isBuy = currentActiveSignal.action === 'BUY' || currentActiveSignal.action === 'LONG' || currentActiveSignal.side === 'LONG';
+      const sigTs = currentActiveSignal.timestamp ? Math.floor(currentActiveSignal.timestamp / 1000) : maxTime;
       const markerTime = sigTs >= maxTime ? maxTime : (candleTimeSet.has(sigTs) ? sigTs : maxTime);
       validMarkers.push({
         time: markerTime as Time,
         position: isBuy ? 'belowBar' : 'aboveBar',
         color: isBuy ? '#10b981' : '#ef4444',
         shape: isBuy ? 'arrowUp' : 'arrowDown',
-        text: `LIVE: ${latestSignal.action || 'SIGNAL'} @ $${latestSignal.entry_price.toFixed(2)}`,
+        text: `LIVE: ${currentActiveSignal.action || currentActiveSignal.side || 'SIGNAL'} @ $${Number(currentActiveSignal.entry_price || currentActiveSignal.price).toFixed(2)}`,
       });
     }
 
     // Must be sorted in ascending order of time for lightweight-charts
     validMarkers.sort((a, b) => (a.time as number) - (b.time as number));
     setDisplayMarkers(validMarkers);
-  }, [selectedStrategy, tradeMarkers, tradesDetail, candles, latestSignal, selectedTradeIndex]);
+  }, [selectedStrategy, tradeMarkers, tradesDetail, candles, latestSignal]);
 
-  // 4. Precision Clamped Position Box Resolution
+  // 4. Precision Clamped Position Box Resolution (Only active when an active trade signal exists)
   const updateBoxCoordinates = () => {
-    if (!showPositionBox || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current || candles.length === 0) {
-      setPositionBoxes([]);
-      return;
-    }
-
-    let targetTrade: any = null;
-    let isLiveTrade = false;
-
-    if (latestSignal && latestSignal.entry_price && (latestSignal.status === 'ACTIVE_IN_POSITION' || !latestSignal.exit_price)) {
-      targetTrade = {
-        id: 'LIVE',
-        entry_time: latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : candles[candles.length - 1]?.time,
-        entry_price: latestSignal.entry_price,
-        stop_loss: latestSignal.stop_loss || (latestSignal.action === 'BUY' ? latestSignal.entry_price * 0.9975 : latestSignal.entry_price * 1.0025),
-        take_profit: latestSignal.take_profit || (latestSignal.action === 'BUY' ? latestSignal.entry_price * 1.0030 : latestSignal.entry_price * 0.9970),
-        exit_time: candles[candles.length - 1]?.time,
-        pnl_pct: 0,
-      };
-      isLiveTrade = true;
-    } else if (tradesDetail && tradesDetail.length > 0) {
-      const idx = selectedTradeIndex !== null && selectedTradeIndex >= 0 && selectedTradeIndex < tradesDetail.length
-        ? selectedTradeIndex
-        : tradesDetail.length - 1;
-      targetTrade = tradesDetail[idx];
-    }
-
-    if (!targetTrade || !targetTrade.entry_price) {
+    if (!showPositionBox || !activeTradeLevels || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current || candles.length === 0) {
       setPositionBoxes([]);
       return;
     }
@@ -545,7 +492,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const containerHeight = chartContainerRef.current.clientHeight || 400;
     const containerWidth = chartContainerRef.current.clientWidth || 800;
 
-    const yEntryRaw = series.priceToCoordinate(targetTrade.entry_price);
+    const yEntryRaw = series.priceToCoordinate(activeTradeLevels.entry);
     if (yEntryRaw === null) {
       setPositionBoxes([]);
       return;
@@ -554,37 +501,23 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const getBoundedY = (price: number) => {
       const y = series.priceToCoordinate(price);
       if (y === null || isNaN(y)) {
-        return price > targetTrade.entry_price ? 0 : containerHeight;
+        return price > activeTradeLevels.entry ? 0 : containerHeight;
       }
       return Math.max(0, Math.min(containerHeight, y));
     };
 
     const yEntry = yEntryRaw;
-    const ySL = getBoundedY(targetTrade.stop_loss);
-    const yTP = getBoundedY(targetTrade.take_profit);
+    const ySL = getBoundedY(activeTradeLevels.sl);
+    const yTP = getBoundedY(activeTradeLevels.tp);
 
-    let x1Raw = chart.timeScale().timeToCoordinate(targetTrade.entry_time as Time);
-    let x2Raw: number | null = null;
-
-    if (isLiveTrade || !targetTrade.exit_time || targetTrade.exit_reason === 'ACTIVE_IN_POSITION') {
-      const lastCandleX = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
-      x2Raw = lastCandleX !== null ? lastCandleX + 80 : containerWidth - 65;
-    } else {
-      x2Raw = chart.timeScale().timeToCoordinate(targetTrade.exit_time as Time);
-    }
-
-    if (x1Raw === null && x2Raw === null) {
-      setPositionBoxes([]);
-      return;
-    }
-
-    const startX = x1Raw !== null ? x1Raw : (x2Raw! - 100);
-    const endX = x2Raw !== null ? x2Raw : (x1Raw! + 100);
+    const lastCandle = candles[candles.length - 1];
+    const x1Raw = chart.timeScale().timeToCoordinate(lastCandle.time as Time);
+    const startX = x1Raw !== null ? x1Raw - 40 : containerWidth - 160;
+    const endX = containerWidth - 65;
     const leftX = Math.max(0, Math.min(startX, endX));
-    const rightX = Math.min(containerWidth - 60, Math.max(startX, endX));
-    const width = Math.max(rightX - leftX, 32);
+    const width = Math.max(endX - leftX, 40);
 
-    const isLong = targetTrade.take_profit >= targetTrade.entry_price;
+    const isLong = activeTradeLevels.tp >= activeTradeLevels.entry;
     let yProfitTop: number, profitHeight: number, yLossTop: number, lossHeight: number;
 
     if (isLong) {
@@ -601,7 +534,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
     setPositionBoxes([
       {
-        id: targetTrade.id,
+        id: typeof activeTradeLevels.tradeId === 'number' ? activeTradeLevels.tradeId : 999,
         x: leftX,
         width,
         yEntry,
@@ -609,10 +542,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         profitHeight,
         yLossTop,
         lossHeight,
-        tpPrice: targetTrade.take_profit,
-        slPrice: targetTrade.stop_loss,
-        entryPrice: targetTrade.entry_price,
-        pnlPct: targetTrade.pnl_pct,
+        tpPrice: activeTradeLevels.tp,
+        slPrice: activeTradeLevels.sl,
+        entryPrice: activeTradeLevels.entry,
+        pnlPct: activeTradeLevels.pnlPct || 0,
       },
     ]);
   };
@@ -893,7 +826,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     if (chartRef.current && candleSeriesRef.current) {
       setTimeout(updateBoxCoordinates, 50);
     }
-  }, [tradesDetail, activeTradeLevels, displayMarkers, showPositionBox, selectedTradeIndex]);
+  }, [tradesDetail, activeTradeLevels, displayMarkers, showPositionBox]);
 
   const cleanStrategyName = (activeStrategy || selectedStrategy || '').replace('.py', '');
 
@@ -924,64 +857,21 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           </div>
         </div>
 
-        {/* Middle: Signal / Historical Trade Stepper */}
-        {tradesDetail && tradesDetail.length > 0 && (
-          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/90 border border-slate-700/80 font-mono text-[11px] shadow-sm">
-            <span className="text-slate-400 font-semibold">Signal:</span>
-            {activeTradeLevels?.isLive ? (
-              <span className="flex items-center gap-1.5 text-emerald-400 font-bold animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                LIVE ({activeTradeLevels.side})
-              </span>
-            ) : (
-              <>
-                <button
-                  onClick={() => {
-                    const cur = selectedTradeIndex ?? tradesDetail.length - 1;
-                    if (cur <= 0) return;
-                    setSelectedTradeIndex(cur - 1);
-                    centerOnTrade(tradesDetail[cur - 1]);
-                  }}
-                  disabled={(selectedTradeIndex ?? tradesDetail.length - 1) <= 0}
-                  className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-25 disabled:cursor-not-allowed text-white text-[10px] transition-all"
-                  title="Previous Historical Trade"
-                >
-                  ◀
-                </button>
-                <span className="text-sky-300 font-bold">
-                  #{(selectedTradeIndex ?? tradesDetail.length - 1) + 1}/{tradesDetail.length}
-                </span>
-                <span className={`text-[10px] font-bold ${((activeTradeLevels?.pnlPct ?? 0) >= 0) ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {activeTradeLevels?.side} {((activeTradeLevels?.pnlPct ?? 0) >= 0 ? '+' : '')}{activeTradeLevels?.pnlPct?.toFixed(2)}%
-                </span>
-                <button
-                  onClick={() => {
-                    const cur = selectedTradeIndex ?? tradesDetail.length - 1;
-                    if (cur >= tradesDetail.length - 1) return;
-                    setSelectedTradeIndex(cur + 1);
-                    centerOnTrade(tradesDetail[cur + 1]);
-                  }}
-                  disabled={(selectedTradeIndex ?? tradesDetail.length - 1) >= tradesDetail.length - 1}
-                  className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-25 disabled:cursor-not-allowed text-white text-[10px] transition-all"
-                  title="Next Historical Trade"
-                >
-                  ▶
-                </button>
-                <button
-                  onClick={() => {
-                    const lastIdx = tradesDetail.length - 1;
-                    setSelectedTradeIndex(lastIdx);
-                    centerOnTrade(tradesDetail[lastIdx]);
-                  }}
-                  className="ml-1 px-1.5 py-0.5 rounded bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/50 text-[9px] uppercase font-bold transition-all"
-                  title="Reset to Latest Trade"
-                >
-                  Latest
-                </button>
-              </>
-            )}
-          </div>
-        )}
+        {/* Middle: Live Signal Status Indicator */}
+        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/90 border border-slate-700/80 font-mono text-[11px] shadow-sm">
+          <span className="text-slate-400 font-semibold">Signal:</span>
+          {activeTradeLevels ? (
+            <span className="flex items-center gap-1.5 text-emerald-400 font-bold animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              LIVE {activeTradeLevels.side} @ ${activeTradeLevels.entry.toFixed(2)}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+              NONE ACTIVE (SCANNING)
+            </span>
+          )}
+        </div>
 
         {/* Right: Strategy Indicators Toggles */}
         <div className="flex items-center gap-1.5 font-mono text-[10px]">
