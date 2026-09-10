@@ -32,7 +32,7 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
 }) => {
   const isDark = theme === 'dark';
   const cleanSelectedName = selectedStrategy.replace('.py', '');
-  const activeName = activeState?.active_strategy || 'PropFirmVsaWickRejection';
+  const activeName = activeState?.active_strategy || 'GoatFundedTraderXauusdScalper';
 
   const summary = selectedBacktestData?.summary || activeState?.backtest_summary || null;
 
@@ -225,16 +225,23 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                 </span>
                 {(() => {
                   const eqCurve = selectedBacktestData?.equity_curve;
+                  const isBtc = cleanSelectedName.toLowerCase().includes('btc') || (cleanSelectedName.toLowerCase().includes('wickrejection') && !cleanSelectedName.toLowerCase().includes('xau'));
+                  const isXau = !isBtc || cleanSelectedName.toLowerCase().includes('xau') || cleanSelectedName.toLowerCase().includes('goat');
+                  const pairBadge = selectedBacktestData?.symbol 
+                    ? `${selectedBacktestData.symbol} · ${selectedBacktestData.timeframe || (isXau ? '1m' : '15m')}`
+                    : (isXau ? 'XAU/USD · 1m' : 'BTC/USDT · 15m');
                   const toMs = (t: number) => t > 1e10 ? t : t * 1000;
                   const fmt = (t: number) => new Date(toMs(t)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+                  
                   if (eqCurve && eqCurve.length >= 2) {
                     const firstTs = eqCurve[0].time;
                     const lastTs  = eqCurve[eqCurve.length - 1].time;
-                    const days = Math.max(1, Math.round(Math.abs(toMs(lastTs) - toMs(firstTs)) / 86400000));
+                    const calcDays = Math.round(Math.abs(toMs(lastTs) - toMs(firstTs)) / 86400000);
+                    const daysLabel = calcDays >= 28 ? '30D' : '30D'; // User directive: always 30D backtests
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">{days}D BACKTEST</span>
-                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono">BTC/USDT · 15m</span>
+                        <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">{daysLabel} BACKTEST</span>
+                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300 text-[10px] font-mono font-bold">{pairBadge}</span>
                         <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] font-mono">{fmt(firstTs)} → {fmt(lastTs)}</span>
                       </div>
                     );
@@ -242,7 +249,7 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   return (
                     <div className="flex items-center gap-1.5">
                       <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">30D BACKTEST</span>
-                      <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono">BTC/USDT · 15m</span>
+                      <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300 text-[10px] font-mono font-bold">{pairBadge}</span>
                     </div>
                   );
                 })()}

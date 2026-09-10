@@ -14,7 +14,7 @@ export const App: React.FC = () => {
     return 'dark';
   });
 
-  const [selectedStrategy, setSelectedStrategy] = useState<string>('PropFirmVsaWickRejection.py');
+  const [selectedStrategy, setSelectedStrategy] = useState<string>('GoatFundedTraderXauusdScalper.py');
   const [selectedBacktestData, setSelectedBacktestData] = useState<any>(null);
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loadingBacktest, setLoadingBacktest] = useState(false);
@@ -77,7 +77,18 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     fetchStrategies();
-    handleSelectStrategy(selectedStrategy);
+    fetch('/api/state')
+      .then((r) => r.json())
+      .then((s) => {
+        const strat = s?.active_strategy
+          ? (s.active_strategy.endsWith('.py') ? s.active_strategy : `${s.active_strategy}.py`)
+          : 'GoatFundedTraderXauusdScalper.py';
+        setSelectedStrategy(strat);
+        handleSelectStrategy(strat);
+      })
+      .catch(() => {
+        handleSelectStrategy('GoatFundedTraderXauusdScalper.py');
+      });
   }, []);
 
   // OS theme auto-detect
@@ -117,7 +128,7 @@ export const App: React.FC = () => {
         theme={theme}
         setTheme={setTheme}
         selectedStrategy={selectedStrategy}
-        activeStrategy={activeState?.active_strategy || 'PropFirmVsaWickRejection'}
+        activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
         strategies={strategies}
         onSelectStrategy={handleSelectStrategy}
         onActivateStrategy={handleActivateStrategy}
@@ -131,7 +142,7 @@ export const App: React.FC = () => {
           selectedStrategy={selectedStrategy}
           tradeMarkers={selectedBacktestData?.trade_markers || activeState?.trade_markers || []}
           tradesDetail={selectedBacktestData?.trades_detail || activeState?.trades_detail || []}
-          activeStrategy={activeState?.active_strategy || 'PropFirmVsaWickRejection'}
+          activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
         />
       </main>
 

@@ -11,6 +11,7 @@ from server.telegram_bot import telegram_gateway
 from server.bot_runner import bot_supervisor
 from server.data_manager import fetch_real_binance_klines
 from server.backtest_engine import run_real_backtest
+from server.xauusd_streamer import xauusd_engine
 
 # ── Unified State Manager — single source of truth for all consumers ──────────
 from server.state_manager import state_manager, signal_store
@@ -44,6 +45,12 @@ class DeployBotRequest(BaseModel):
 class SelectStrategyRequest(BaseModel):
     strategy: str
 
+class StartTradeRequest(BaseModel):
+    side: str
+    entry_price: Optional[float] = None
+    account_size: Optional[float] = 100000.0
+    lots: Optional[float] = 1.0
+
 @app.get("/api/health")
 async def health_check():
     return {
@@ -73,22 +80,27 @@ async def get_system_status():
     }
 
 @app.get("/api/candles")
-async def get_candles(symbol: str = "BTC/USDT", count: int = 500, mode: str = "live"):
+async def get_candles(symbol: Optional[str] = None, count: int = 1500, mode: str = "live"):
     """
-    Returns real OHLCV candles from Binance.
-    mode='live'    — most recent {count} candles (15m)
-    mode='backtest'— same feed, longer history (uses count param)
-    Raises HTTP 503 if Binance is unreachable. Never returns synthetic data.
+    Returns real OHLCV candles from Binance public API.
+    Auto-detects symbol and timeframe based on active strategy (XAU/USD 1m vs BTC/USDT 15m).
     """
+    if not symbol:
+        active_strat = state_manager.get().get("active_strategy", "GoatFundedTraderXauusdScalper")
+        is_gold = ("XAU" in active_strat.upper()) or ("GOAT" in active_strat.upper())
+        symbol = "XAU/USD" if is_gold else "BTC/USDT"
+
+    is_xau = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper()) or ("PAXG" in symbol.upper())
+    interval = "1m" if is_xau else "15m"
     try:
-        data = fetch_real_binance_klines(symbol=symbol, interval="15m", count=count)
+        data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
     except Exception as e:
         logger.error(f"[Candles] Failed to fetch real data for {symbol}: {e}")
         raise HTTPException(
             status_code=503,
             detail=f"Real market data unavailable for {symbol}. Binance API error: {str(e)}"
         )
-    return {"symbol": symbol, "mode": mode, "data": data}
+    return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
 
 
 @app.get("/api/widgets")
@@ -215,4 +227,71 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.debug(f"WS received: {data}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+# ── XAUUSD & Goat Funded Trader Prop Scalping Endpoints ──────────────────────
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    logger.info("[NujinSkillsServer] Launching XAUUSD Live Keyless Streamer & Signal Monitor...")
+    asyncio.create_task(xauusd_engine.run_live_feed(manager.broadcast))
+
+
+@app.get("/api/xauusd/quote")
+async def get_xauusd_quote():
+    """Live XAUUSD real-time quote, session filter status, indicators & active signal."""
+    return {
+        "quote": xauusd_engine.current_quote,
+        "session": xauusd_engine.is_session_active(),
+        "indicators": xauusd_engine.compute_indicators(),
+        "signal": xauusd_engine.generate_signal()
+    }
+
+
+@app.get("/api/xauusd/rules/gft")
+async def get_gft_rules(account_size: float = 100000.0):
+    """Calculates strict Goat Funded Trader prop firm drawdown limits and 15% consistency cap."""
+    profit_target = account_size * 0.08
+    return {
+        "account_size": account_size,
+        "daily_drawdown_limit_3pct": round(account_size * 0.03, 2),
+        "max_drawdown_limit_6pct": round(account_size * 0.06, 2),
+        "recommended_daily_loss_budget": round(account_size * 0.015, 2),
+        "recommended_per_trade_risk": round(account_size * 0.005, 2),
+        "consistency_15pct_daily_profit_cap": round(profit_target * 0.15, 2),
+        "min_holding_seconds": 120,
+        "max_holding_seconds": 900,
+        "trading_sessions": [
+            {"session": "London", "window_utc": "07:30 - 10:30 UTC"},
+            {"session": "New York", "window_utc": "12:45 - 16:30 UTC"}
+        ]
+    }
+
+
+@app.post("/api/xauusd/trade/start")
+async def start_xauusd_trade(req: StartTradeRequest):
+    """Starts tracking a manual XAUUSD scalp trade with 2m-15m countdown timer."""
+    status = xauusd_engine.start_manual_trade(
+        side=req.side,
+        entry_price=req.entry_price,
+        account_size=req.account_size or 100000.0,
+        lots=req.lots or 1.0
+    )
+    await manager.broadcast({"event_type": "XAUUSD_TRADE_STARTED", "payload": status})
+    return status
+
+
+@app.get("/api/xauusd/trade/status")
+async def get_xauusd_trade_status():
+    """Returns active trade timer (RED if < 120s, GREEN if >= 120s, ALERT if > 900s) and PnL."""
+    return xauusd_engine.get_active_trade_status()
+
+
+@app.post("/api/xauusd/trade/close")
+async def close_xauusd_trade():
+    """Closes active trade and logs result."""
+    res = xauusd_engine.close_manual_trade()
+    await manager.broadcast({"event_type": "XAUUSD_TRADE_CLOSED", "payload": res})
+    return res
+
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import subprocess
@@ -22,26 +23,53 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     candles_file = os.path.join(data_dir, "candles_15m.csv")
     returns_file = os.path.join(data_dir, "candidate_returns.json")
     
-    # 1. Sync 30 days of real market candles (2,880 15m bars up to current timestamp) if needed
-    if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
-        logger.info("[BacktestEngine] Syncing 30 days of real market data from Binance...")
-        try:
-            sync_30d_candles(symbol="BTC/USDT", output_path=candles_file)
-        except Exception as e_sync:
-            logger.warning(f"[BacktestEngine] Sync 30d candles warning: {e_sync}")
+    # 1. Sync market data candles if needed
+    clean_name = strategy_name.replace(".py", "")
+    is_xauusd = ("XAUUSD" in clean_name.upper()) or ("GOAT" in clean_name.upper())
+    
+    if is_xauusd:
+        candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")
+        if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
+            try:
+                from server.data_manager import sync_xauusd_scalp_candles
+                sync_xauusd_scalp_candles(output_path=candles_file)
+            except Exception as e_sync:
+                logger.warning(f"[BacktestEngine] Sync XAUUSD candles warning: {e_sync}")
+        cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_1m.csv", "--output", "data/features.csv"]
+    else:
+        if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
+            logger.info("[BacktestEngine] Syncing 30 days of real market data from Binance...")
+            try:
+                sync_30d_candles(symbol="BTC/USDT", output_path=candles_file)
+            except Exception as e_sync:
+                logger.warning(f"[BacktestEngine] Sync 30d candles warning: {e_sync}")
+        cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/candles_15m.csv", "--output", "data/features.csv"]
 
-    # Always generate fresh features.csv from real candles_15m.csv
-    logger.info("[BacktestEngine] Generating fresh feature set from 30-day market data...")
-    cmd_feat = ["python3", "tools/feature_miner.py", "--input", "data/candles_15m.csv", "--output", "data/features.csv"]
+    # Always generate fresh features.csv
+    logger.info(f"[BacktestEngine] Generating fresh feature set from {candles_file}...")
     subprocess.run(cmd_feat, cwd=cwd, check=True)
         
     # 2. Derive rule parameters & thesis based on strategy file name
-    clean_name = strategy_name.replace(".py", "")
-    if "TrapFade" in clean_name:
+    if is_xauusd:
+        wick_thresh = 0.40
+        vol_thresh = 0.3
+        stoploss_pct = 0.0006   # ~$2.60 gold move (0.50% account risk for GFT)
+        takeprofit_pct = 0.0014 # ~$6.10 gold move (1:2.33 Risk-Reward)
+        min_bars = 2            # Goat Funded Trader MINIMUM 2-minute holding rule
+        max_bars = 15           # MAXIMUM 15-minute scalp cutoff
+        trials = 100
+        thesis_props = {
+            "thesis": "Goat Funded Trader XAUUSD Momentum Train Pullback Rejection (2m-15m Window)",
+            "counterparty": "Late breakout chasers and dip traders swept by institutional momentum ribbon",
+            "invalidation": "Structural 1.5 ATR Invalidation (-$2.60 hard stop, 0.50% account risk)",
+            "target_profile": "Goat Funded Trader Prop Scalper (2m-15m)"
+        }
+    elif "TrapFade" in clean_name:
         wick_thresh = 0.38
         vol_thresh = 0.8
         stoploss_pct = 0.02
         takeprofit_pct = 0.035
+        min_bars = 1
         max_bars = 8
         trials = 80
         thesis_props = {
@@ -55,6 +83,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         vol_thresh = 1.0
         stoploss_pct = 0.025
         takeprofit_pct = 0.040
+        min_bars = 1
         max_bars = 6
         trials = 120
         thesis_props = {
@@ -74,6 +103,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             df_c = pd.read_csv(candles_file)
             
             df_c['total_range'] = (df_c['high'] - df_c['low']).replace(0, 1e-6)
+            df_c['body_ratio'] = (df_c['close'] - df_c['open']).abs() / df_c['total_range']
             df_c['lower_wick'] = (np.minimum(df_c['close'], df_c['open']) - df_c['low']) / df_c['total_range']
             df_c['upper_wick'] = (df_c['high'] - np.maximum(df_c['close'], df_c['open'])) / df_c['total_range']
             
@@ -81,16 +111,38 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             vol_std = df_c['volume'].rolling(20).std().replace(0, 1e-6)
             df_c['vol_z'] = (df_c['volume'] - vol_mean) / vol_std
             
+            df_c['ema_9'] = df_c['close'].ewm(span=9, adjust=False).mean()
+            df_c['ema_21'] = df_c['close'].ewm(span=21, adjust=False).mean()
+            df_c['ema_100'] = df_c['close'].ewm(span=100, adjust=False).mean()
+            df_c['sma_50'] = df_c['close'].rolling(50).mean()
+            
             n = len(df_c)
-            i = 20
-            while i < n - 2:
+            i = 100
+            while i < n - 16:
                 c = df_c.iloc[i]
                 lower_wick = float(c['lower_wick']) if not np.isnan(c['lower_wick']) else 0.0
                 upper_wick = float(c['upper_wick']) if not np.isnan(c['upper_wick']) else 0.0
                 vol_z = float(c['vol_z']) if not np.isnan(c['vol_z']) else 0.0
+                curr_close = float(c['close'])
+                curr_low = float(c['low'])
+                curr_high = float(c['high'])
+                ema9 = float(c['ema_9'])
+                ema21 = float(c['ema_21'])
+                ema100 = float(c['ema_100'])
                 
-                is_long = lower_wick > wick_thresh and vol_z > vol_thresh
-                is_short = upper_wick > wick_thresh and vol_z > vol_thresh
+                # Session Filter for Gold Scalping (London 07:30-10:30 UTC or NY 12:45-16:30 UTC)
+                session_ok = True
+                if is_xauusd:
+                    dt_utc = datetime.fromtimestamp(int(c['timestamp']), tz=timezone.utc)
+                    minute_of_day = dt_utc.hour * 60 + dt_utc.minute
+                    # London (07:30-10:30 UTC) or NY (12:45-16:30 UTC)
+                    session_ok = (450 <= minute_of_day <= 630) or (765 <= minute_of_day <= 990)
+                    
+                    is_long = session_ok and (ema9 > ema21) and (ema21 > ema100) and (curr_low <= ema9) and (curr_close >= ema9) and (lower_wick > 0.40) and (vol_z > 0.3)
+                    is_short = session_ok and (ema9 < ema21) and (ema21 < ema100) and (curr_high >= ema9) and (curr_close <= ema9) and (upper_wick > 0.40) and (vol_z > 0.3)
+                else:
+                    is_long = (lower_wick > wick_thresh) and (vol_z > vol_thresh)
+                    is_short = (upper_wick > wick_thresh) and (vol_z > vol_thresh)
                 
                 if is_long or is_short:
                     side = "LONG" if is_long else "SHORT"
@@ -104,7 +156,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                         stop_loss = round(entry_price * (1.0 + stoploss_pct), 2)
                         take_profit = round(entry_price * (1.0 - takeprofit_pct), 2)
                     
-                    # Sequential exit resolution
+                    # Sequential exit resolution (min_bars to max_bars)
                     exit_idx = i + 1
                     exit_price = entry_price
                     exit_reason = "BARS_HOLD"
@@ -114,13 +166,14 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                         curr_low = float(bar_curr['low'])
                         curr_high = float(bar_curr['high'])
                         curr_close = float(bar_curr['close'])
+                        bars_held = exit_idx - i
                         
                         if side == "LONG":
                             if curr_low <= stop_loss:
                                 exit_price = stop_loss
                                 exit_reason = "STOP_LOSS"
                                 break
-                            elif curr_high >= take_profit:
+                            elif curr_high >= take_profit and bars_held >= min_bars:
                                 exit_price = take_profit
                                 exit_reason = "TAKE_PROFIT"
                                 break
@@ -129,7 +182,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                                 exit_price = stop_loss
                                 exit_reason = "STOP_LOSS"
                                 break
-                            elif curr_low <= take_profit:
+                            elif curr_low <= take_profit and bars_held >= min_bars:
                                 exit_price = take_profit
                                 exit_reason = "TAKE_PROFIT"
                                 break
@@ -239,6 +292,8 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     state = {
         "active_strategy": clean_name,
         "target_profile": thesis_props["target_profile"],
+        "symbol": "XAU/USD" if is_xauusd else "BTC/USDT",
+        "timeframe": "1m" if is_xauusd else "15m",
         "status": "ACTIVE_DEPLOYED",
         "backtest_summary": backtest_summary,
         "signals_count": len(trades_detail),
@@ -342,7 +397,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             
     # 7. Execute validation_cynic.py for DSR gate matrix
     cmd_cynic = [
-        "python3", "tools/validation_cynic.py",
+        sys.executable, "tools/validation_cynic.py",
         "--returns", "data/candidate_returns.json",
         "--trials", str(trials),
         "--param-grid", '{"lower_wick": [0.38, 0.40, 0.42], "volume_zscore": [0.9, 1.0, 1.1]}'
@@ -357,6 +412,8 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
 
     return {
         "strategy": clean_name,
+        "symbol": "XAU/USD" if is_xauusd else "BTC/USDT",
+        "timeframe": "1m" if is_xauusd else "15m",
         "state": state,
         "candidate_returns": returns_arr.tolist(),
         "summary": backtest_summary,

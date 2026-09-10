@@ -28,8 +28,8 @@ export const Header: React.FC<HeaderProps> = ({
   isConnected,
   theme,
   setTheme,
-  selectedStrategy = 'PropFirmVsaWickRejection.py',
-  activeStrategy = 'PropFirmVsaWickRejection',
+  selectedStrategy = 'GoatFundedTraderXauusdScalper.py',
+  activeStrategy = 'GoatFundedTraderXauusdScalper',
   strategies = [],
   onSelectStrategy,
   onActivateStrategy

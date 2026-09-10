@@ -41,10 +41,10 @@ interface ChartCanvasProps {
 export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   latestSignal,
   theme = 'dark',
-  selectedStrategy = 'PropFirmVsaWickRejection.py',
+  selectedStrategy = 'GoatFundedTraderXauusdScalper.py',
   tradeMarkers = [],
   tradesDetail = [],
-  activeStrategy = 'PropFirmVsaWickRejection'
+  activeStrategy = 'GoatFundedTraderXauusdScalper'
 }) => {
   const isDark = theme === 'dark';
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -53,10 +53,17 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   // Live vs Backtest Mode & Multi-Asset Selection State
   const [chartMode, setChartMode] = useState<'LIVE' | 'BACKTEST'>('LIVE');
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('BTC/USDT');
+  const isXauActive = (activeStrategy || selectedStrategy || '').toLowerCase().includes('xau') || (activeStrategy || selectedStrategy || '').toLowerCase().includes('goat');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(isXauActive ? 'XAU/USD' : 'XAU/USD');
   const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
   const [lastLivePrice, setLastLivePrice] = useState<number | null>(null);
   const [showPositionBox, setShowPositionBox] = useState<boolean>(true);
+
+  // Sync symbol if active strategy changes
+  useEffect(() => {
+    const isGold = (activeStrategy || selectedStrategy || '').toLowerCase().includes('xau') || (activeStrategy || selectedStrategy || '').toLowerCase().includes('goat');
+    setSelectedSymbol(isGold ? 'XAU/USD' : 'BTC/USDT');
+  }, [activeStrategy, selectedStrategy]);
 
   const [candles, setCandles] = useState<any[]>([]);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
@@ -65,7 +72,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   // 1. Fetch Initial Candles (Live or Backtest mode)
   const fetchCandles = () => {
-    const url = `/api/candles?symbol=${encodeURIComponent(selectedSymbol)}&count=2880&mode=${chartMode === 'LIVE' ? 'live' : 'backtest'}`;
+    const isGold = selectedSymbol.toLowerCase().includes('xau') || selectedSymbol.toLowerCase().includes('gold');
+    const apiSym = isGold ? 'XAUUSD' : selectedSymbol;
+    const url = `/api/candles?symbol=${encodeURIComponent(apiSym)}&count=2880&mode=${chartMode === 'LIVE' ? 'live' : 'backtest'}`;
     fetch(url)
       .then((res) => res.json())
       .then((data) => {
@@ -92,8 +101,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       return;
     }
 
-    const cleanSym = selectedSymbol.replace('/', '').toLowerCase();
-    const wsUrl = `wss://stream.binance.com:9443/ws/${cleanSym}@kline_15m`;
+    const isGold = selectedSymbol.toLowerCase().includes('xau') || selectedSymbol.toLowerCase().includes('gold');
+    const cleanSym = isGold ? 'paxgusdt' : selectedSymbol.replace('/', '').toLowerCase();
+    const interval = isGold ? '1m' : '15m';
+    const wsUrl = `wss://stream.binance.com:9443/ws/${cleanSym}@kline_${interval}`;
     let ws: WebSocket | null = null;
 
     try {

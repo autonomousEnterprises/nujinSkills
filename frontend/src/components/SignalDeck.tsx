@@ -34,7 +34,7 @@ interface LiveStats {
 export const SignalDeck: React.FC<SignalDeckProps> = ({
   signals: wsSignals,
   theme = 'dark',
-  selectedStrategy = 'PropFirmVsaWickRejection.py',
+  selectedStrategy = 'GoatFundedTraderXauusdScalper.py',
   selectedBacktestData,
   activeState
 }) => {
@@ -114,9 +114,12 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Live BTC/USDT price via Binance WebSocket (15m kline close)
+  // Live asset price via Binance WebSocket (paxgusdt 1m if XAU/Gold strategy active, else btcusdt 15m)
+  const isXauStrategy = (activeState?.active_strategy || '').toLowerCase().includes('xau') || (activeState?.active_strategy || '').toLowerCase().includes('goat');
   useEffect(() => {
-    const wsUrl = 'wss://stream.binance.com:9443/ws/btcusdt@kline_15m';
+    const wsUrl = isXauStrategy 
+      ? 'wss://stream.binance.com:9443/ws/paxgusdt@kline_1m' 
+      : 'wss://stream.binance.com:9443/ws/btcusdt@kline_15m';
     let ws: WebSocket | null = null;
     try {
       ws = new WebSocket(wsUrl);
@@ -136,7 +139,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
       };
     } catch {}
     return () => { if (ws) ws.close(); };
-  }, []);
+  }, [isXauStrategy]);
 
   const allSignals = [...wsSignals, ...(signalState.signals || [])];
   const activeSig = signalState.active_signal || (allSignals.length > 0 ? allSignals[0] : null);
@@ -218,7 +221,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
           <div className="flex items-center gap-3">
             {/* Live BTC Price */}
             <div className={`px-3 py-1.5 rounded border text-center transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="text-[9px] text-slate-500 uppercase">BTC/USDT LIVE</div>
+              <div className="text-[9px] text-slate-500 uppercase">{isXauStrategy ? 'XAU/USD LIVE' : 'BTC/USDT LIVE'}</div>
               <div className={`text-base font-bold transition-colors ${priceFlash === 'up' ? 'text-emerald-300' : priceFlash === 'down' ? 'text-rose-300' : 'text-sky-400'}`}>
                 {liveBinancePrice ? `$${liveBinancePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>
@@ -371,7 +374,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
               {/* Signal Parameters */}
               <div className={`p-4 rounded-lg border flex flex-col justify-between gap-3 ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 font-bold uppercase">{activeSig.pair || 'BTC/USDT 15m'}</span>
+                  <span className="text-xs text-slate-400 font-bold uppercase">{activeSig.pair || (isXauStrategy ? 'XAU/USD 1m' : 'BTC/USDT 15m')}</span>
                   <span className={`px-2 py-0.5 rounded text-xs font-bold ${(activeSig.side || activeSig.action) === 'SHORT' || activeSig.action === 'SELL' ? 'bg-rose-950 text-rose-400 border border-rose-700' : 'bg-emerald-950 text-emerald-400 border border-emerald-700'}`}>
                     {(activeSig.side || activeSig.action) === 'SHORT' || activeSig.action === 'SELL' ? '⬇ SHORT ENTRY' : '⬆ LONG ENTRY'}
                   </span>
