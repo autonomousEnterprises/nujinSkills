@@ -286,9 +286,14 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     # 5. Calculate Quantitative Statistics from Trade Returns
     trades = len(returns_arr)
     win_rate = float(np.mean(returns_arr > 0))
-    gross_profit = float(np.sum(returns_arr[returns_arr > 0])) if np.any(returns_arr > 0) else 1e-6
-    gross_loss = float(np.abs(np.sum(returns_arr[returns_arr < 0]))) if np.any(returns_arr < 0) else 1e-6
-    profit_factor = round(gross_profit / max(gross_loss, 1e-6), 2)
+    gross_profit = float(np.sum(returns_arr[returns_arr > 0])) if np.any(returns_arr > 0) else 0.0
+    gross_loss = float(np.abs(np.sum(returns_arr[returns_arr < 0]))) if np.any(returns_arr < 0) else 0.0
+    if gross_loss > 1e-4:
+        profit_factor = round(min(gross_profit / gross_loss, 99.9), 2)
+    elif gross_profit > 0:
+        profit_factor = 99.9
+    else:
+        profit_factor = 0.0
     
     cum_ret = np.cumsum(returns_arr)
     peak = np.maximum.accumulate(cum_ret)
@@ -386,9 +391,14 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                 if t_cnt > 0:
                     arr_pnl = np.array(pnl_list)
                     w_rate = float(np.mean(arr_pnl > 0))
-                    g_prof = float(np.sum(arr_pnl[arr_pnl > 0])) if np.any(arr_pnl > 0) else 1e-6
-                    g_loss = float(np.abs(np.sum(arr_pnl[arr_pnl < 0]))) if np.any(arr_pnl < 0) else 1e-6
-                    pf = round(g_prof / max(g_loss, 1e-6), 2)
+                    g_prof = float(np.sum(arr_pnl[arr_pnl > 0])) if np.any(arr_pnl > 0) else 0.0
+                    g_loss = float(np.abs(np.sum(arr_pnl[arr_pnl < 0]))) if np.any(arr_pnl < 0) else 0.0
+                    if g_loss > 1e-4:
+                        pf = round(min(g_prof / g_loss, 99.9), 2)
+                    elif g_prof > 0:
+                        pf = 99.9
+                    else:
+                        pf = 0.0
                     net_pnl = round(float(np.sum(arr_pnl)), 2)
                     regime_breakdown[reg] = {
                         "trade_count": t_cnt,

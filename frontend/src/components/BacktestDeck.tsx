@@ -264,9 +264,11 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   { time: 5, equity_pct: 107.1, drawdown_pct: 0.0 }
                 ];
                 const pts = eqCurve.length;
-                const minEq = Math.min(...eqCurve.map((d: any) => d.equity_pct), 98.0);
-                const maxEq = Math.max(...eqCurve.map((d: any) => d.equity_pct), 105.0);
-                const rangeEq = Math.max(maxEq - minEq, 1.0);
+                const rawMinEq = Math.min(...eqCurve.map((d: any) => d.equity_pct));
+                const rawMaxEq = Math.max(...eqCurve.map((d: any) => d.equity_pct));
+                const minEq = Math.min(rawMinEq, 100.0);
+                const maxEq = Math.max(rawMaxEq, 100.0);
+                const rangeEq = Math.max(maxEq - minEq, 0.5);
 
                 const width = 800;
                 const height = 130;
@@ -279,6 +281,8 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
 
                 const areaD = `${pathD} L ${width} ${height} L 0 ${height} Z`;
                 const finalEq = eqCurve[eqCurve.length - 1]?.equity_pct ?? 100.0;
+                const finalNetPct = finalEq - 100.0;
+                const peakGainPct = Math.max(rawMaxEq - 100.0, 0.0);
                 const maxDd = Math.max(...eqCurve.map((d: any) => d.drawdown_pct), 0.0);
 
                 return (
@@ -295,8 +299,8 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                       <path d={pathD} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                     <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono border-t border-slate-800 pt-1.5">
-                      <span>Peak Equity: <strong className="text-emerald-400">+{(maxEq - 100.0).toFixed(2)}%</strong></span>
-                      <span>Final Net: <strong className="text-emerald-400">{finalEq.toFixed(2)}%</strong></span>
+                      <span>Peak Equity: <strong className="text-emerald-400">+{peakGainPct.toFixed(2)}%</strong></span>
+                      <span>Final Net: <strong className={finalNetPct >= 0 ? "text-emerald-400" : "text-rose-400"}>{finalNetPct >= 0 ? `+${finalNetPct.toFixed(2)}%` : `${finalNetPct.toFixed(2)}%`}</strong></span>
                       <span>Worst DD: <strong className="text-rose-400">-{maxDd.toFixed(2)}%</strong></span>
                     </div>
                   </div>
@@ -395,7 +399,9 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                         </div>
                         <div>
                           <div className="text-[9px] text-slate-500">PROFIT FACTOR</div>
-                          <div className={`text-xs font-bold ${getValColor(d.profit_factor - 1.0)}`}>{d.profit_factor}</div>
+                          <div className={`text-xs font-bold ${getValColor(d.profit_factor - 1.0)}`}>
+                            {d.profit_factor >= 99.0 ? '∞ (No Loss)' : typeof d.profit_factor === 'number' ? d.profit_factor.toFixed(2) : d.profit_factor}
+                          </div>
                         </div>
                         <div>
                           <div className="text-[9px] text-slate-500">NET PnL</div>
