@@ -90,12 +90,12 @@ async def get_candles(symbol: Optional[str] = None, count: int = 1500, mode: str
         is_gold = ("XAU" in active_strat.upper()) or ("GOAT" in active_strat.upper())
         symbol = "XAU/USD" if is_gold else "BTC/USDT"
 
-    is_xau = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper()) or ("PAXG" in symbol.upper()) or ("GC" in symbol.upper())
+    is_xau = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper()) or ("OANDA" in symbol.upper()) or ("PAXG" in symbol.upper()) or ("GC" in symbol.upper())
     interval = "1m" if is_xau else "15m"
     try:
         if is_xau:
-            from server.data_manager import fetch_real_comex_gold_candles
-            data = fetch_real_comex_gold_candles(interval=interval, count=count)
+            from server.data_manager import fetch_real_oanda_candles
+            data = fetch_real_oanda_candles(interval=interval, count=count)
         else:
             data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
     except Exception as e:

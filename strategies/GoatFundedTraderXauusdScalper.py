@@ -67,10 +67,12 @@ class GoatFundedTraderXauusdScalper(IStrategy):
         dataframe['upper_wick'] = (high - np.maximum(close, dataframe['open'])) / dataframe['total_range']
         dataframe['lower_wick'] = (np.minimum(close, dataframe['open']) - low) / dataframe['total_range']
 
-        # 2. Moving Average Momentum Ribbon
+        # 2. Moving Average Momentum Ribbon & Range Extremes
         dataframe['ema_9'] = close.ewm(span=9, adjust=False).mean()
         dataframe['ema_21'] = close.ewm(span=21, adjust=False).mean()
         dataframe['ema_200'] = close.ewm(span=min(200, len(close)), adjust=False).mean()
+        dataframe['hh_15'] = high.shift(1).rolling(15).max()
+        dataframe['ll_15'] = low.shift(1).rolling(15).min()
 
         # 3. ATR (14)
         tr = np.maximum(high - low, np.maximum((high - close.shift(1)).abs(), (low - close.shift(1)).abs()))
@@ -96,30 +98,26 @@ class GoatFundedTraderXauusdScalper(IStrategy):
 
     def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         # Long condition:
-        # Valid Session + Macro Bullish (Price > 200 EMA) + Fast Ribbon Expansion (9 > 21 EMA) + Vol Surge + Strong Body
+        # Valid Session + Break 15m High + Ribbon Momentum (9 > 21 EMA) + Vol Z-Score > 0.4
         dataframe.loc[
             (
                 (dataframe['session_valid'] == True) &
-                (dataframe['close'] > dataframe['ema_200']) &
+                (dataframe['close'] > dataframe['hh_15']) &
                 (dataframe['ema_9'] > dataframe['ema_21']) &
-                (dataframe['close'] >= dataframe['ema_9']) &
-                (dataframe['volume_zscore'] > 0.8) &
-                (dataframe['body_ratio'] > 0.55) &
+                (dataframe['volume_zscore'] > 0.4) &
                 (dataframe['volume'] > 0)
             ),
             'enter_long'
         ] = 1
 
         # Short condition:
-        # Valid Session + Macro Bearish (Price < 200 EMA) + Fast Ribbon Expansion (9 < 21 EMA) + Vol Surge + Strong Body
+        # Valid Session + Break 15m Low + Ribbon Momentum (9 < 21 EMA) + Vol Z-Score > 0.4
         dataframe.loc[
             (
                 (dataframe['session_valid'] == True) &
-                (dataframe['close'] < dataframe['ema_200']) &
+                (dataframe['close'] < dataframe['ll_15']) &
                 (dataframe['ema_9'] < dataframe['ema_21']) &
-                (dataframe['close'] <= dataframe['ema_9']) &
-                (dataframe['volume_zscore'] > 0.8) &
-                (dataframe['body_ratio'] > 0.55) &
+                (dataframe['volume_zscore'] > 0.4) &
                 (dataframe['volume'] > 0)
             ),
             'enter_short'

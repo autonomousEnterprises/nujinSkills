@@ -114,11 +114,11 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Live asset price: CME COMEX Gold (GC=F) if Gold/XAU strategy active, else Binance BTC 15m
+  // Live asset price: OANDA Spot Gold (OANDA:XAUUSD) if Gold/XAU strategy active, else Binance BTC 15m
   const isXauStrategy = (activeState?.active_strategy || selectedStrategy || '').toLowerCase().includes('xau') || (activeState?.active_strategy || selectedStrategy || '').toLowerCase().includes('goat');
   useEffect(() => {
     if (isXauStrategy) {
-      const fetchComexQuote = async () => {
+      const fetchOandaQuote = async () => {
         try {
           const res = await fetch('/api/xauusd/quote');
           const data = await res.json();
@@ -134,8 +134,8 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
         } catch {}
       };
 
-      fetchComexQuote();
-      const interval = setInterval(fetchComexQuote, 2000);
+      fetchOandaQuote();
+      const interval = setInterval(fetchOandaQuote, 2000);
       return () => clearInterval(interval);
     } else {
       const wsUrl = 'wss://stream.binance.com:9443/ws/btcusdt@kline_15m';
@@ -241,7 +241,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
           <div className="flex items-center gap-3">
             {/* Live BTC Price */}
             <div className={`px-3 py-1.5 rounded border text-center transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="text-[9px] text-slate-500 uppercase">{isXauStrategy ? 'COMEX GOLD (GC=F) LIVE' : 'BTC/USDT LIVE'}</div>
+              <div className="text-[9px] text-slate-500 uppercase">{isXauStrategy ? 'OANDA SPOT XAU/USD LIVE' : 'BTC/USDT LIVE'}</div>
               <div className={`text-base font-bold transition-colors ${priceFlash === 'up' ? 'text-emerald-300' : priceFlash === 'down' ? 'text-rose-300' : 'text-sky-400'}`}>
                 {liveBinancePrice ? `$${liveBinancePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
               </div>

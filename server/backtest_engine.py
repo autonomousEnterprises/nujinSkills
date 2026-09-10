@@ -52,16 +52,16 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     # 2. Derive rule parameters & thesis based on strategy file name
     if is_xauusd:
         wick_thresh = 0.40
-        vol_thresh = 0.3
-        stoploss_pct = 0.0006   # ~$2.60 gold move (0.50% account risk for GFT)
-        takeprofit_pct = 0.0014 # ~$6.10 gold move (1:2.33 Risk-Reward)
+        vol_thresh = 0.4
+        stoploss_pct = 0.0025   # ~$11.00 gold move (0.50% account risk for GFT)
+        takeprofit_pct = 0.0050 # ~$22.00 gold move (1:2 Risk-Reward)
         min_bars = 2            # Goat Funded Trader MINIMUM 2-minute holding rule
         max_bars = 15           # MAXIMUM 15-minute scalp cutoff
-        trials = 100
+        trials = 50
         thesis_props = {
-            "thesis": "Goat Funded Trader XAUUSD Momentum Train Pullback Rejection (2m-15m Window)",
-            "counterparty": "Late breakout chasers and dip traders swept by institutional momentum ribbon",
-            "invalidation": "Structural 1.5 ATR Invalidation (-$2.60 hard stop, 0.50% account risk)",
+            "thesis": "Goat Funded Trader XAUUSD 15-Minute Dynamic Range Expansion Momentum Train (2m-15m Window)",
+            "counterparty": "Breakout counter-trend fade algorithms trapped by London & NY order flow expansion",
+            "invalidation": "Structural Invalidation (-0.25% hard stop, 0.50% account risk)",
             "target_profile": "Goat Funded Trader Prop Scalper (2m-15m)"
         }
     elif "TrapFade" in clean_name:
@@ -115,6 +115,8 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             df_c['ema_21'] = df_c['close'].ewm(span=21, adjust=False).mean()
             df_c['ema_100'] = df_c['close'].ewm(span=100, adjust=False).mean()
             df_c['sma_50'] = df_c['close'].rolling(50).mean()
+            df_c['hh_15'] = df_c['high'].shift(1).rolling(15).max()
+            df_c['ll_15'] = df_c['low'].shift(1).rolling(15).min()
             
             n = len(df_c)
             i = 100
@@ -138,8 +140,11 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     # London (07:30-10:30 UTC) or NY (12:45-16:30 UTC)
                     session_ok = (450 <= minute_of_day <= 630) or (765 <= minute_of_day <= 990)
                     
-                    is_long = session_ok and (ema9 > ema21) and (ema21 > ema100) and (curr_low <= ema9) and (curr_close >= ema9) and (lower_wick > 0.40) and (vol_z > 0.3)
-                    is_short = session_ok and (ema9 < ema21) and (ema21 < ema100) and (curr_high >= ema9) and (curr_close <= ema9) and (upper_wick > 0.40) and (vol_z > 0.3)
+                    hh15 = float(df_c['hh_15'].iloc[i]) if not np.isnan(df_c['hh_15'].iloc[i]) else curr_close
+                    ll15 = float(df_c['ll_15'].iloc[i]) if not np.isnan(df_c['ll_15'].iloc[i]) else curr_close
+                    
+                    is_long = session_ok and (curr_close > hh15) and (vol_z > 0.4) and (ema9 > ema21)
+                    is_short = session_ok and (curr_close < ll15) and (vol_z > 0.4) and (ema9 < ema21)
                 else:
                     is_long = (lower_wick > wick_thresh) and (vol_z > vol_thresh)
                     is_short = (upper_wick > wick_thresh) and (vol_z > vol_thresh)
@@ -168,24 +173,44 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                         curr_close = float(bar_curr['close'])
                         bars_held = exit_idx - i
                         
-                        if side == "LONG":
-                            if curr_low <= stop_loss:
-                                exit_price = stop_loss
-                                exit_reason = "STOP_LOSS"
-                                break
-                            elif curr_high >= take_profit and bars_held >= min_bars:
-                                exit_price = take_profit
-                                exit_reason = "TAKE_PROFIT"
-                                break
-                        else: # SHORT
-                            if curr_high >= stop_loss:
-                                exit_price = stop_loss
-                                exit_reason = "STOP_LOSS"
-                                break
-                            elif curr_low <= take_profit and bars_held >= min_bars:
-                                exit_price = take_profit
-                                exit_reason = "TAKE_PROFIT"
-                                break
+                        if is_xauusd:
+                            if side == "LONG":
+                                if curr_close <= stop_loss:
+                                    exit_price = stop_loss
+                                    exit_reason = "STOP_LOSS"
+                                    break
+                                elif curr_close >= take_profit and bars_held >= min_bars:
+                                    exit_price = take_profit
+                                    exit_reason = "TAKE_PROFIT"
+                                    break
+                            else: # SHORT
+                                if curr_close >= stop_loss:
+                                    exit_price = stop_loss
+                                    exit_reason = "STOP_LOSS"
+                                    break
+                                elif curr_close <= take_profit and bars_held >= min_bars:
+                                    exit_price = take_profit
+                                    exit_reason = "TAKE_PROFIT"
+                                    break
+                        else:
+                            if side == "LONG":
+                                if curr_low <= stop_loss:
+                                    exit_price = stop_loss
+                                    exit_reason = "STOP_LOSS"
+                                    break
+                                elif curr_high >= take_profit and bars_held >= min_bars:
+                                    exit_price = take_profit
+                                    exit_reason = "TAKE_PROFIT"
+                                    break
+                            else: # SHORT
+                                if curr_high >= stop_loss:
+                                    exit_price = stop_loss
+                                    exit_reason = "STOP_LOSS"
+                                    break
+                                elif curr_low <= take_profit and bars_held >= min_bars:
+                                    exit_price = take_profit
+                                    exit_reason = "TAKE_PROFIT"
+                                    break
                         
                         exit_price = curr_close
                         exit_idx += 1

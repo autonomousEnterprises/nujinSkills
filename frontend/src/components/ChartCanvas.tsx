@@ -105,7 +105,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
     if (isGold) {
       setIsWsConnected(true);
-      const pollComexGold = async () => {
+      const pollOandaGold = async () => {
         try {
           const res = await fetch('/api/xauusd/quote');
           const data = await res.json();
@@ -125,12 +125,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             }
           }
         } catch (e) {
-          console.error('Error polling COMEX Gold quote:', e);
+          console.error('Error polling OANDA Spot Gold quote:', e);
         }
       };
 
-      pollComexGold();
-      const intv = setInterval(pollComexGold, 2000);
+      pollOandaGold();
+      const intv = setInterval(pollOandaGold, 2000);
       return () => clearInterval(intv);
     }
 
