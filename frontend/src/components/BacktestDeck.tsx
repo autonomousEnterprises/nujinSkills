@@ -213,17 +213,42 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
             </div>
           </div>
 
-          {/* Equity Growth Curve & Return Distribution Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* SVG Equity Growth Curve */}
+          {/* Equity Growth Curve — full width */}
+          <div className="grid grid-cols-1 gap-3">
             <div className={`border rounded-lg p-4 flex flex-col justify-between ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className="flex items-center justify-between mb-2">
+
+              {/* Header: title + period badges */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
-                  <TrendingUp className="w-4 h-4" /> EQUITY GROWTH CURVE & DRAWDOWN
+                  <TrendingUp className="w-4 h-4" /> EQUITY GROWTH CURVE &amp; DRAWDOWN
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono">100.0% Base Capital</span>
+                {(() => {
+                  const eqCurve = selectedBacktestData?.equity_curve;
+                  const toMs = (t: number) => t > 1e10 ? t : t * 1000;
+                  const fmt = (t: number) => new Date(toMs(t)).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+                  if (eqCurve && eqCurve.length >= 2) {
+                    const firstTs = eqCurve[0].time;
+                    const lastTs  = eqCurve[eqCurve.length - 1].time;
+                    const days = Math.max(1, Math.round(Math.abs(toMs(lastTs) - toMs(firstTs)) / 86400000));
+                    return (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">{days}D BACKTEST</span>
+                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono">BTC/USDT · 15m</span>
+                        <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 text-[10px] font-mono">{fmt(firstTs)} → {fmt(lastTs)}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">100% Base Capital</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">30D BACKTEST</span>
+                      <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono">BTC/USDT · 15m</span>
+                      <span className="text-[10px] text-slate-500 font-mono">100% Base Capital</span>
+                    </div>
+                  );
+                })()}
               </div>
-              
+
               {(() => {
                 const eqCurve = selectedBacktestData?.equity_curve || [
                   { time: 1, equity_pct: 100.0, drawdown_pct: 0.0 },
@@ -236,9 +261,9 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                 const minEq = Math.min(...eqCurve.map((d: any) => d.equity_pct), 98.0);
                 const maxEq = Math.max(...eqCurve.map((d: any) => d.equity_pct), 105.0);
                 const rangeEq = Math.max(maxEq - minEq, 1.0);
-                
-                const width = 340;
-                const height = 110;
+
+                const width = 800;
+                const height = 130;
 
                 const pathD = eqCurve.map((d: any, idx: number) => {
                   const x = (idx / Math.max(pts - 1, 1)) * width;
@@ -251,23 +276,20 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                 const maxDd = Math.max(...eqCurve.map((d: any) => d.drawdown_pct), 0.0);
 
                 return (
-                  <div className="flex flex-col gap-1">
-                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-28 overflow-visible">
+                  <div className="flex flex-col gap-1 w-full">
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-36 overflow-visible">
                       <defs>
                         <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
                           <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
                         </linearGradient>
                       </defs>
-                      {/* Grid Lines */}
                       <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke={isDark ? "#21262d" : "#e2e8f0"} strokeDasharray="3 3" />
-                      {/* Gradient Fill */}
                       <path d={areaD} fill="url(#eqGrad)" />
-                      {/* Growth Line */}
                       <path d={pathD} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono border-t border-slate-800 pt-1">
-                      <span>Peak Equity: <strong className="text-emerald-400">+{((maxEq - 100.0)).toFixed(2)}%</strong></span>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono border-t border-slate-800 pt-1.5">
+                      <span>Peak Equity: <strong className="text-emerald-400">+{(maxEq - 100.0).toFixed(2)}%</strong></span>
                       <span>Final Net: <strong className="text-emerald-400">{finalEq.toFixed(2)}%</strong></span>
                       <span>Worst DD: <strong className="text-rose-400">-{maxDd.toFixed(2)}%</strong></span>
                     </div>
@@ -275,7 +297,10 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                 );
               })()}
             </div>
+          </div>
 
+          {/* Trade Return Distribution Histogram — full width row */}
+          <div className="grid grid-cols-1 gap-3">
             {/* SVG Trade Return Distribution Histogram */}
             <div className={`border rounded-lg p-4 flex flex-col justify-between ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-2">
