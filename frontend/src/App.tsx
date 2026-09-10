@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { ChartCanvas } from './components/ChartCanvas';
 import { SignalDeck } from './components/SignalDeck';
@@ -35,6 +35,36 @@ export const App: React.FC = () => {
 
   // activeState = live WS state if available, else local fallback
   const activeState = liveSystemState;
+
+  // Derive list of strategies that are ACTUALLY active (status === 'ACTIVE_LIVE')
+  // Visiting or previewing a strategy in backtest/chart does NOT make it an active bot!
+  const activeBots = useMemo(() => {
+    // 1. Check managedStrategies from state/registry
+    const fromManaged = managedStrategies
+      .filter((s) => s.status === 'ACTIVE_LIVE')
+      .map((s) => s.name.replace('.py', ''));
+    if (fromManaged.length > 0) return fromManaged;
+
+    // 2. Check portfolioSummary
+    if (portfolioSummary?.active_strategies && portfolioSummary.active_strategies.length > 0) {
+      return portfolioSummary.active_strategies.map((s: string) => s.replace('.py', ''));
+    }
+
+    // 3. Check liveSystemState.active_strategies
+    if (liveSystemState?.active_strategies && liveSystemState.active_strategies.length > 0) {
+      return liveSystemState.active_strategies.map((s: string) => s.replace('.py', ''));
+    }
+
+    // 4. Fallback: if state.json has active_strategy AND its status is ACTIVE_DEPLOYED
+    if (
+      liveSystemState?.active_strategy &&
+      liveSystemState?.status === 'ACTIVE_DEPLOYED'
+    ) {
+      return [liveSystemState.active_strategy.replace('.py', '')];
+    }
+
+    return [];
+  }, [managedStrategies, portfolioSummary, liveSystemState]);
 
   // Fetch strategy repository list (doesn't need to live in WS)
   const fetchStrategies = async () => {
@@ -203,7 +233,9 @@ export const App: React.FC = () => {
         isConnected={isConnected}
         theme={theme}
         setTheme={setTheme}
-        activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
+        activeBots={activeBots}
+        activeStrategy={activeBots[0] || ''}
+        viewingStrategy={selectedStrategy}
       />
 
       {/* F1 — Live Chart */}
@@ -215,7 +247,7 @@ export const App: React.FC = () => {
           selectedStrategy={selectedStrategy}
           tradeMarkers={selectedBacktestData?.trade_markers || activeState?.trade_markers || []}
           tradesDetail={selectedBacktestData?.trades_detail || activeState?.trades_detail || []}
-          activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
+          activeStrategy={activeBots[0] || 'GoatFundedTraderXauusdScalper'}
           strategies={strategies}
           onSelectStrategy={handleSelectStrategy}
         />

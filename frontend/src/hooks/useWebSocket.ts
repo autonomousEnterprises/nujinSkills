@@ -208,10 +208,8 @@ export function useWebSocket() {
             break;
           }
           case 'BACKTEST_UPDATED': {
-            // Strategy backtest preview completed — update live state with backtest results
-            if (payload?.state) {
-              setLiveSystemState((prev) => ({ ...prev, ...payload.state }));
-            }
+            // Strategy backtest preview completed — DO NOT overwrite liveSystemState
+            // Live system state only tracks activated live bot deployments via STATE_UPDATED
             break;
           }
           case 'SIGNAL_CLOSED': {

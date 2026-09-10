@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, BarChart2, ShieldCheck, Sun, Moon, Send, Layers } from 'lucide-react';
+import { Terminal, BarChart2, ShieldCheck, Sun, Moon, Send, Layers, Eye } from 'lucide-react';
 
 interface HeaderProps {
   activeScreen: 'CHART' | 'AGENT_DECK' | 'BACKTEST' | 'STRATEGY_MANAGER';
@@ -8,6 +8,8 @@ interface HeaderProps {
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
   activeStrategy?: string;
+  activeBots?: string[];
+  viewingStrategy?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -16,10 +18,27 @@ export const Header: React.FC<HeaderProps> = ({
   isConnected,
   theme,
   setTheme,
-  activeStrategy = 'GoatFundedTraderXauusdScalper',
+  activeStrategy,
+  activeBots = [],
+  viewingStrategy,
 }) => {
   const isDark = theme === 'dark';
-  const cleanActiveName = activeStrategy.replace('.py', '');
+
+  // Truly activated live bots (status: ACTIVE_LIVE)
+  const effectiveActiveBots = (activeBots && activeBots.length > 0)
+    ? activeBots
+    : (activeStrategy ? [activeStrategy] : []);
+
+  const hasActiveBot = effectiveActiveBots.length > 0;
+  const primaryActiveBot = hasActiveBot ? effectiveActiveBots[0].replace('.py', '') : null;
+  const otherActiveCount = effectiveActiveBots.length > 1 ? effectiveActiveBots.length - 1 : 0;
+
+  // Currently viewed / inspected strategy (e.g. In Chart or Backtest)
+  const cleanViewingName = viewingStrategy ? viewingStrategy.replace('.py', '') : '';
+  const isViewingDifferent = Boolean(
+    cleanViewingName &&
+    (!primaryActiveBot || cleanViewingName.toLowerCase() !== primaryActiveBot.toLowerCase())
+  );
 
   return (
     <header className={`h-12 border-b px-4 flex items-center justify-between text-xs font-mono select-none relative z-40 transition-colors ${
@@ -40,14 +59,47 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        {/* Active strategy indicator */}
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded border ${
-          isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'
+        {/* Active bot(s) status badge */}
+        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded border transition-colors ${
+          hasActiveBot
+            ? (isDark ? 'bg-emerald-950/40 border-emerald-800/80 text-emerald-300' : 'bg-emerald-50 border-emerald-300 text-emerald-900')
+            : (isDark ? 'bg-[#0d1117] border-slate-800 text-slate-500' : 'bg-slate-100 border-slate-300 text-slate-500')
         }`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-          <span className={`text-[10px] uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Active Bot:</span>
-          <span className="text-emerald-400 font-bold text-[11px]">{cleanActiveName}</span>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            hasActiveBot ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+          }`} />
+          <span className={`text-[10px] uppercase font-bold ${
+            hasActiveBot ? (isDark ? 'text-emerald-500' : 'text-emerald-700') : 'text-slate-500'
+          }`}>
+            {hasActiveBot ? (otherActiveCount > 0 ? `Active Bots (${effectiveActiveBots.length}):` : 'Active Bot:') : 'Active Bot:'}
+          </span>
+          <span className={`font-bold text-[11px] ${
+            hasActiveBot ? 'text-emerald-400' : 'text-slate-400'
+          }`}>
+            {hasActiveBot ? (
+              <span>
+                {primaryActiveBot}
+                {otherActiveCount > 0 && (
+                  <span className="text-emerald-500/80 font-normal ml-1">+{otherActiveCount} more</span>
+                )}
+              </span>
+            ) : 'NONE (IDLE)'}
+          </span>
         </div>
+
+        {/* Viewing / Inspecting indicator if different from active bot */}
+        {isViewingDifferent && (
+          <div
+            title={`Currently viewing ${cleanViewingName} for analysis`}
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] transition-colors ${
+              isDark ? 'bg-[#161b22] border-indigo-900/60 text-slate-300' : 'bg-indigo-50 border-indigo-200 text-indigo-900'
+            }`}
+          >
+            <Eye className="w-3 h-3 text-indigo-400" />
+            <span className="text-[9px] uppercase font-bold text-slate-400">Viewing:</span>
+            <span className="text-indigo-400 font-bold font-mono">{cleanViewingName}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">

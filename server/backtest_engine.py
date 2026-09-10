@@ -302,12 +302,13 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         "expectancy_bps": round(expectancy_bps, 2)
     }
 
+    curr_sys_state = state_manager.get()
     state = {
-        "active_strategy": clean_name,
+        "active_strategy": clean_name if save_as_active else curr_sys_state.get("active_strategy", "GoatFundedTraderXauusdScalper"),
         "target_profile": thesis_props["target_profile"],
         "symbol": "XAU/USD" if is_xauusd else "BTC/USDT",
         "timeframe": "1m" if is_xauusd else "15m",
-        "status": "ACTIVE_DEPLOYED",
+        "status": "ACTIVE_DEPLOYED" if save_as_active else curr_sys_state.get("status", "PREVIEW"),
         "backtest_summary": backtest_summary,
         "signals_count": len(trades_detail),
         "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
