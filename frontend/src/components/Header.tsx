@@ -58,6 +58,22 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
+        {/* Always-visible active strategy indicator */}
+        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded border ${
+          isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'
+        }`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+          <span className={`text-[10px] uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Active:</span>
+          <span className="text-emerald-400 font-bold text-[11px]">{cleanActiveName}</span>
+          {cleanSelectedName !== cleanActiveName && (
+            <>
+              <span className={`text-[10px] mx-0.5 ${isDark ? 'text-slate-600' : 'text-slate-300'}`}>|</span>
+              <span className={`text-[10px] uppercase ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Inspecting:</span>
+              <span className="text-indigo-400 font-bold text-[11px]">{cleanSelectedName}</span>
+            </>
+          )}
+        </div>
+
         {/* Strategy Repository Mega Menu Trigger Button */}
         <div className="relative">
           <button

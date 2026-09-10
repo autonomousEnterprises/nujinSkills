@@ -490,10 +490,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               {showPositionBox ? '📦 Box Overlay: ON' : '📦 Box Overlay: OFF'}
             </button>
           </div>
-
-          <span className="text-xs text-slate-500 font-mono hidden sm:inline border-l border-slate-700 pl-3">
-            Inspecting Strategy: <strong className="text-indigo-400">{selectedStrategy}</strong>
-          </span>
         </div>
 
         {/* Active Open Signal Trade Levels Pill (ONLY WHEN AN OPEN POSITION EXISTS) */}
