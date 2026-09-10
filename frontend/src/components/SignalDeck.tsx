@@ -480,10 +480,10 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
             })}
           </div>
 
-          {/* Scope-specific bot actions */}
-          <div className="flex items-center gap-2">
-            {selectedStratTab !== 'ALL' ? (
-              activeBots.includes(selectedStratTab) ? (
+          {/* Scope-specific strategy actions */}
+          {selectedStratTab !== 'ALL' && (
+            <div className="flex items-center gap-2">
+              {activeBots.includes(selectedStratTab) ? (
                 <button
                   onClick={() => handleStopBot(selectedStratTab)}
                   disabled={actionLoading}
@@ -499,17 +499,9 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                 >
                   <Play className="w-3 h-3 fill-current" /> Deploy {selectedStratTab}
                 </button>
-              )
-            ) : (
-              <button
-                onClick={() => handleStopBot()}
-                disabled={actionLoading}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-all text-xs font-bold"
-              >
-                <XCircle className="w-3 h-3" /> Stop Bot Execution
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── LIVE PERFORMANCE STATS ── */}
