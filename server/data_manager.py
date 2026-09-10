@@ -112,6 +112,30 @@ async def _async_fetch_oanda_bars(resolution: str = "15", n_bars: int = 3000) ->
 def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880) -> List[Dict[str, Any]]:
     """Fetches real OANDA:XAUUSD spot candles."""
     logger.info(f"[DataManager] Fetching real OANDA:XAUUSD spot candles (interval={interval}, count={count})...")
+    
+    # 1. Prefer local cached authentic OANDA CSV for 1m (instant, zero latency, guaranteed match)
+    csv_path = "data/xauusd_candles_1m.csv"
+    if interval == "1m" and os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path)
+            if len(df) >= 300:
+                candles = [
+                    {
+                        "time": int(r.get("timestamp", r.get("time", 0))),
+                        "open": round(float(r["open"]), 2),
+                        "high": round(float(r["high"]), 2),
+                        "low": round(float(r["low"]), 2),
+                        "close": round(float(r["close"]), 2),
+                        "volume": round(float(r.get("volume", 10.0)), 4)
+                    }
+                    for r in df.tail(count).to_dict(orient="records")
+                ]
+                logger.info(f"[DataManager] Loaded {len(candles)} authentic OANDA 1m candles from cache")
+                return candles
+        except Exception as e:
+            logger.warning(f"[DataManager] Error reading cached OANDA 1m CSV: {e}")
+
+    # 2. Otherwise fetch live from TradingView WebSocket
     res_code = "1" if interval == "1m" else ("5" if interval == "5m" else "15")
     try:
         try:
@@ -129,7 +153,7 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880) -> List[Di
     except Exception as e:
         logger.warning(f"[DataManager] Error fetching OANDA WS bars: {e}")
 
-    # Fallback to COMEX if OANDA WS is briefly unavailable
+    # 3. Fallback to COMEX if OANDA WS is briefly unavailable
     return fetch_real_comex_gold_candles(interval=interval, count=count)
 
 

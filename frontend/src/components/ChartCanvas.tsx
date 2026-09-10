@@ -66,6 +66,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   }, [activeStrategy, selectedStrategy]);
 
   const [candles, setCandles] = useState<any[]>([]);
+  const activeCandleRef = useRef<{ time: Time; open: number; high: number; low: number; close: number; volume: number } | null>(null);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [positionBoxes, setPositionBoxes] = useState<PositionBoxCoord[]>([]);
   const [activeTradeLevels, setActiveTradeLevels] = useState<{ entry: number; sl: number; tp: number; rr: string } | null>(null);
@@ -84,7 +85,17 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             candleSeriesRef.current.setData(data.data);
           }
           const lastC = data.data[data.data.length - 1];
-          if (lastC) setLastLivePrice(lastC.close);
+          if (lastC) {
+            setLastLivePrice(lastC.close);
+            activeCandleRef.current = {
+              time: lastC.time,
+              open: lastC.open,
+              high: lastC.high,
+              low: lastC.low,
+              close: lastC.close,
+              volume: lastC.volume || 10.0,
+            };
+          }
         }
       })
       .catch((err) => console.log('Failed to fetch candles:', err));
@@ -94,7 +105,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     fetchCandles();
   }, [chartMode, selectedSymbol]);
 
-  // 2. Binance 100% Free Public Real-Time WebSocket Stream (when in LIVE mode)
+  // 2. Binance / OANDA 100% Free Public Real-Time Stream (when in LIVE mode)
   useEffect(() => {
     if (chartMode !== 'LIVE') {
       setIsWsConnected(false);
@@ -110,18 +121,55 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           const res = await fetch('/api/xauusd/quote');
           const data = await res.json();
           if (data?.quote?.price) {
-            const p = data.quote.price;
-            const t = (data.quote.timestamp || Math.floor(Date.now() / 1000)) as Time;
+            const p = parseFloat(data.quote.price);
             setLastLivePrice(p);
+
+            // 1. If backend streamer provides the current authoritative minute candle, use it:
+            if (data.quote.candle && data.quote.candle.time) {
+              const c = data.quote.candle;
+              const liveCandle = {
+                time: Number(c.time) as Time,
+                open: Number(c.open),
+                high: Number(c.high),
+                low: Number(c.low),
+                close: Number(c.close),
+                volume: Number(c.volume || 10.0),
+              };
+              activeCandleRef.current = liveCandle;
+              if (candleSeriesRef.current) {
+                candleSeriesRef.current.update(liveCandle);
+              }
+              return;
+            }
+
+            // 2. Otherwise, update the current 1-minute candle by aligning timestamp strictly to 60s
+            const rawTs = data.quote.timestamp ? parseInt(data.quote.timestamp) : Math.floor(Date.now() / 1000);
+            const minuteTime = (Math.floor(rawTs / 60) * 60) as Time;
+
             if (candleSeriesRef.current) {
-              candleSeriesRef.current.update({
-                time: t,
-                open: p,
-                high: p,
-                low: p,
-                close: p,
-                volume: data.quote.volume_1m || 10.0,
-              });
+              let cur = activeCandleRef.current;
+              if (!cur || (cur.time as number) < (minuteTime as number)) {
+                // New 1-minute bar begins at minute boundary
+                cur = {
+                  time: minuteTime,
+                  open: p,
+                  high: p,
+                  low: p,
+                  close: p,
+                  volume: data.quote.volume_1m || 10.0,
+                };
+              } else {
+                // Intra-minute live tick updates the current 1-minute bar in-place
+                cur = {
+                  ...cur,
+                  time: cur.time,
+                  high: Math.max(cur.high, p),
+                  low: Math.min(cur.low, p),
+                  close: p,
+                };
+              }
+              activeCandleRef.current = cur;
+              candleSeriesRef.current.update(cur);
             }
           }
         } catch (e) {

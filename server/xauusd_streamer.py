@@ -382,24 +382,29 @@ class XauusdScalpEngine:
                     self.current_quote["timestamp"] = t_sec
                     self.current_quote["source"] = "oanda_spot"
 
-                    # Update candle history
+                    # Update candle history with strictly minute-aligned timestamps
+                    minute_bucket = (t_sec // 60) * 60
                     if self.candles_1m:
                         last_c = self.candles_1m[-1]
-                        if t_sec - last_c["time"] < 60:
+                        if last_c["time"] == minute_bucket:
                             last_c["close"] = c_close
                             last_c["high"] = max(last_c["high"], c_close)
                             last_c["low"] = min(last_c["low"], c_close)
-                        else:
+                            last_c["volume"] = round(last_c.get("volume", 0) + 0.2, 4)
+                        elif minute_bucket > last_c["time"]:
                             self.candles_1m.append({
-                                "time": t_sec,
+                                "time": minute_bucket,
                                 "open": c_close,
                                 "high": c_close,
                                 "low": c_close,
                                 "close": c_close,
-                                "volume": 10.0
+                                "volume": 1.0
                             })
                             if len(self.candles_1m) > 1000:
                                 self.candles_1m.pop(0)
+
+                    if self.candles_1m:
+                        self.current_quote["candle"] = self.candles_1m[-1]
 
                     # Check for new signals & active trade countdown
                     sig = self.generate_signal()
