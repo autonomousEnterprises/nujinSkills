@@ -45,8 +45,24 @@ interface LegendValues {
   volume?: number;
 }
 
+export interface InspectableSignal {
+  id: string | number;
+  source: 'BACKTEST' | 'LIVE';
+  side: string;
+  entry_time: number;
+  entry_price: number;
+  exit_time?: number;
+  exit_price?: number;
+  exit_reason?: string;
+  pnl_pct?: number;
+  stop_loss: number;
+  take_profit: number;
+  isLiveActive?: boolean;
+}
+
 interface ChartCanvasProps {
   latestSignal: SignalData | null;
+  signals?: SignalData[];
   theme?: 'dark' | 'light';
   selectedStrategy?: string;
   tradeMarkers?: any[];
@@ -138,6 +154,7 @@ function calculateVolumeSeries(data: { time: Time; open: number; close: number; 
 
 export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   latestSignal,
+  signals = [],
   theme = 'dark',
   selectedStrategy = 'GoatFundedTraderXauusdScalper.py',
   tradeMarkers = [],
@@ -187,17 +204,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const activeCandleRef = useRef<{ time: Time; open: number; high: number; low: number; close: number; volume: number } | null>(null);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [positionBoxes, setPositionBoxes] = useState<PositionBoxCoord[]>([]);
-  const [activeTradeLevels, setActiveTradeLevels] = useState<{
-    entry: number;
-    sl: number;
-    tp: number;
-    rr: string;
-    side?: string;
-    tradeId?: number | string;
-    exitReason?: string;
-    pnlPct?: number;
-    isLive?: boolean;
-  } | null>(null);
+  const [selectedSignalIndex, setSelectedSignalIndex] = useState<number | null>(null);
   const priceLinesRef = useRef<any[]>([]);
 
   // Compute indicator series datasets
@@ -388,16 +395,128 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     };
   }, [selectedSymbol]);
 
-  // 3. Trade Markers & Active Signal Level Resolution
+  // ── Unified Inspectable Signals (Backtest Trades + Past & Current Live Signals) ──
+  const allInspectableSignals: InspectableSignal[] = useMemo(() => {
+    const list: InspectableSignal[] = [];
+
+    // 1. Backtest trades
+    if (tradesDetail && tradesDetail.length > 0) {
+      for (const t of tradesDetail) {
+        list.push({
+          id: t.id,
+          source: 'BACKTEST',
+          side: (t as any).side || 'LONG',
+          entry_time: t.entry_time,
+          entry_price: t.entry_price,
+          exit_time: t.exit_time,
+          exit_price: t.exit_price,
+          exit_reason: t.exit_reason,
+          pnl_pct: t.pnl_pct,
+          stop_loss: t.stop_loss,
+          take_profit: t.take_profit,
+          isLiveActive: t.exit_reason === 'ACTIVE_IN_POSITION' || (t as any).status === 'ACTIVE_IN_POSITION',
+        });
+      }
+    }
+
+    // 2. Past live signals from WebSocket
+    if (signals && signals.length > 0) {
+      for (let i = 0; i < signals.length; i++) {
+        const s = signals[i];
+        if (!s.timestamp || (!s.entry_price && !s.price)) continue;
+        const entryPrice = Number(s.entry_price || s.price);
+        const isBuy = s.action === 'BUY' || s.action === 'LONG';
+        const entryTime = Math.floor(s.timestamp / 1000);
+        if (list.some((existing) => Math.abs(existing.entry_time - entryTime) < 2)) continue;
+        list.push({
+          id: `live-${i}`,
+          source: 'LIVE',
+          side: s.action || 'LONG',
+          entry_time: entryTime,
+          entry_price: entryPrice,
+          exit_time: s.exit_price ? entryTime : undefined,
+          exit_price: s.exit_price,
+          exit_reason: s.exit_reason,
+          pnl_pct: s.pnl_pct || 0,
+          stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
+          take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
+          isLiveActive: s.status === 'ACTIVE_IN_POSITION',
+        });
+      }
+    }
+
+    // 3. Latest signal if not already present
+    if (latestSignal && (latestSignal.entry_price || latestSignal.price)) {
+      const entryPrice = Number(latestSignal.entry_price || latestSignal.price);
+      const isBuy = latestSignal.action === 'BUY' || latestSignal.action === 'LONG';
+      const entryTime = latestSignal.timestamp
+        ? Math.floor(latestSignal.timestamp / 1000)
+        : (candles.length > 0 ? (candles[candles.length - 1].time as number) : 0);
+      const exists = list.some((existing) => Math.abs(existing.entry_time - entryTime) < 2);
+      if (!exists) {
+        const isClosed = Boolean(
+          latestSignal.exit_price ||
+          latestSignal.exit_reason ||
+          latestSignal.status === 'COMPLETED' ||
+          latestSignal.status === 'CLOSED'
+        );
+        list.push({
+          id: 'live-latest',
+          source: 'LIVE',
+          side: latestSignal.action || 'LONG',
+          entry_time: entryTime,
+          entry_price: entryPrice,
+          exit_time: latestSignal.exit_price ? entryTime : undefined,
+          exit_price: latestSignal.exit_price,
+          exit_reason: latestSignal.exit_reason,
+          pnl_pct: latestSignal.pnl_pct || 0,
+          stop_loss: latestSignal.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
+          take_profit: latestSignal.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
+          isLiveActive: !isClosed && latestSignal.status === 'ACTIVE_IN_POSITION',
+        });
+      }
+    }
+
+    list.sort((a, b) => a.entry_time - b.entry_time);
+    return list;
+  }, [tradesDetail, signals, latestSignal, candles.length]);
+
+  // Sync Default Selected Signal Index to Latest
   useEffect(() => {
-    if (candles.length === 0) return;
-    const maxTime = candles[candles.length - 1].time as number;
-    const candleTimeSet = new Set(candles.map((c) => c.time as number));
+    if (allInspectableSignals.length > 0) {
+      setSelectedSignalIndex((prev) => {
+        if (prev === null || prev < 0 || prev >= allInspectableSignals.length) {
+          return allInspectableSignals.length - 1;
+        }
+        return prev;
+      });
+    } else {
+      setSelectedSignalIndex(null);
+    }
+  }, [allInspectableSignals.length]);
 
-    // A. Resolve Active Signal for Entry, SL, TP Lines
-    // CRITICAL: Entry, SL, TP lines must ONLY be plotted when an ACTIVE signal currently exists.
-    let currentActiveSignal: any = null;
+  const inspectedSignal =
+    selectedSignalIndex !== null && selectedSignalIndex >= 0 && selectedSignalIndex < allInspectableSignals.length
+      ? allInspectableSignals[selectedSignalIndex]
+      : null;
 
+  // Center Chart onto Given Signal
+  const centerOnTrade = (trade: InspectableSignal) => {
+    if (!chartRef.current || !trade || !trade.entry_time) return;
+    try {
+      const t = trade.entry_time;
+      const tExit = trade.exit_time || (t + 15 * 60);
+      const span = Math.max(tExit - t, 3600);
+      chartRef.current.timeScale().setVisibleRange({
+        from: (t - span * 3) as Time,
+        to: (tExit + span * 3) as Time,
+      });
+      setTimeout(updateBoxCoordinates, 60);
+    } catch (e) {}
+  };
+
+  // Resolve Active Live Signal (Used EXCLUSIVELY for plotting full-width Entry, SL, TP lines)
+  const activeLiveSignal = useMemo(() => {
     if (latestSignal) {
       const isClosed = Boolean(
         latestSignal.exit_price ||
@@ -407,44 +526,60 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       );
       const entryPrice = Number(latestSignal.entry_price || latestSignal.price || 0);
       if (!isClosed && entryPrice > 0 && latestSignal.status === 'ACTIVE_IN_POSITION') {
-        currentActiveSignal = latestSignal;
+        const isBuy = latestSignal.action === 'BUY' || latestSignal.action === 'LONG';
+        return {
+          entry: entryPrice,
+          sl: Number(latestSignal.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025)),
+          tp: Number(latestSignal.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970)),
+          side: latestSignal.action || (isBuy ? 'LONG' : 'SHORT'),
+          isLive: true,
+        };
       }
     }
 
-    // Also check if any trade in tradesDetail is still actively in position
-    if (!currentActiveSignal && tradesDetail && tradesDetail.length > 0) {
+    if (tradesDetail && tradesDetail.length > 0) {
       const openTrade = tradesDetail.find(
-        (tr) => tr.exit_reason === 'ACTIVE_IN_POSITION' || tr.status === 'ACTIVE_IN_POSITION'
+        (tr) => tr.exit_reason === 'ACTIVE_IN_POSITION' || (tr as any).status === 'ACTIVE_IN_POSITION'
       );
       if (openTrade && openTrade.entry_price > 0) {
-        currentActiveSignal = openTrade;
+        return {
+          entry: openTrade.entry_price,
+          sl: openTrade.stop_loss,
+          tp: openTrade.take_profit,
+          side: (openTrade as any).side || 'LONG',
+          isLive: true,
+        };
       }
     }
 
-    if (currentActiveSignal) {
-      const entry = Number(currentActiveSignal.entry_price || currentActiveSignal.price);
-      const isBuy = currentActiveSignal.action === 'BUY' || currentActiveSignal.action === 'LONG' || currentActiveSignal.side === 'LONG';
-      const sl = Number(currentActiveSignal.stop_loss || (isBuy ? entry * 0.9975 : entry * 1.0025));
-      const tp = Number(currentActiveSignal.take_profit || (isBuy ? entry * 1.0030 : entry * 0.9970));
-      const risk = Math.abs(entry - sl);
-      const reward = Math.abs(tp - entry);
-      const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.20';
-      setActiveTradeLevels({
-        entry,
-        sl,
-        tp,
-        rr,
-        side: currentActiveSignal.action || currentActiveSignal.side || (isBuy ? 'LONG' : 'SHORT'),
-        tradeId: currentActiveSignal.id || 'LIVE',
-        exitReason: 'ACTIVE_IN_POSITION',
-        isLive: true,
-      });
-    } else {
-      // No active signal currently: do NOT plot Entry, SL, or TP lines
-      setActiveTradeLevels(null);
-    }
+    return null;
+  }, [latestSignal, tradesDetail]);
 
-    // B. Resolve Historical & Live Display Markers
+  // Trade Levels of Inspected Signal (for HUD Legend Readout)
+  const inspectedTradeLevels = useMemo(() => {
+    if (!inspectedSignal) return null;
+    const entry = inspectedSignal.entry_price;
+    const sl = inspectedSignal.stop_loss;
+    const tp = inspectedSignal.take_profit;
+    const risk = Math.abs(entry - sl);
+    const reward = Math.abs(tp - entry);
+    const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.20';
+    return {
+      entry,
+      sl,
+      tp,
+      rr,
+      side: inspectedSignal.side,
+      isLive: inspectedSignal.isLiveActive,
+    };
+  }, [inspectedSignal]);
+
+  // 3. Trade Markers (Backtest + Live)
+  useEffect(() => {
+    if (candles.length === 0) return;
+    const maxTime = candles[candles.length - 1].time as number;
+    const candleTimeSet = new Set(candles.map((c) => c.time as number));
+
     const validMarkers: SeriesMarker<Time>[] = [];
     if (tradeMarkers && tradeMarkers.length > 0) {
       for (const m of tradeMarkers) {
@@ -461,28 +596,30 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       }
     }
 
-    // If an active live signal exists, add live signal marker
-    if (currentActiveSignal) {
-      const isBuy = currentActiveSignal.action === 'BUY' || currentActiveSignal.action === 'LONG' || currentActiveSignal.side === 'LONG';
-      const sigTs = currentActiveSignal.timestamp ? Math.floor(currentActiveSignal.timestamp / 1000) : maxTime;
-      const markerTime = sigTs >= maxTime ? maxTime : (candleTimeSet.has(sigTs) ? sigTs : maxTime);
+    if (activeLiveSignal) {
+      const isBuy = activeLiveSignal.side === 'BUY' || activeLiveSignal.side === 'LONG';
       validMarkers.push({
-        time: markerTime as Time,
+        time: maxTime as Time,
         position: isBuy ? 'belowBar' : 'aboveBar',
         color: isBuy ? '#10b981' : '#ef4444',
         shape: isBuy ? 'arrowUp' : 'arrowDown',
-        text: `LIVE: ${currentActiveSignal.action || currentActiveSignal.side || 'SIGNAL'} @ $${Number(currentActiveSignal.entry_price || currentActiveSignal.price).toFixed(2)}`,
+        text: `LIVE: ${activeLiveSignal.side} @ $${activeLiveSignal.entry.toFixed(2)}`,
       });
     }
 
-    // Must be sorted in ascending order of time for lightweight-charts
     validMarkers.sort((a, b) => (a.time as number) - (b.time as number));
     setDisplayMarkers(validMarkers);
-  }, [selectedStrategy, tradeMarkers, tradesDetail, candles, latestSignal]);
+  }, [selectedStrategy, tradeMarkers, candles, activeLiveSignal]);
 
-  // 4. Precision Clamped Position Box Resolution (Only active when an active trade signal exists)
+  // 4. Precision Clamped Position Box Resolution for Inspected Signal
   const updateBoxCoordinates = () => {
-    if (!showPositionBox || !activeTradeLevels || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current || candles.length === 0) {
+    if (!showPositionBox || !inspectedSignal || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current || candles.length === 0) {
+      setPositionBoxes([]);
+      return;
+    }
+
+    const target = inspectedSignal;
+    if (!target || !target.entry_price) {
       setPositionBoxes([]);
       return;
     }
@@ -492,7 +629,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const containerHeight = chartContainerRef.current.clientHeight || 400;
     const containerWidth = chartContainerRef.current.clientWidth || 800;
 
-    const yEntryRaw = series.priceToCoordinate(activeTradeLevels.entry);
+    const yEntryRaw = series.priceToCoordinate(target.entry_price);
     if (yEntryRaw === null) {
       setPositionBoxes([]);
       return;
@@ -501,23 +638,37 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const getBoundedY = (price: number) => {
       const y = series.priceToCoordinate(price);
       if (y === null || isNaN(y)) {
-        return price > activeTradeLevels.entry ? 0 : containerHeight;
+        return price > target.entry_price ? 0 : containerHeight;
       }
       return Math.max(0, Math.min(containerHeight, y));
     };
 
     const yEntry = yEntryRaw;
-    const ySL = getBoundedY(activeTradeLevels.sl);
-    const yTP = getBoundedY(activeTradeLevels.tp);
+    const ySL = getBoundedY(target.stop_loss);
+    const yTP = getBoundedY(target.take_profit);
 
-    const lastCandle = candles[candles.length - 1];
-    const x1Raw = chart.timeScale().timeToCoordinate(lastCandle.time as Time);
-    const startX = x1Raw !== null ? x1Raw - 40 : containerWidth - 160;
-    const endX = containerWidth - 65;
+    let x1Raw = chart.timeScale().timeToCoordinate(target.entry_time as Time);
+    let x2Raw: number | null = null;
+
+    if (target.isLiveActive || !target.exit_time) {
+      const lastCandleX = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
+      x2Raw = lastCandleX !== null ? lastCandleX + 80 : containerWidth - 65;
+    } else {
+      x2Raw = chart.timeScale().timeToCoordinate(target.exit_time as Time);
+    }
+
+    if (x1Raw === null && x2Raw === null) {
+      setPositionBoxes([]);
+      return;
+    }
+
+    const startX = x1Raw !== null ? x1Raw : (x2Raw! - 100);
+    const endX = x2Raw !== null ? x2Raw : (x1Raw! + 100);
     const leftX = Math.max(0, Math.min(startX, endX));
-    const width = Math.max(endX - leftX, 40);
+    const rightX = Math.min(containerWidth - 60, Math.max(startX, endX));
+    const width = Math.max(rightX - leftX, 32);
 
-    const isLong = activeTradeLevels.tp >= activeTradeLevels.entry;
+    const isLong = target.take_profit >= target.entry_price;
     let yProfitTop: number, profitHeight: number, yLossTop: number, lossHeight: number;
 
     if (isLong) {
@@ -534,7 +685,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
     setPositionBoxes([
       {
-        id: typeof activeTradeLevels.tradeId === 'number' ? activeTradeLevels.tradeId : 999,
+        id: typeof target.id === 'number' ? target.id : 999,
         x: leftX,
         width,
         yEntry,
@@ -542,10 +693,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         profitHeight,
         yLossTop,
         lossHeight,
-        tpPrice: activeTradeLevels.tp,
-        slPrice: activeTradeLevels.sl,
-        entryPrice: activeTradeLevels.entry,
-        pnlPct: activeTradeLevels.pnlPct || 0,
+        tpPrice: target.take_profit,
+        slPrice: target.stop_loss,
+        entryPrice: target.entry_price,
+        pnlPct: target.pnl_pct || 0,
       },
     ]);
   };
@@ -760,7 +911,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     }
   }, [displayMarkers]);
 
-  // Sync Dynamic Entry, SL, and TP Price Lines for Active / Inspected Trade
+  // Sync Dynamic Entry, SL, and TP Price Lines ONLY for Active Signal
   useEffect(() => {
     if (!candleSeriesRef.current) return;
 
@@ -772,61 +923,62 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     });
     priceLinesRef.current = [];
 
-    if (!activeTradeLevels) return;
+    // CRITICAL: Entry, SL, and TP horizontal lines appear ONLY when an active signal exists
+    if (!activeLiveSignal || !activeLiveSignal.entry) return;
 
     const isGold = selectedSymbol.toLowerCase().includes('xau') || selectedSymbol.toLowerCase().includes('gold');
     const formatPrice = (p: number) => (isGold ? `$${p.toFixed(2)}` : (p >= 1000 ? `$${p.toFixed(1)}` : `$${p.toFixed(4)}`));
-    const isBuy = activeTradeLevels.side === 'BUY' || activeTradeLevels.side === 'LONG';
+    const isBuy = activeLiveSignal.side === 'BUY' || activeLiveSignal.side === 'LONG';
 
     const lines: any[] = [];
 
     // TP Line (Emerald Green)
-    if (activeTradeLevels.tp) {
+    if (activeLiveSignal.tp) {
       const tpLine = candleSeriesRef.current.createPriceLine({
-        price: activeTradeLevels.tp,
+        price: activeLiveSignal.tp,
         color: '#10b981',
         lineWidth: 2,
         lineStyle: 0,
         axisLabelVisible: true,
-        title: `TP: ${formatPrice(activeTradeLevels.tp)}`,
+        title: `TP: ${formatPrice(activeLiveSignal.tp)}`,
       });
       lines.push(tpLine);
     }
 
     // Entry Line (Sky Blue Dashed)
-    if (activeTradeLevels.entry) {
+    if (activeLiveSignal.entry) {
       const entryLine = candleSeriesRef.current.createPriceLine({
-        price: activeTradeLevels.entry,
+        price: activeLiveSignal.entry,
         color: '#38bdf8',
         lineWidth: 2,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: `Entry (${activeTradeLevels.side || (isBuy ? 'LONG' : 'SHORT')}): ${formatPrice(activeTradeLevels.entry)}`,
+        title: `Entry (${activeLiveSignal.side || (isBuy ? 'LONG' : 'SHORT')}): ${formatPrice(activeLiveSignal.entry)}`,
       });
       lines.push(entryLine);
     }
 
     // SL Line (Rose Red)
-    if (activeTradeLevels.sl) {
+    if (activeLiveSignal.sl) {
       const slLine = candleSeriesRef.current.createPriceLine({
-        price: activeTradeLevels.sl,
+        price: activeLiveSignal.sl,
         color: '#ef4444',
         lineWidth: 2,
         lineStyle: 0,
         axisLabelVisible: true,
-        title: `SL: ${formatPrice(activeTradeLevels.sl)}`,
+        title: `SL: ${formatPrice(activeLiveSignal.sl)}`,
       });
       lines.push(slLine);
     }
 
     priceLinesRef.current = lines;
-  }, [activeTradeLevels, selectedSymbol]);
+  }, [activeLiveSignal, selectedSymbol]);
 
   useEffect(() => {
     if (chartRef.current && candleSeriesRef.current) {
       setTimeout(updateBoxCoordinates, 50);
     }
-  }, [tradesDetail, activeTradeLevels, displayMarkers, showPositionBox]);
+  }, [allInspectableSignals, selectedSignalIndex, showPositionBox, displayMarkers]);
 
   const cleanStrategyName = (activeStrategy || selectedStrategy || '').replace('.py', '');
 
@@ -857,21 +1009,110 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           </div>
         </div>
 
-        {/* Middle: Live Signal Status Indicator */}
-        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/90 border border-slate-700/80 font-mono text-[11px] shadow-sm">
-          <span className="text-slate-400 font-semibold">Signal:</span>
-          {activeTradeLevels ? (
-            <span className="flex items-center gap-1.5 text-emerald-400 font-bold animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              LIVE {activeTradeLevels.side} @ ${activeTradeLevels.entry.toFixed(2)}
+        {/* Middle: Signals Walkthrough / Inspector */}
+        {allInspectableSignals.length > 0 ? (
+          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/90 border border-slate-700/80 font-mono text-[11px] shadow-sm">
+            <span className="text-slate-400 font-semibold">Signal:</span>
+
+            {/* Previous Signal Button */}
+            <button
+              onClick={() => {
+                const cur = selectedSignalIndex ?? allInspectableSignals.length - 1;
+                if (cur <= 0) return;
+                const nextIdx = cur - 1;
+                setSelectedSignalIndex(nextIdx);
+                centerOnTrade(allInspectableSignals[nextIdx]);
+              }}
+              disabled={(selectedSignalIndex ?? allInspectableSignals.length - 1) <= 0}
+              className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-25 disabled:cursor-not-allowed text-white text-[10px] transition-all"
+              title="Previous Historical / Past Signal"
+            >
+              ◀
+            </button>
+
+            {/* Index Counter */}
+            <span className="text-sky-300 font-bold">
+              #{(selectedSignalIndex ?? allInspectableSignals.length - 1) + 1}/{allInspectableSignals.length}
             </span>
-          ) : (
+
+            {/* Signal Badge: Side + PnL or LIVE */}
+            {inspectedSignal?.isLiveActive ? (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                LIVE {inspectedSignal.side}
+              </span>
+            ) : (
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                  (inspectedSignal?.pnl_pct ?? 0) >= 0
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                }`}
+              >
+                {inspectedSignal?.side} {(inspectedSignal?.pnl_pct ?? 0) >= 0 ? '+' : ''}
+                {(inspectedSignal?.pnl_pct ?? 0).toFixed(2)}%
+                {inspectedSignal?.source === 'LIVE' && (
+                  <span className="ml-1 text-[9px] text-amber-400 font-mono font-normal">LIVE</span>
+                )}
+              </span>
+            )}
+
+            {/* Next Signal Button */}
+            <button
+              onClick={() => {
+                const cur = selectedSignalIndex ?? allInspectableSignals.length - 1;
+                if (cur >= allInspectableSignals.length - 1) return;
+                const nextIdx = cur + 1;
+                setSelectedSignalIndex(nextIdx);
+                centerOnTrade(allInspectableSignals[nextIdx]);
+              }}
+              disabled={(selectedSignalIndex ?? allInspectableSignals.length - 1) >= allInspectableSignals.length - 1}
+              className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-25 disabled:cursor-not-allowed text-white text-[10px] transition-all"
+              title="Next Historical / Past Signal"
+            >
+              ▶
+            </button>
+
+            {/* Jump to Latest Button */}
+            <button
+              onClick={() => {
+                const lastIdx = allInspectableSignals.length - 1;
+                setSelectedSignalIndex(lastIdx);
+                centerOnTrade(allInspectableSignals[lastIdx]);
+              }}
+              className="ml-1 px-1.5 py-0.5 rounded bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/50 text-[9px] uppercase font-bold transition-all"
+              title="Jump to Latest Signal"
+            >
+              Latest
+            </button>
+
+            {/* Quick Live Position Jump Indicator */}
+            {activeLiveSignal && (
+              <button
+                onClick={() => {
+                  const liveIdx = allInspectableSignals.findIndex((s) => s.isLiveActive);
+                  if (liveIdx >= 0) {
+                    setSelectedSignalIndex(liveIdx);
+                    centerOnTrade(allInspectableSignals[liveIdx]);
+                  }
+                }}
+                className="ml-1 px-1.5 py-0.5 rounded bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border border-emerald-600/50 text-[9px] uppercase font-bold transition-all flex items-center gap-1 animate-pulse"
+                title="Jump to Active Live Signal"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                Active
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/90 border border-slate-700/80 font-mono text-[11px] shadow-sm">
+            <span className="text-slate-400 font-semibold">Signal:</span>
             <span className="flex items-center gap-1.5 text-slate-400">
               <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
               NONE ACTIVE (SCANNING)
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Right: Strategy Indicators Toggles */}
         <div className="flex items-center gap-1.5 font-mono text-[10px]">
@@ -1039,20 +1280,20 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             </span>
           )}
 
-          {activeTradeLevels && (
+          {inspectedTradeLevels && (
             <>
               <div className="h-3 w-[1px] bg-slate-700 hidden sm:block" />
               <span className="text-sky-400 font-semibold">
-                Entry: <span className="font-bold text-slate-200">${isXauActive ? activeTradeLevels.entry.toFixed(2) : activeTradeLevels.entry.toFixed(1)}</span>
+                Entry: <span className="font-bold text-slate-200">${isXauActive ? inspectedTradeLevels.entry.toFixed(2) : inspectedTradeLevels.entry.toFixed(1)}</span>
               </span>
               <span className="text-emerald-400 font-semibold">
-                TP: <span className="font-bold text-slate-200">${isXauActive ? activeTradeLevels.tp.toFixed(2) : activeTradeLevels.tp.toFixed(1)}</span>
+                TP: <span className="font-bold text-slate-200">${isXauActive ? inspectedTradeLevels.tp.toFixed(2) : inspectedTradeLevels.tp.toFixed(1)}</span>
               </span>
               <span className="text-rose-400 font-semibold">
-                SL: <span className="font-bold text-slate-200">${isXauActive ? activeTradeLevels.sl.toFixed(2) : activeTradeLevels.sl.toFixed(1)}</span>
+                SL: <span className="font-bold text-slate-200">${isXauActive ? inspectedTradeLevels.sl.toFixed(2) : inspectedTradeLevels.sl.toFixed(1)}</span>
               </span>
               <span className="text-amber-400 font-semibold">
-                R:R: <span className="font-bold text-slate-200">{activeTradeLevels.rr}</span>
+                R:R: <span className="font-bold text-slate-200">{inspectedTradeLevels.rr}</span>
               </span>
             </>
           )}

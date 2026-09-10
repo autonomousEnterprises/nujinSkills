@@ -138,6 +138,7 @@ export const App: React.FC = () => {
       <main className={`w-full flex-1 relative ${activeScreen === 'CHART' ? 'block' : 'hidden'}`}>
         <ChartCanvas
           latestSignal={latestSignal}
+          signals={signals}
           theme={theme}
           selectedStrategy={selectedStrategy}
           tradeMarkers={selectedBacktestData?.trade_markers || activeState?.trade_markers || []}
