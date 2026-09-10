@@ -109,11 +109,32 @@ def get_schema(endpoint: str):
     except Exception as e:
         print(f"[StateControl] Error fetching schema: {e}")
 
+def get_managed_strategies(endpoint: str):
+    url = f"{endpoint}/api/strategies/manage"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            strats = data.get("strategies", [])
+            print(f"[StateControl] Managed Strategies ({len(strats)} total):")
+            for s in strats:
+                bt = s.get("latest_backtest", {})
+                print(f"  #{s.get('rank')}: {s.get('name')} | Status: {s.get('status')} | Sharpe: {bt.get('sharpe', 0.0)} | DSR: {bt.get('dsr', 0.0)} | Tier: {s.get('tier')}")
+    except Exception:
+        # Offline fallback
+        import os, sys
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        from server.state_manager import strategy_registry
+        strats = strategy_registry.get_all(sync=True)
+        print(f"[StateControl] Managed Strategies (Local, {len(strats)} total):")
+        for s in strats:
+            bt = s.get("latest_backtest", {})
+            print(f"  #{s.get('rank')}: {s.get('name')} | Status: {s.get('status')} | Sharpe: {bt.get('sharpe', 0.0)} | DSR: {bt.get('dsr', 0.0)} | Tier: {s.get('tier')}")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EdgeMiner State Control CLI — shared state for server, frontend, and AI agent.")
     parser.add_argument(
         "action",
-        choices=["get", "patch", "deploy", "stop", "signals", "signal-stats", "signal-add", "schema"],
+        choices=["get", "patch", "deploy", "stop", "signals", "signal-stats", "signal-add", "schema", "strategies"],
         help=(
             "get: read state or a dotted key | "
             "patch: merge-patch state with JSON | "
@@ -122,7 +143,8 @@ if __name__ == "__main__":
             "signals: list all signals | "
             "signal-stats: live win rate, PF, Sharpe, PnL | "
             "signal-add: broadcast a new signal | "
-            "schema: show state schema"
+            "schema: show state schema | "
+            "strategies: list all managed strategies with status and rank"
         )
     )
     parser.add_argument("--key",      default="",                       help="Dotted key path for 'get', e.g. backtest_summary.sharpe")
@@ -141,3 +163,4 @@ if __name__ == "__main__":
     elif args.action == "signal-stats": get_signal_stats(args.endpoint)
     elif args.action == "signal-add":   add_signal(args.signal, args.endpoint)
     elif args.action == "schema":       get_schema(args.endpoint)
+    elif args.action == "strategies":   get_managed_strategies(args.endpoint)

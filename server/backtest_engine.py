@@ -6,7 +6,7 @@ import subprocess
 import logging
 import numpy as np
 from datetime import datetime, timezone
-from server.state_manager import state_manager
+from server.state_manager import state_manager, strategy_registry
 from server.data_manager import sync_30d_candles
 
 logger = logging.getLogger("BacktestEngine")
@@ -445,7 +445,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     range_win = regime_breakdown["ranging_market"]["win_rate"]
     regime_survival_score = round(min(100.0, max(0.0, (bull_win * 35.0 + bear_win * 35.0 + range_win * 30.0) * 100.0)), 1)
 
-    return {
+    result = {
         "strategy": clean_name,
         "symbol": "XAU/USD" if is_xauusd else "BTC/USDT",
         "timeframe": "1m" if is_xauusd else "15m",
@@ -480,3 +480,10 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             }
         }
     }
+
+    try:
+        strategy_registry.record_backtest(clean_name, result, is_cron=False)
+    except Exception as e_reg:
+        logger.warning(f"[BacktestEngine] Could not record backtest in strategy_registry: {e_reg}")
+
+    return result

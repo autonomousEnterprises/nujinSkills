@@ -35,14 +35,17 @@ def start_server(host: str, port: int, daemon: bool):
         print(f"[ServerControl] Server is already running on port {port}.")
         return
 
+    venv_python = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python"))
+    python_bin = venv_python if os.path.exists(venv_python) else sys.executable
+
     cmd = [
-        sys.executable, "-m", "uvicorn", "server.main:app",
+        python_bin, "-m", "uvicorn", "server.main:app",
         "--host", host,
         "--port", str(port),
         "--reload"
     ]
     
-    print(f"[ServerControl] Launching Telemetry Server & Telegram Gateway on {host}:{port}...")
+    print(f"[ServerControl] Launching Telemetry Server & Telegram Gateway on {host}:{port} with {python_bin}...")
     
     if daemon:
         # Launch detached process

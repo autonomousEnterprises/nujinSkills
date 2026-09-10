@@ -2,24 +2,24 @@
 
 ## Overview
 
-EdgeMiner uses a **single source of truth** for all runtime state.
+EdgeMiner uses a **single source of truth** for all runtime state and strategy registries.
 The server, AI agent tools, and frontend all read and write the same data
-through the `StateManager` and `SignalStore` classes defined in
+through the `StateManager`, `SignalStore`, and `StrategyRegistry` classes defined in
 `server/state_manager.py`.
 
-**No component may read or write `data/state.json` or `data/signals.json` directly.**
+**No component may read or write `data/state.json`, `data/signals.json`, or `data/strategies.json` directly.**
 All access must go through:
-- **AI agent (CLI):** `tools/state_control.py`  
-- **Server (Python):** `from server.state_manager import state_manager, signal_store`  
-- **Frontend:** REST API endpoints (`/api/state`, `/api/signals`, `/api/signals/stats`)
+- **AI agent (CLI):** `tools/state_control.py` and `tools/strategy_manager.py`  
+- **Server (Python):** `from server.state_manager import state_manager, signal_store, strategy_registry`  
+- **Frontend:** REST API endpoints (`/api/state`, `/api/signals`, `/api/strategies/manage`)
 
 ---
 
-## Tool: `tools/state_control.py`
+## Tools: `tools/state_control.py` & `tools/strategy_manager.py`
 
-The standardised CLI for AI agents to read and write shared state.
+The standardised CLIs for AI agents to read and write shared state and manage the strategy lifecycle.
 
-### Actions
+### `tools/state_control.py` Actions
 
 | Action | What it does |
 |---|---|
@@ -31,7 +31,19 @@ The standardised CLI for AI agents to read and write shared state.
 | `signals` | List all persisted signals as JSON |
 | `signal-stats` | Print live win rate, profit factor, Sharpe, PnL |
 | `signal-add --signal <json>` | Broadcast and persist a new signal |
+| `strategies` | List all managed strategies with status, ranking, and edge metrics |
 | `schema` | Print the canonical state schema (key → type) |
+
+### `tools/strategy_manager.py` Actions
+
+| Action | What it does |
+|---|---|
+| `list` | Show formatted table of all strategies with status, rank, Sharpe, DSR, win rate |
+| `status` | Update strategy lifecycle status (`ACTIVE_LIVE`, `CRON_BACKTEST`, `DEACTIVATED`) |
+| `backtest` | Run real backtest and update registry metrics |
+| `cron` | Trigger cron evaluation for all `CRON_BACKTEST` strategies and record drift history |
+| `rank` | Recalculate composite multi-factor rankings |
+| `summary` | Print full quant edge leaderboard and lifecycle summary for AI reasoning |
 
 ### Examples
 

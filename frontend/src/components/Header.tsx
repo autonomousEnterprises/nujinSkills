@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Activity, BarChart2, LayoutGrid, Terminal, ShieldCheck, Sun, Moon, FileCode, ChevronDown, Check, Play, BarChart3, X, Send } from 'lucide-react';
+import { Activity, BarChart2, LayoutGrid, Terminal, ShieldCheck, Sun, Moon, FileCode, ChevronDown, Check, Play, BarChart3, X, Send, Layers } from 'lucide-react';
 
 
 interface StrategyFile {
@@ -10,8 +10,8 @@ interface StrategyFile {
 }
 
 interface HeaderProps {
-  activeScreen: 'CHART' | 'AGENT_DECK' | 'BACKTEST';
-  setActiveScreen: (screen: 'CHART' | 'AGENT_DECK' | 'BACKTEST') => void;
+  activeScreen: 'CHART' | 'AGENT_DECK' | 'BACKTEST' | 'STRATEGY_MANAGER';
+  setActiveScreen: (screen: 'CHART' | 'AGENT_DECK' | 'BACKTEST' | 'STRATEGY_MANAGER') => void;
   isConnected: boolean;
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
@@ -229,6 +229,17 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <ShieldCheck className="w-3.5 h-3.5" />
           <span>Backtest (F3)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveScreen('STRATEGY_MANAGER')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-all font-mono ${activeScreen === 'STRATEGY_MANAGER'
+            ? 'bg-indigo-600 text-white font-bold shadow-md'
+            : isDark ? 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]' : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-300'
+            }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Strategies (F4)</span>
         </button>
 
         <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1" />

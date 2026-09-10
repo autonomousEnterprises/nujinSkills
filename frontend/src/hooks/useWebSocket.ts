@@ -42,6 +42,98 @@ export interface SystemState {
   thesis_props?: Record<string, any>;
 }
 
+export interface ManagedStrategy {
+  id: string;
+  name: string;
+  file: string;
+  path: string;
+  display_name: string;
+  target_profile: string;
+  thesis: string;
+  symbol: string;
+  timeframe: string;
+  status: 'ACTIVE_LIVE' | 'CRON_BACKTEST' | 'DEACTIVATED';
+  rank: number;
+  ranking_score: number;
+  tier: string;
+  latest_backtest: {
+    sharpe?: number;
+    win_rate?: number;
+    profit_factor?: number;
+    max_drawdown?: number;
+    mdd_99?: number;
+    dsr?: number;
+    trades?: number;
+    expectancy_bps?: number;
+    last_run?: string;
+  };
+  backtest_equity_curve?: any[];
+  live_equity_curve?: any[];
+  live_stats?: Record<string, any>;
+  signals_summary?: Record<string, any>;
+  falsification_gates?: Record<string, any>;
+  cron_config?: {
+    enabled: boolean;
+    interval: string;
+    last_run: string;
+    drift_history?: any[];
+  };
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PortfolioSummary {
+  active_count: number;
+  active_strategies: string[];
+  blended_win_rate: number;
+  blended_sharpe: number;
+  total_trades: number;
+  combined_profit_factor: number;
+  total_realized_pnl: number;
+  symbols: string[];
+  best_performer?: string | null;
+}
+
+export interface DistributionAnalytics {
+  improving: Array<{
+    name: string;
+    display_name?: string;
+    status: string;
+    sharpe: number;
+    win_rate: number;
+    delta_sharpe: number;
+    delta_win_rate: number;
+    snapshots_count: number;
+    trajectory: string;
+  }>;
+  decaying: Array<{
+    name: string;
+    display_name?: string;
+    status: string;
+    sharpe: number;
+    win_rate: number;
+    delta_sharpe: number;
+    delta_win_rate: number;
+    snapshots_count: number;
+    trajectory: string;
+  }>;
+  stable: Array<{
+    name: string;
+    display_name?: string;
+    status: string;
+    sharpe: number;
+    win_rate: number;
+    delta_sharpe: number;
+    delta_win_rate: number;
+    snapshots_count: number;
+    trajectory: string;
+  }>;
+  sharpe_distribution: Record<string, number>;
+  tier_distribution: Record<string, number>;
+  asset_distribution: Record<string, number>;
+  total_evaluated: number;
+}
+
 export function useWebSocket() {
   const [isConnected, setIsConnected] = useState(false);
   const [widgets, setWidgets] = useState<Record<string, WidgetData>>({});
@@ -49,6 +141,9 @@ export function useWebSocket() {
   const [signals, setSignals] = useState<SignalData[]>([]);
   // Live system state pushed via WebSocket (STATE_UPDATED) or REST poll
   const [liveSystemState, setLiveSystemState] = useState<SystemState | null>(null);
+  const [managedStrategies, setManagedStrategies] = useState<ManagedStrategy[]>([]);
+  const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummary | null>(null);
+  const [distributionAnalytics, setDistributionAnalytics] = useState<DistributionAnalytics | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,6 +202,21 @@ export function useWebSocket() {
             }
             break;
           }
+          case 'STRATEGIES_UPDATED': {
+            console.log('[WS] STRATEGIES_UPDATED received:', payload);
+            if (Array.isArray(payload)) {
+              setManagedStrategies(payload);
+            } else if (payload?.strategies && Array.isArray(payload.strategies)) {
+              setManagedStrategies(payload.strategies);
+            }
+            if (payload?.portfolio_summary) {
+              setPortfolioSummary(payload.portfolio_summary);
+            }
+            if (payload?.distribution_analytics) {
+              setDistributionAnalytics(payload.distribution_analytics);
+            }
+            break;
+          }
           default:
             break;
         }
@@ -153,6 +263,24 @@ export function useWebSocket() {
       })
       .catch(() => {});
 
+    // Initial managed strategies fetch
+    fetch('/api/strategies/manage')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && isMounted.current) {
+          if (data.strategies && Array.isArray(data.strategies)) {
+            setManagedStrategies(data.strategies);
+          }
+          if (data.portfolio_summary) {
+            setPortfolioSummary(data.portfolio_summary);
+          }
+          if (data.distribution_analytics) {
+            setDistributionAnalytics(data.distribution_analytics);
+          }
+        }
+      })
+      .catch(() => {});
+
     connect();
 
     return () => {
@@ -167,6 +295,10 @@ export function useWebSocket() {
     widgets: Object.values(widgets),
     latestSignal,
     signals,
-    liveSystemState,   // ← NEW: reactive system state shared across all screens
+    liveSystemState,        // ← reactive system state shared across all screens
+    managedStrategies,      // ← reactive managed strategies from StrategyRegistry
+    setManagedStrategies,
+    portfolioSummary,       // ← aggregated portfolio performance
+    distributionAnalytics,  // ← alpha drift & distribution analytics
   };
 }

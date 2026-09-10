@@ -304,7 +304,8 @@ Once a strategy passes all falsification gates, activate user-selected deploymen
 | **Signal Chatbot** | [`references/signals_gateway.md`](file:///home/christonomous/Desktop/EdgeMiner/references/signals_gateway.md) | 24/7 Telegram bot setup, Webhook ingestion, real-time alert dispatching. |
 | **Visual Dashboard** | [`references/dashboard.md`](file:///home/christonomous/Desktop/EdgeMiner/references/dashboard.md) | Dual-screen UI architecture, TradingView canvas, agent deck stream. |
 | **UI Management** | [`references/ui_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/ui_management.md) | Dashboard state machine, view hotkeys, background daemon controls. |
-| **State Management** | [`references/state_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/state_management.md) | Single source of truth: `StateManager`, `SignalStore`, `state_control.py` CLI, state & signal schemas, file lock safety. |
+| **State Management** | [`references/state_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/state_management.md) | Single source of truth: `StateManager`, `SignalStore`, `StrategyRegistry`, `state_control.py` CLI, state & signal schemas, file lock safety. |
+| **Strategy Management** | [`references/strategy_management.md`](file:///home/christonomous/Desktop/EdgeMiner/references/strategy_management.md) | Multi-strategy lifecycle (`ACTIVE_LIVE`, `CRON_BACKTEST`, `DEACTIVATED`), cron drift tracking, ranking formula, `strategy_manager.py` CLI. |
 | **Simple Utilities** | [`references/simple_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/simple_tools_ideas.md) | Lightweight helper script concepts and data formatting tools. |
 | **Extended Tools** | [`references/extended_tools_ideas.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extended_tools_ideas.md) | Future expansion blueprints (advanced ML models, multi-exchange routers). |
 | **Extend Frontend** | [`references/extending_frontend.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extending_frontend.md) | How to add screens, WS events, chart overlays, TypeScript interfaces, and new REST consumers. Data flow, component anatomy, build workflow. |
@@ -361,7 +362,8 @@ if __name__ == "__main__":
 | `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
 | `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
 | `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
-| `tools/state_control.py` | `[StateControl]` | **AI State CLI:** read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add`, `schema` |
+| `tools/strategy_manager.py` | `[StrategyManager]` | **Strategy Lifecycle CLI:** parallel multi-bot execution, portfolio aggregation, status (`ACTIVE_LIVE`, `CRON_BACKTEST`, `DEACTIVATED`), daily cron drift (24h), rankings | `list`, `status`, `portfolio`, `drift`, `backtest`, `cron`, `rank`, `register`, `summary` |
+| `tools/state_control.py` | `[StateControl]` | **AI State CLI:** read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add`, `strategies`, `schema` |
 | `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
 | `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
 | `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI telemetry server & Telegram gateway | `start`, `stop`, `status`, `--port` |
@@ -382,12 +384,17 @@ if __name__ == "__main__":
 | `/api/signals/stats` | GET | **Live performance stats since activation:** win rate, profit factor, Sharpe (annualized), total PnL %, avg win/loss, max consecutive losses |
 | `/api/state` | GET | Single Source of Truth system state (active strategy, backtest summary) |
 | `/api/strategies` | GET | List all strategy `.py` files in `strategies/` |
+| `/api/strategies/manage` | GET | List all managed strategies with rankings, stats, portfolio summary, and distribution analytics |
+| `/api/strategies/manage/portfolio` | GET | Aggregated portfolio performance (blended win rate, combined Sharpe, total trades, PnL) + drift & distribution analytics |
+| `/api/strategies/manage/status` | POST | Update strategy lifecycle status (`ACTIVE_LIVE`, `CRON_BACKTEST`, `DEACTIVATED`) with parallel multi-bot support |
+| `/api/strategies/manage/run-backtest` | POST | Run backtest and update registry record and rankings |
+| `/api/strategies/manage/cron-trigger` | POST | Trigger periodic daily evaluation across all `CRON_BACKTEST` strategies |
 | `/api/strategies/select` | POST | Run real backtest preview for a strategy (no activation) |
 | `/api/bot/deploy` | POST | Activate & deploy a strategy to paper trading + update state |
 | `/api/bot/stop` | POST | Stop the active paper trading bot |
 | `/api/backtest` | GET | Get backtest results for active or specified strategy |
 | `/api/broadcast` | POST | Broadcast WebSocket event (signals, widgets, alerts) |
-| `/ws` | WS | Real-time telemetry bus: `UPSERT_WIDGET`, `SIGNAL_TRIGGERED`, `STATE_UPDATED` |
+| `/ws` | WS | Real-time telemetry bus: `UPSERT_WIDGET`, `SIGNAL_TRIGGERED`, `STATE_UPDATED`, `STRATEGIES_UPDATED` |
 
 ---
 
@@ -398,10 +405,11 @@ if __name__ == "__main__":
 | **Chart** (`ChartCanvas`) | F1 | Live BTC/USDT candlestick chart (Binance 15m WebSocket) with backtest trade markers overlay |
 | **Signal Deck** (`SignalDeck`) | F2 | Live strategy telemetry: performance stats since activation (win rate, PF, Sharpe, PnL), active open signal with live unrealized PnL, and full signal history audit table |
 | **Backtest** (`BacktestDeck`) | F3 | Full-width backtest analytics: equity growth curve, return distribution histogram, market regime survival (bull/bear/ranging), sequential trade log, and 5-Gate Cynic Audit |
+| **Strategy Manager** (`StrategyManagerDeck`) | F4 | **Command & Portfolio Lifecycle:** Top KPI bar showing parallel active bots, portfolio blended win rate, combined Sharpe, and daily cron status. Includes dedicated tabs for Leaderboard & Parallel Bot Control, Profitability Drift & Trajectory (gaining vs. decaying edge), and Edge & Risk Distribution (Sharpe spread, Tier classification, Asset exposure). |
 | **Strategy Mega Menu** | Header | Header mega menu dropdown listing all strategies in `strategies/` with run backtest and activate actions |
 
 > [!NOTE]
-> **AI State Sharing:** All three screens read from the same `data/state.json` (Single Source of Truth). The AI agent writes to this file via CLI tools (`run_backtest_audit.py --save-state`) or via REST API. The frontend subscribes to changes via WebSocket `STATE_UPDATED` events.
+> **AI State Sharing:** All screens read from the same `data/state.json` and `data/strategies.json` (Single Source of Truth). The AI agent writes to these files via CLI tools (`strategy_manager.py`, `state_control.py`) or via REST API. The frontend subscribes to changes via WebSocket `STATE_UPDATED` and `STRATEGIES_UPDATED` events.
 
 
 

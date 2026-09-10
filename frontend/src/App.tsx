@@ -3,10 +3,11 @@ import { Header } from './components/Header';
 import { ChartCanvas } from './components/ChartCanvas';
 import { SignalDeck } from './components/SignalDeck';
 import { BacktestDeck } from './components/BacktestDeck';
+import { StrategyManagerDeck } from './components/StrategyManagerDeck';
 import { useWebSocket } from './hooks/useWebSocket';
 
 export const App: React.FC = () => {
-  const [activeScreen, setActiveScreen] = useState<'CHART' | 'AGENT_DECK' | 'BACKTEST'>('CHART');
+  const [activeScreen, setActiveScreen] = useState<'CHART' | 'AGENT_DECK' | 'BACKTEST' | 'STRATEGY_MANAGER'>('CHART');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -19,8 +20,18 @@ export const App: React.FC = () => {
   const [strategies, setStrategies] = useState<any[]>([]);
   const [loadingBacktest, setLoadingBacktest] = useState(false);
 
-  // useWebSocket now surfaces liveSystemState (kept in sync via WS STATE_UPDATED events + initial REST fetch)
-  const { isConnected, widgets, latestSignal, signals, liveSystemState } = useWebSocket();
+  // useWebSocket surfaces liveSystemState and managedStrategies
+  const {
+    isConnected,
+    widgets,
+    latestSignal,
+    signals,
+    liveSystemState,
+    managedStrategies,
+    setManagedStrategies,
+    portfolioSummary,
+    distributionAnalytics,
+  } = useWebSocket();
 
   // activeState = live WS state if available, else local fallback
   const activeState = liveSystemState;
@@ -64,8 +75,6 @@ export const App: React.FC = () => {
         body: JSON.stringify({ strategy: stratName, mode: 'dry-run' }),
       });
       const data = await res.json();
-      // liveSystemState will auto-update via WS STATE_UPDATED broadcast from the server
-      // but also update backtest view immediately for the activated strategy
       if (data.state) {
         setSelectedBacktestData(data);
       }
@@ -73,6 +82,66 @@ export const App: React.FC = () => {
     } catch (e) {
       console.error('Failed to deploy strategy:', e);
     }
+  };
+
+  // Strategy Management handlers
+  const handleUpdateManagedStatus = async (stratName: string, newStatus: string) => {
+    try {
+      const res = await fetch('/api/strategies/manage/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: stratName, status: newStatus }),
+      });
+      const data = await res.json();
+      if (data.strategies) {
+        setManagedStrategies(data.strategies);
+      }
+      if (newStatus === 'ACTIVE_LIVE') {
+        handleSelectStrategy(stratName);
+      }
+    } catch (e) {
+      console.error('Failed to update strategy status:', e);
+    }
+  };
+
+  const handleRunManageBacktest = async (stratName: string) => {
+    try {
+      const res = await fetch('/api/strategies/manage/run-backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: stratName }),
+      });
+      const data = await res.json();
+      if (data.strategies) {
+        setManagedStrategies(data.strategies);
+      }
+      if (data.result) {
+        setSelectedBacktestData(data.result);
+      }
+    } catch (e) {
+      console.error('Failed to run managed backtest:', e);
+    }
+  };
+
+  const handleTriggerCron = async () => {
+    try {
+      const res = await fetch('/api/strategies/manage/cron-trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.strategies) {
+        setManagedStrategies(data.strategies);
+      }
+    } catch (e) {
+      console.error('Failed to trigger cron evaluations:', e);
+    }
+  };
+
+  const handleNavigateToBacktest = (stratName: string) => {
+    handleSelectStrategy(stratName);
+    setActiveScreen('BACKTEST');
   };
 
   useEffect(() => {
@@ -100,16 +169,23 @@ export const App: React.FC = () => {
     return () => mq.removeEventListener('change', handleChange);
   }, []);
 
-  // Hotkeys: F1/F2/F3 + Ctrl+Space cycle
+  // Hotkeys: F1 / F2 / F3 / F4 + Ctrl+Space cycle
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F1') { e.preventDefault(); setActiveScreen('CHART'); }
       else if (e.key === 'F2') { e.preventDefault(); setActiveScreen('AGENT_DECK'); }
       else if (e.key === 'F3') { e.preventDefault(); setActiveScreen('BACKTEST'); }
+      else if (e.key === 'F4') { e.preventDefault(); setActiveScreen('STRATEGY_MANAGER'); }
       else if (e.key === ' ' && e.ctrlKey) {
         e.preventDefault();
         setActiveScreen((prev) =>
-          prev === 'CHART' ? 'AGENT_DECK' : prev === 'AGENT_DECK' ? 'BACKTEST' : 'CHART'
+          prev === 'CHART'
+            ? 'AGENT_DECK'
+            : prev === 'AGENT_DECK'
+            ? 'BACKTEST'
+            : prev === 'BACKTEST'
+            ? 'STRATEGY_MANAGER'
+            : 'CHART'
         );
       }
     };
@@ -170,6 +246,23 @@ export const App: React.FC = () => {
           onSelectStrategy={handleSelectStrategy}
           onActivateStrategy={handleActivateStrategy}
           loading={loadingBacktest}
+        />
+      </main>
+
+      {/* F4 — Strategy Lifecycle & Portfolio Management */}
+      <main className={`w-full flex-1 overflow-hidden ${activeScreen === 'STRATEGY_MANAGER' ? 'block' : 'hidden'}`}>
+        <StrategyManagerDeck
+          theme={theme}
+          strategies={managedStrategies}
+          activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
+          portfolioSummary={portfolioSummary}
+          distributionAnalytics={distributionAnalytics}
+          onSelectStrategy={handleSelectStrategy}
+          onActivateStrategy={handleActivateStrategy}
+          onUpdateStatus={handleUpdateManagedStatus}
+          onRunBacktest={handleRunManageBacktest}
+          onTriggerCron={handleTriggerCron}
+          onNavigateToBacktest={handleNavigateToBacktest}
         />
       </main>
 

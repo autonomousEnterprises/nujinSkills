@@ -14,7 +14,7 @@ from server.backtest_engine import run_real_backtest
 from server.xauusd_streamer import xauusd_engine
 
 # ── Unified State Manager — single source of truth for all consumers ──────────
-from server.state_manager import state_manager, signal_store
+from server.state_manager import state_manager, signal_store, strategy_registry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("NujinSkillsServer")
@@ -43,6 +43,14 @@ class DeployBotRequest(BaseModel):
     mode: Optional[str] = "dry-run"
 
 class SelectStrategyRequest(BaseModel):
+    strategy: str
+
+class UpdateStrategyStatusRequest(BaseModel):
+    strategy: str
+    status: str  # ACTIVE_LIVE | CRON_BACKTEST | DEACTIVATED
+    exclusive: Optional[bool] = False
+
+class RunStrategyBacktestRequest(BaseModel):
     strategy: str
 
 class StartTradeRequest(BaseModel):
@@ -228,6 +236,96 @@ async def list_strategies():
             
     return {"strategies": strategy_files, "total": len(strategy_files)}
 
+
+# ── Strategy Management System Endpoints ─────────────────────────────────────
+@app.get("/api/strategies/manage")
+async def get_managed_strategies():
+    """Returns full list of managed strategies with rankings, stats, portfolio summary, and distribution analytics."""
+    strats = strategy_registry.get_all(sync=True)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    return {
+        "strategies": strats,
+        "total": len(strats),
+        "portfolio_summary": portfolio,
+        "distribution_analytics": distribution
+    }
+
+
+@app.get("/api/strategies/manage/portfolio")
+async def get_portfolio_overview():
+    """Returns aggregated portfolio performance across all active strategies plus drift distribution."""
+    return {
+        "portfolio_summary": strategy_registry.get_portfolio_summary(),
+        "distribution_analytics": strategy_registry.get_distribution_analytics()
+    }
+
+
+@app.post("/api/strategies/manage/status")
+async def update_managed_strategy_status(req: UpdateStrategyStatusRequest):
+    """Update strategy lifecycle status: ACTIVE_LIVE, CRON_BACKTEST, DEACTIVATED with multi-strategy support."""
+    updated = strategy_registry.update_status(req.strategy, req.status, exclusive=bool(req.exclusive))
+    if req.status == "ACTIVE_LIVE":
+        bot_supervisor.deploy_strategy(req.strategy, mode="dry-run")
+        await manager.broadcast({"event_type": "STATE_UPDATED", "payload": state_manager.get()})
+    elif req.status in ("CRON_BACKTEST", "DEACTIVATED"):
+        bot_supervisor.stop_strategy(req.strategy)
+        await manager.broadcast({"event_type": "STATE_UPDATED", "payload": state_manager.get()})
+    
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    
+    payload = {
+        "strategies": all_strats,
+        "portfolio_summary": portfolio,
+        "distribution_analytics": distribution
+    }
+    await manager.broadcast({"event_type": "STRATEGIES_UPDATED", "payload": payload})
+    return {"status": "SUCCESS", "strategy": updated, **payload}
+
+
+@app.post("/api/strategies/manage/run-backtest")
+async def run_managed_strategy_backtest(req: RunStrategyBacktestRequest):
+    """Execute on-demand quantitative backtest for a strategy and update registry."""
+    result = run_real_backtest(req.strategy, save_as_active=False)
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    payload = {
+        "strategies": all_strats,
+        "portfolio_summary": portfolio,
+        "distribution_analytics": distribution
+    }
+    await manager.broadcast({"event_type": "STRATEGIES_UPDATED", "payload": payload})
+    return {"status": "SUCCESS", "result": result, **payload}
+
+
+@app.post("/api/strategies/manage/cron-trigger")
+async def trigger_cron_evaluations():
+    """Trigger periodic backtest evaluations across all strategies marked CRON_BACKTEST."""
+    strats = strategy_registry.get_all(sync=False)
+    cron_targets = [s for s in strats if s.get("status") == "CRON_BACKTEST"]
+    evaluated = []
+    for s in cron_targets:
+        try:
+            res = run_real_backtest(s["file"], save_as_active=False)
+            strategy_registry.record_backtest(s["name"], res, is_cron=True)
+            evaluated.append(s["name"])
+        except Exception as e:
+            logger.error(f"[CronScheduler] Backtest failed for {s['name']}: {e}")
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    payload = {
+        "strategies": all_strats,
+        "portfolio_summary": portfolio,
+        "distribution_analytics": distribution
+    }
+    await manager.broadcast({"event_type": "STRATEGIES_UPDATED", "payload": payload})
+    return {"status": "SUCCESS", "evaluated": evaluated, **payload}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -239,12 +337,48 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
+# ── Periodic Cron Backtest Background Loop (Daily / Once a day) ────────────
+async def cron_backtest_scheduler():
+    """Periodically evaluates CRON_BACKTEST strategies once a day (86400s) to track drift."""
+    import asyncio
+    while True:
+        # Evaluate once every 24 hours (86,400 seconds)
+        await asyncio.sleep(86400)
+        try:
+            strats = strategy_registry.get_all(sync=False)
+            cron_targets = [s for s in strats if s.get("status") == "CRON_BACKTEST"]
+            if cron_targets:
+                logger.info(f"[CronScheduler] Daily evaluation of {len(cron_targets)} CRON_BACKTEST strategies...")
+                for s in cron_targets:
+                    try:
+                        res = run_real_backtest(s["file"], save_as_active=False)
+                        strategy_registry.record_backtest(s["name"], res, is_cron=True)
+                    except Exception as e_c:
+                        logger.warning(f"[CronScheduler] Error evaluating {s['name']}: {e_c}")
+                all_strats = strategy_registry.get_all(sync=False)
+                portfolio = strategy_registry.get_portfolio_summary()
+                distribution = strategy_registry.get_distribution_analytics()
+                await manager.broadcast({
+                    "event_type": "STRATEGIES_UPDATED",
+                    "payload": {
+                        "strategies": all_strats,
+                        "portfolio_summary": portfolio,
+                        "distribution_analytics": distribution
+                    }
+                })
+        except Exception as e:
+            logger.error(f"[CronScheduler] Daily loop error: {e}")
+
+
+
 # ── XAUUSD & Goat Funded Trader Prop Scalping Endpoints ──────────────────────
 @app.on_event("startup")
 async def startup_event():
     import asyncio
     logger.info("[NujinSkillsServer] Launching XAUUSD Live Keyless Streamer & Signal Monitor...")
     asyncio.create_task(xauusd_engine.run_live_feed(manager.broadcast))
+    logger.info("[NujinSkillsServer] Launching Periodic Strategy Cron Backtest Scheduler...")
+    asyncio.create_task(cron_backtest_scheduler())
 
 
 @app.get("/api/xauusd/quote")
