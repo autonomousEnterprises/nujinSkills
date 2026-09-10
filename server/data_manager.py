@@ -110,32 +110,39 @@ async def _async_fetch_oanda_bars(resolution: str = "15", n_bars: int = 3000) ->
 
 
 def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880) -> List[Dict[str, Any]]:
-    """Fetches real OANDA:XAUUSD spot candles."""
+    """
+    Fetches real OANDA:XAUUSD spot candles.
+    Checks cache freshness (within 120s). If stale, pulls authentic live bars directly
+    from TradingView WebSocket and refreshes the cache.
+    """
     logger.info(f"[DataManager] Fetching real OANDA:XAUUSD spot candles (interval={interval}, count={count})...")
-    
-    # 1. Prefer local cached authentic OANDA CSV for 1m (instant, zero latency, guaranteed match)
     csv_path = "data/xauusd_candles_1m.csv"
+    now_ts = int(time.time())
+
+    # 1. Check if cached CSV exists and is currently fresh (latest bar <= 120s old)
     if interval == "1m" and os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
-            if len(df) >= 300:
-                candles = [
-                    {
-                        "time": int(r.get("timestamp", r.get("time", 0))),
-                        "open": round(float(r["open"]), 2),
-                        "high": round(float(r["high"]), 2),
-                        "low": round(float(r["low"]), 2),
-                        "close": round(float(r["close"]), 2),
-                        "volume": round(float(r.get("volume", 10.0)), 4)
-                    }
-                    for r in df.tail(count).to_dict(orient="records")
-                ]
-                logger.info(f"[DataManager] Loaded {len(candles)} authentic OANDA 1m candles from cache")
-                return candles
+            if len(df) >= 100:
+                last_ts = int(df.iloc[-1].get("timestamp", df.iloc[-1].get("time", 0)))
+                if (now_ts - last_ts) <= 120:
+                    candles = [
+                        {
+                            "time": int(r.get("timestamp", r.get("time", 0))),
+                            "open": round(float(r["open"]), 2),
+                            "high": round(float(r["high"]), 2),
+                            "low": round(float(r["low"]), 2),
+                            "close": round(float(r["close"]), 2),
+                            "volume": round(float(r.get("volume", 10.0)), 4)
+                        }
+                        for r in df.tail(count).to_dict(orient="records")
+                    ]
+                    logger.info(f"[DataManager] Loaded {len(candles)} fresh cached OANDA 1m candles (age: {now_ts - last_ts}s)")
+                    return candles
         except Exception as e:
-            logger.warning(f"[DataManager] Error reading cached OANDA 1m CSV: {e}")
+            logger.warning(f"[DataManager] Error checking cached OANDA 1m CSV: {e}")
 
-    # 2. Otherwise fetch live from TradingView WebSocket
+    # 2. Cache is missing or older than 120s: fetch live from TradingView WebSocket
     res_code = "1" if interval == "1m" else ("5" if interval == "5m" else "15")
     try:
         try:
@@ -148,12 +155,42 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880) -> List[Di
         except RuntimeError:
             candles = asyncio.run(_async_fetch_oanda_bars(res_code, count))
 
-        if candles:
+        if candles and len(candles) >= 50:
+            # Refresh the local CSV cache with authentic live data
+            if interval == "1m":
+                try:
+                    df_fresh = pd.DataFrame(candles)
+                    df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
+                    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+                    df_fresh.to_csv(csv_path, index=False)
+                    logger.info(f"[DataManager] Synced {len(candles)} live OANDA 1m bars to cache {csv_path}")
+                except Exception as e_csv:
+                    logger.warning(f"[DataManager] Could not write fresh cache CSV: {e_csv}")
             return candles[-count:] if count else candles
     except Exception as e:
-        logger.warning(f"[DataManager] Error fetching OANDA WS bars: {e}")
+        logger.warning(f"[DataManager] Error fetching live OANDA WS bars: {e}")
 
-    # 3. Fallback to COMEX if OANDA WS is briefly unavailable
+    # 3. Fallback to cached CSV even if older
+    if interval == "1m" and os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path)
+            if len(df) > 0:
+                logger.warning(f"[DataManager] Falling back to stale cached OANDA 1m candles ({len(df)} rows)")
+                return [
+                    {
+                        "time": int(r.get("timestamp", r.get("time", 0))),
+                        "open": round(float(r["open"]), 2),
+                        "high": round(float(r["high"]), 2),
+                        "low": round(float(r["low"]), 2),
+                        "close": round(float(r["close"]), 2),
+                        "volume": round(float(r.get("volume", 10.0)), 4)
+                    }
+                    for r in df.tail(count).to_dict(orient="records")
+                ]
+        except Exception:
+            pass
+
+    # 4. Fallback to COMEX if OANDA WS is unavailable
     return fetch_real_comex_gold_candles(interval=interval, count=count)
 
 

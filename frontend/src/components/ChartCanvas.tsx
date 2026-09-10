@@ -135,6 +135,13 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 close: Number(c.close),
                 volume: Number(c.volume || 10.0),
               };
+
+              // If chart history has a gap greater than 2 minutes, re-fetch continuous bars
+              if (activeCandleRef.current && (Number(c.time) - (activeCandleRef.current.time as number)) > 120) {
+                fetchCandles();
+                return;
+              }
+
               activeCandleRef.current = liveCandle;
               if (candleSeriesRef.current) {
                 candleSeriesRef.current.update(liveCandle);
@@ -149,12 +156,18 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             if (candleSeriesRef.current) {
               let cur = activeCandleRef.current;
               if (!cur || (cur.time as number) < (minuteTime as number)) {
-                // New 1-minute bar begins at minute boundary
+                // If more than 2 minutes elapsed since last bar, re-sync full history
+                if (cur && ((minuteTime as number) - (cur.time as number)) > 120) {
+                  fetchCandles();
+                  return;
+                }
+                // Continuous 1-minute bar opens at previous close
+                const openPrice = cur ? cur.close : p;
                 cur = {
                   time: minuteTime,
-                  open: p,
-                  high: p,
-                  low: p,
+                  open: openPrice,
+                  high: Math.max(openPrice, p),
+                  low: Math.min(openPrice, p),
                   close: p,
                   volume: data.quote.volume_1m || 10.0,
                 };

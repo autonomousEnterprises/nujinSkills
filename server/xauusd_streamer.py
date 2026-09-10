@@ -39,32 +39,20 @@ class XauusdScalpEngine:
         self._load_initial_candles()
 
     def _load_initial_candles(self):
-        """Loads cached 1m candles if available."""
-        csv_path = "data/xauusd_candles_1m.csv"
-        if os.path.exists(csv_path):
-            try:
-                df = pd.read_csv(csv_path)
-                records = df.tail(300).to_dict(orient="records")
-                self.candles_1m = [
-                    {
-                        "time": int(r.get("timestamp", r.get("time", 0))),
-                        "open": float(r["open"]),
-                        "high": float(r["high"]),
-                        "low": float(r["low"]),
-                        "close": float(r["close"]),
-                        "volume": float(r.get("volume", 1.0))
-                    }
-                    for r in records
-                ]
-                if self.candles_1m:
-                    last_c = self.candles_1m[-1]
-                    self.current_quote["price"] = last_c["close"]
-                    self.current_quote["bid"] = round(last_c["close"] - 0.15, 2)
-                    self.current_quote["ask"] = round(last_c["close"] + 0.15, 2)
-                    self.current_quote["timestamp"] = last_c["time"]
-                logger.info(f"[XauusdScalpEngine] Loaded {len(self.candles_1m)} initial 1m candles from {csv_path}")
-            except Exception as e:
-                logger.warning(f"[XauusdScalpEngine] Could not load initial CSV: {e}")
+        """Loads cached 1m candles or pulls fresh from TradingView."""
+        try:
+            from server.data_manager import fetch_real_oanda_candles
+            bars = fetch_real_oanda_candles(interval="1m", count=1000)
+            if bars:
+                self.candles_1m = bars
+                last_c = self.candles_1m[-1]
+                self.current_quote["price"] = last_c["close"]
+                self.current_quote["bid"] = round(last_c["close"] - 0.15, 2)
+                self.current_quote["ask"] = round(last_c["close"] + 0.15, 2)
+                self.current_quote["timestamp"] = last_c["time"]
+                logger.info(f"[XauusdScalpEngine] Loaded {len(self.candles_1m)} fresh 1m candles (latest close: {last_c['close']} @ {last_c['time']})")
+        except Exception as e:
+            logger.warning(f"[XauusdScalpEngine] Could not load initial candles: {e}")
 
     @staticmethod
     def is_session_active() -> Dict[str, Any]:
@@ -392,15 +380,23 @@ class XauusdScalpEngine:
                             last_c["low"] = min(last_c["low"], c_close)
                             last_c["volume"] = round(last_c.get("volume", 0) + 0.2, 4)
                         elif minute_bucket > last_c["time"]:
-                            self.candles_1m.append({
-                                "time": minute_bucket,
-                                "open": c_close,
-                                "high": c_close,
-                                "low": c_close,
-                                "close": c_close,
-                                "volume": 1.0
-                            })
-                            if len(self.candles_1m) > 1000:
+                            # If missed more than 1 minute (e.g. startup/reconnect gap), backfill authentic bars
+                            if (minute_bucket - last_c["time"]) > 120:
+                                from server.data_manager import fetch_real_oanda_candles
+                                fresh = await loop.run_in_executor(None, lambda: fetch_real_oanda_candles(interval="1m", count=1000))
+                                if fresh:
+                                    self.candles_1m = fresh
+                            else:
+                                prev_close = last_c["close"]
+                                self.candles_1m.append({
+                                    "time": minute_bucket,
+                                    "open": prev_close,
+                                    "high": max(prev_close, c_close),
+                                    "low": min(prev_close, c_close),
+                                    "close": c_close,
+                                    "volume": 1.0
+                                })
+                            if len(self.candles_1m) > 1500:
                                 self.candles_1m.pop(0)
 
                     if self.candles_1m:
