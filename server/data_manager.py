@@ -54,15 +54,27 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
             }
     except Exception as e:
         logger.warning(f"[DataManager] Error fetching live OANDA quote: {e}")
+        fallback_p = 4374.98
+        csv_path = "data/xauusd_candles_1m.csv"
+        if os.path.exists(csv_path):
+            try:
+                with open(csv_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    if len(lines) >= 2:
+                        last_row = lines[-1].strip().split(",")
+                        fallback_p = round(float(last_row[4]), 2)
+            except Exception:
+                pass
         return {
             "symbol": "XAU/USD (OANDA Spot)",
-            "price": 4409.50,
-            "bid": 4409.35,
-            "ask": 4409.65,
+            "price": fallback_p,
+            "bid": round(fallback_p - 0.15, 2),
+            "ask": round(fallback_p + 0.15, 2),
             "change_pct": 0.0,
             "timestamp": int(time.time()),
             "source": "oanda_spot_fallback"
         }
+
 
 
 async def _async_fetch_oanda_bars(resolution: str = "15", n_bars: int = 3000) -> List[Dict[str, Any]]:

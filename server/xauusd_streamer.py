@@ -20,15 +20,26 @@ class XauusdScalpEngine:
     """
     def __init__(self):
         self.candles_1m: List[Dict[str, Any]] = []
+        init_p = 4374.98
+        csv_path = "data/xauusd_candles_1m.csv"
+        if os.path.exists(csv_path):
+            try:
+                with open(csv_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                    if len(lines) >= 2:
+                        init_p = round(float(lines[-1].strip().split(",")[4]), 2)
+            except Exception:
+                pass
+
         self.current_quote: Dict[str, Any] = {
             "symbol": "XAU/USD (OANDA Spot)",
-            "price": 4409.50,
-            "bid": 4409.35,
-            "ask": 4409.65,
+            "price": init_p,
+            "bid": round(init_p - 0.15, 2),
+            "ask": round(init_p + 0.15, 2),
             "change_24h_pct": 0.0,
             "volume_1m": 12.0,
-            "high_24h": 4435.0,
-            "low_24h": 4390.0,
+            "high_24h": round(init_p + 25.0, 2),
+            "low_24h": round(init_p - 25.0, 2),
             "timestamp": int(time.time()),
             "source": "oanda_spot"
         }

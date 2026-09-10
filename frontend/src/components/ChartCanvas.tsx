@@ -16,7 +16,7 @@ interface TradeDetail {
 }
 
 interface PositionBoxCoord {
-  id: number;
+  id: number | string;
   x: number;
   width: number;
   yEntry: number;
@@ -28,6 +28,7 @@ interface PositionBoxCoord {
   slPrice: number;
   entryPrice: number;
   pnlPct: number;
+  isLong: boolean;
 }
 
 interface LegendValues {
@@ -205,6 +206,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [positionBoxes, setPositionBoxes] = useState<PositionBoxCoord[]>([]);
   const [selectedSignalIndex, setSelectedSignalIndex] = useState<number | null>(null);
+  const inspectedSignalRef = useRef<InspectableSignal | null>(null);
+  const candlesRef = useRef<any[]>([]);
+  const showPositionBoxRef = useRef<boolean>(true);
+  const updateBoxCoordinatesRef = useRef<() => void>(() => {});
+  const initialCenteredRef = useRef<boolean>(false);
   const priceLinesRef = useRef<any[]>([]);
 
   // Compute indicator series datasets
@@ -287,6 +293,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           const data = await res.json();
           if (data?.quote?.price) {
             const p = parseFloat(data.quote.price);
+            if (isNaN(p) || p <= 0) return;
+
+            // Reject anomalous spikes (> $15 deviation from last active candle close)
+            if (activeCandleRef.current && Math.abs(p - activeCandleRef.current.close) > 15.0) {
+              console.warn('[ChartCanvas] Outlier price quote rejected:', p, 'vs last close:', activeCandleRef.current.close);
+              return;
+            }
+
             setLastLivePrice(p);
 
             if (data.quote.candle && data.quote.candle.time) {
@@ -500,10 +514,15 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       ? allInspectableSignals[selectedSignalIndex]
       : null;
 
+  inspectedSignalRef.current = inspectedSignal;
+  candlesRef.current = candles;
+  showPositionBoxRef.current = showPositionBox;
+
   // Center Chart onto Given Signal
   const centerOnTrade = (trade: InspectableSignal) => {
     if (!chartRef.current || !trade || !trade.entry_time) return;
     try {
+      inspectedSignalRef.current = trade;
       const t = trade.entry_time;
       const tExit = trade.exit_time || (t + 15 * 60);
       const span = Math.max(tExit - t, 3600);
@@ -511,7 +530,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         from: (t - span * 3) as Time,
         to: (tExit + span * 3) as Time,
       });
-      setTimeout(updateBoxCoordinates, 60);
+      setTimeout(() => {
+        if (updateBoxCoordinatesRef.current) {
+          updateBoxCoordinatesRef.current();
+        }
+      }, 40);
     } catch (e) {}
   };
 
@@ -613,13 +636,21 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   // 4. Precision Clamped Position Box Resolution for Inspected Signal
   const updateBoxCoordinates = () => {
-    if (!showPositionBox || !inspectedSignal || !chartRef.current || !candleSeriesRef.current || !chartContainerRef.current || candles.length === 0) {
+    const target = inspectedSignalRef.current;
+    if (
+      !showPositionBoxRef.current ||
+      !target ||
+      !target.entry_price ||
+      !chartRef.current ||
+      !candleSeriesRef.current ||
+      !chartContainerRef.current
+    ) {
       setPositionBoxes([]);
       return;
     }
 
-    const target = inspectedSignal;
-    if (!target || !target.entry_price) {
+    const currentCandles = candlesRef.current;
+    if (!currentCandles || currentCandles.length === 0) {
       setPositionBoxes([]);
       return;
     }
@@ -629,32 +660,60 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const containerHeight = chartContainerRef.current.clientHeight || 400;
     const containerWidth = chartContainerRef.current.clientWidth || 800;
 
-    const yEntryRaw = series.priceToCoordinate(target.entry_price);
-    if (yEntryRaw === null) {
-      setPositionBoxes([]);
-      return;
-    }
-
-    const getBoundedY = (price: number) => {
-      const y = series.priceToCoordinate(price);
-      if (y === null || isNaN(y)) {
-        return price > target.entry_price ? 0 : containerHeight;
+    // Helper: interpolate Y coordinate even if price is off-screen
+    const getYForPrice = (price: number): number => {
+      const directY = series.priceToCoordinate(price);
+      if (directY !== null && !isNaN(directY)) {
+        return directY;
       }
-      return Math.max(0, Math.min(containerHeight, y));
+      // If outside visible price scale, extrapolate linearly
+      const pTop = series.coordinateToPrice(10);
+      const pBottom = series.coordinateToPrice(containerHeight - 10);
+      if (pTop !== null && pBottom !== null && pTop !== pBottom) {
+        const slope = (containerHeight - 20) / (pBottom - pTop);
+        const interpolatedY = 10 + (price - pTop) * slope;
+        if (!isNaN(interpolatedY)) {
+          return interpolatedY;
+        }
+      }
+      return price > target.entry_price ? -50 : containerHeight + 50;
     };
 
-    const yEntry = yEntryRaw;
-    const ySL = getBoundedY(target.stop_loss);
-    const yTP = getBoundedY(target.take_profit);
+    // Helper: binary search to find closest candle index in currentCandles
+    const findCandleIndex = (timeSec: number): number => {
+      let low = 0, high = currentCandles.length - 1;
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const t = currentCandles[mid].time as number;
+        if (t === timeSec) return mid;
+        if (t < timeSec) low = mid + 1;
+        else high = mid - 1;
+      }
+      if (low >= currentCandles.length) return currentCandles.length - 1;
+      if (high < 0) return 0;
+      return Math.abs((currentCandles[low].time as number) - timeSec) < Math.abs((currentCandles[high].time as number) - timeSec)
+        ? low
+        : high;
+    };
 
-    let x1Raw = chart.timeScale().timeToCoordinate(target.entry_time as Time);
+    // Robust X coordinates using logicalToCoordinate (supports off-screen coordinates)
+    const entryIdx = findCandleIndex(target.entry_time);
+    let x1Raw = chart.timeScale().logicalToCoordinate(entryIdx as any);
+    if (x1Raw === null) {
+      x1Raw = chart.timeScale().timeToCoordinate(target.entry_time as Time);
+    }
+
     let x2Raw: number | null = null;
-
     if (target.isLiveActive || !target.exit_time) {
-      const lastCandleX = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
-      x2Raw = lastCandleX !== null ? lastCandleX + 80 : containerWidth - 65;
+      const lastIdx = currentCandles.length - 1;
+      const lastX = chart.timeScale().logicalToCoordinate(lastIdx as any);
+      x2Raw = lastX !== null ? lastX + 80 : containerWidth - 65;
     } else {
-      x2Raw = chart.timeScale().timeToCoordinate(target.exit_time as Time);
+      const exitIdx = findCandleIndex(target.exit_time);
+      x2Raw = chart.timeScale().logicalToCoordinate(exitIdx as any);
+      if (x2Raw === null) {
+        x2Raw = chart.timeScale().timeToCoordinate(target.exit_time as Time);
+      }
     }
 
     if (x1Raw === null && x2Raw === null) {
@@ -664,28 +723,40 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
     const startX = x1Raw !== null ? x1Raw : (x2Raw! - 100);
     const endX = x2Raw !== null ? x2Raw : (x1Raw! + 100);
-    const leftX = Math.max(0, Math.min(startX, endX));
-    const rightX = Math.min(containerWidth - 60, Math.max(startX, endX));
-    const width = Math.max(rightX - leftX, 32);
+    const leftX = Math.min(startX, endX);
+    const rightX = Math.max(startX, endX);
+    const width = Math.max(rightX - leftX, 28);
+
+    // If box is completely outside visible horizontal range (by over 400px), skip
+    if (rightX < -400 || leftX > containerWidth + 400) {
+      setPositionBoxes([]);
+      return;
+    }
+
+    const yEntry = getYForPrice(target.entry_price);
+    const ySL = getYForPrice(target.stop_loss);
+    const yTP = getYForPrice(target.take_profit);
 
     const isLong = target.take_profit >= target.entry_price;
     let yProfitTop: number, profitHeight: number, yLossTop: number, lossHeight: number;
 
     if (isLong) {
+      // Long: TP is higher price (lower Y in screen coords)
       yProfitTop = yTP;
       profitHeight = Math.max(yEntry - yTP, 2);
       yLossTop = yEntry;
       lossHeight = Math.max(ySL - yEntry, 2);
     } else {
-      yProfitTop = yEntry;
-      profitHeight = Math.max(yTP - yEntry, 2);
+      // Short: SL is higher price (lower Y in screen coords)
       yLossTop = ySL;
       lossHeight = Math.max(yEntry - ySL, 2);
+      yProfitTop = yEntry;
+      profitHeight = Math.max(yTP - yEntry, 2);
     }
 
     setPositionBoxes([
       {
-        id: typeof target.id === 'number' ? target.id : 999,
+        id: typeof target.id === 'number' ? target.id : (target.id || 999),
         x: leftX,
         width,
         yEntry,
@@ -697,9 +768,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         slPrice: target.stop_loss,
         entryPrice: target.entry_price,
         pnlPct: target.pnl_pct || 0,
+        isLong,
       },
     ]);
   };
+
+  updateBoxCoordinatesRef.current = updateBoxCoordinates;
 
   // 5. Initialize Lightweight Chart & Add Indicator Series
   useEffect(() => {
@@ -858,11 +932,29 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     ll15SeriesRef.current = ll15Series;
 
     const handleRangeChange = () => {
-      requestAnimationFrame(updateBoxCoordinates);
+      requestAnimationFrame(() => {
+        if (updateBoxCoordinatesRef.current) {
+          updateBoxCoordinatesRef.current();
+        }
+      });
     };
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleRangeChange);
     chart.timeScale().subscribeVisibleTimeRangeChange(handleRangeChange);
+
+    let wheelTimer: any = null;
+    const handleWheel = () => {
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(() => {
+        if (updateBoxCoordinatesRef.current) {
+          updateBoxCoordinatesRef.current();
+        }
+      }, 30);
+    };
+
+    const container = chartContainerRef.current;
+    container.addEventListener('wheel', handleWheel, { passive: true });
+    container.addEventListener('pointerup', handleRangeChange);
 
     const resizeObserver = new ResizeObserver(() => {
       if (chartContainerRef.current && chartRef.current) {
@@ -870,20 +962,42 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           width: chartContainerRef.current.clientWidth,
           height: chartContainerRef.current.clientHeight,
         });
-        updateBoxCoordinates();
+        if (updateBoxCoordinatesRef.current) {
+          updateBoxCoordinatesRef.current();
+        }
       }
     });
 
     resizeObserver.observe(chartContainerRef.current);
-    setTimeout(updateBoxCoordinates, 100);
+    setTimeout(() => {
+      if (updateBoxCoordinatesRef.current) {
+        updateBoxCoordinatesRef.current();
+      }
+    }, 100);
 
     return () => {
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleRangeChange);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(handleRangeChange);
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('pointerup', handleRangeChange);
+      clearTimeout(wheelTimer);
       resizeObserver.disconnect();
       chart.remove();
     };
   }, [candles, isDark]);
+
+  // Auto-center chart on latest trade on initial dataset load
+  useEffect(() => {
+    if (!initialCenteredRef.current && chartRef.current && allInspectableSignals.length > 0) {
+      const target = allInspectableSignals[allInspectableSignals.length - 1];
+      if (target) {
+        initialCenteredRef.current = true;
+        setTimeout(() => {
+          centerOnTrade(target);
+        }, 120);
+      }
+    }
+  }, [allInspectableSignals.length, candles.length]);
 
   // Sync Dynamic Indicator Visibility Toggles
   useEffect(() => {
@@ -976,7 +1090,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   useEffect(() => {
     if (chartRef.current && candleSeriesRef.current) {
-      setTimeout(updateBoxCoordinates, 50);
+      if (updateBoxCoordinatesRef.current) {
+        updateBoxCoordinatesRef.current();
+      }
+      setTimeout(() => {
+        if (updateBoxCoordinatesRef.current) {
+          updateBoxCoordinatesRef.current();
+        }
+      }, 40);
     }
   }, [allInspectableSignals, selectedSignalIndex, showPositionBox, displayMarkers]);
 
@@ -1315,104 +1436,130 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               </linearGradient>
             </defs>
 
-            {positionBoxes.map((box) => (
-              <g key={box.id}>
-                {/* Green Profit Zone Box */}
-                <rect
-                  x={box.x}
-                  y={box.yProfitTop}
-                  width={box.width}
-                  height={box.profitHeight}
-                  fill="url(#profitGrad)"
-                  stroke="#26a69a"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 2"
-                />
-                {/* Red Loss Zone Box */}
-                <rect
-                  x={box.x}
-                  y={box.yLossTop}
-                  width={box.width}
-                  height={box.lossHeight}
-                  fill="url(#lossGrad)"
-                  stroke="#ef5350"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 2"
-                />
-                {/* Entry Price Line */}
-                <line
-                  x1={box.x}
-                  y1={box.yEntry}
-                  x2={box.x + box.width}
-                  y2={box.yEntry}
-                  stroke="#38bdf8"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                />
-                {/* Entry Price Label */}
-                <rect
-                  x={box.x + box.width - 70}
-                  y={box.yEntry - 8}
-                  width="66"
-                  height="16"
-                  rx="3"
-                  fill="rgba(56, 189, 248, 0.92)"
-                />
-                <text
-                  x={box.x + box.width - 37}
-                  y={box.yEntry + 3}
-                  fill="#041829"
-                  fontSize="9"
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                  textAnchor="middle"
-                >
-                  ENTRY: ${isXauActive ? box.entryPrice.toFixed(1) : box.entryPrice.toFixed(0)}
-                </text>
+            {positionBoxes.map((box) => {
+              const labelWidth = 68;
+              const containerW = chartContainerRef.current?.clientWidth || 800;
+              const containerH = chartContainerRef.current?.clientHeight || 400;
+              const labelX = Math.max(
+                box.x + 4,
+                Math.min(box.x + box.width - labelWidth - 4, containerW - labelWidth - 12)
+              );
+              const textX = labelX + labelWidth / 2;
 
-                {/* TP Label */}
-                <rect
-                  x={box.x + box.width - 70}
-                  y={box.yProfitTop + 2}
-                  width="66"
-                  height="16"
-                  rx="3"
-                  fill="rgba(38, 166, 154, 0.92)"
-                />
-                <text
-                  x={box.x + box.width - 37}
-                  y={box.yProfitTop + 13}
-                  fill="#ffffff"
-                  fontSize="9"
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                  textAnchor="middle"
-                >
-                  TP: ${isXauActive ? box.tpPrice.toFixed(1) : box.tpPrice.toFixed(0)}
-                </text>
+              // Correct vertical positioning for Long vs Short:
+              // Long: TP is top of profit zone (yProfitTop), SL is bottom of loss zone (yLossTop + lossHeight)
+              // Short: SL is top of loss zone (yLossTop), TP is bottom of profit zone (yProfitTop + profitHeight)
+              const rawTPY = box.isLong
+                ? box.yProfitTop + 2
+                : box.yProfitTop + box.profitHeight - 18;
+              const rawSLY = box.isLong
+                ? box.yLossTop + box.lossHeight - 18
+                : box.yLossTop + 2;
 
-                {/* SL Label */}
-                <rect
-                  x={box.x + box.width - 70}
-                  y={box.yLossTop + box.lossHeight - 18}
-                  width="66"
-                  height="16"
-                  rx="3"
-                  fill="rgba(239, 83, 80, 0.92)"
-                />
-                <text
-                  x={box.x + box.width - 37}
-                  y={box.yLossTop + box.lossHeight - 7}
-                  fill="#ffffff"
-                  fontSize="9"
-                  fontWeight="bold"
-                  fontFamily="monospace"
-                  textAnchor="middle"
-                >
-                  SL: ${isXauActive ? box.slPrice.toFixed(1) : box.slPrice.toFixed(0)}
-                </text>
-              </g>
-            ))}
+              const clampedEntryY = Math.max(12, Math.min(containerH - 24, box.yEntry - 8));
+              const clampedTPY = Math.max(12, Math.min(containerH - 24, rawTPY));
+              const clampedSLY = Math.max(12, Math.min(containerH - 24, rawSLY));
+
+              return (
+                <g key={box.id}>
+                  {/* Green Profit Zone Box */}
+                  <rect
+                    x={box.x}
+                    y={box.yProfitTop}
+                    width={box.width}
+                    height={box.profitHeight}
+                    fill="url(#profitGrad)"
+                    stroke="#26a69a"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 2"
+                  />
+                  {/* Red Loss Zone Box */}
+                  <rect
+                    x={box.x}
+                    y={box.yLossTop}
+                    width={box.width}
+                    height={box.lossHeight}
+                    fill="url(#lossGrad)"
+                    stroke="#ef5350"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 2"
+                  />
+                  {/* Entry Price Line */}
+                  <line
+                    x1={box.x}
+                    y1={box.yEntry}
+                    x2={box.x + box.width}
+                    y2={box.yEntry}
+                    stroke="#38bdf8"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+
+                  {/* Entry Price Label */}
+                  <rect
+                    x={labelX}
+                    y={clampedEntryY}
+                    width={labelWidth}
+                    height="16"
+                    rx="3"
+                    fill="rgba(56, 189, 248, 0.92)"
+                  />
+                  <text
+                    x={textX}
+                    y={clampedEntryY + 11}
+                    fill="#041829"
+                    fontSize="9"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    ENTRY: ${isXauActive ? box.entryPrice.toFixed(1) : box.entryPrice.toFixed(0)}
+                  </text>
+
+                  {/* TP Label */}
+                  <rect
+                    x={labelX}
+                    y={clampedTPY}
+                    width={labelWidth}
+                    height="16"
+                    rx="3"
+                    fill="rgba(38, 166, 154, 0.92)"
+                  />
+                  <text
+                    x={textX}
+                    y={clampedTPY + 11}
+                    fill="#ffffff"
+                    fontSize="9"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    TP: ${isXauActive ? box.tpPrice.toFixed(1) : box.tpPrice.toFixed(0)}
+                  </text>
+
+                  {/* SL Label */}
+                  <rect
+                    x={labelX}
+                    y={clampedSLY}
+                    width={labelWidth}
+                    height="16"
+                    rx="3"
+                    fill="rgba(239, 83, 80, 0.92)"
+                  />
+                  <text
+                    x={textX}
+                    y={clampedSLY + 11}
+                    fill="#ffffff"
+                    fontSize="9"
+                    fontWeight="bold"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    SL: ${isXauActive ? box.slPrice.toFixed(1) : box.slPrice.toFixed(0)}
+                  </text>
+                </g>
+              );
+            })}
           </svg>
         )}
       </div>
