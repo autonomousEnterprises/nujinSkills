@@ -208,7 +208,7 @@ class SignalStore:
 
     Usage:
         from server.state_manager import signal_store
-        signal_store.add({"action": "BUY", "price": 63404, ...})
+        signal_store.add({"action": "BUY", "price": 63404, "strategy": "GoatFundedTraderXauusdScalper"})
         all_sigs = signal_store.get_all()
         stats     = signal_store.get_stats()
 
@@ -219,55 +219,155 @@ class SignalStore:
     def __init__(self, path: str = SIGNALS_FILE):
         self._path = path
 
-    def get_all(self) -> List[Dict[str, Any]]:
-        """Return all real signals from disk. Returns [] if no signals yet — never fake data."""
-        return _read_json_locked(self._path, [])
+    def get_all(self, strategy: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return all real signals from disk, optionally filtered by strategy name."""
+        signals = _read_json_locked(self._path, [])
+        if strategy and strategy != "ALL":
+            clean = strategy.replace(".py", "").lower()
+            return [s for s in signals if s.get("strategy", "").replace(".py", "").lower() == clean]
+        return signals
 
-    def get_active(self) -> Optional[Dict[str, Any]]:
-        """Return the current ACTIVE_IN_POSITION signal, or None if no real signals exist."""
-        signals = self.get_all()
+    def get_active(self, strategy: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Return the current ACTIVE_IN_POSITION signal for a strategy or the first open position."""
+        signals = self.get_all(strategy)
         return next((s for s in signals if s.get("status") == "ACTIVE_IN_POSITION"), None)
+
+    def get_active_signals(self) -> List[Dict[str, Any]]:
+        """Return all signals currently marked ACTIVE_IN_POSITION across all strategies."""
+        signals = self.get_all()
+        return [s for s in signals if s.get("status") == "ACTIVE_IN_POSITION"]
 
     def add(self, signal: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Prepend a new real signal, auto-assign id, write, return all signals."""
         signals = self.get_all()
         new_id = (signals[0]["id"] + 1) if signals else 1
+
+        # Detect strategy and pair intelligently if missing
+        strat = signal.get("strategy")
+        if not strat:
+            strat = state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
+        clean_strat = strat.replace(".py", "")
+
+        pair = signal.get("pair")
+        if not pair:
+            lower = clean_strat.lower()
+            if "xau" in lower or "gold" in lower or "goat" in lower:
+                pair = "XAU/USD"
+            elif "eth" in lower:
+                pair = "ETH/USDT"
+            elif "sol" in lower:
+                pair = "SOL/USDT"
+            else:
+                pair = "BTC/USDT"
+
+        price = float(signal.get("price") or signal.get("entry_price") or 0.0)
+        action = (signal.get("action") or signal.get("side") or "BUY").upper()
+        if action in ["LONG", "BUY"]:
+            action = "BUY"
+            default_sl = price * 0.985 if "XAU" in pair else price * 0.975
+            default_tp = price * 1.025 if "XAU" in pair else price * 1.04
+        else:
+            action = "SELL"
+            default_sl = price * 1.015 if "XAU" in pair else price * 1.025
+            default_tp = price * 0.975 if "XAU" in pair else price * 0.96
+
         entry = {
             "id": new_id,
-            "time": signal.get("time", int(time.time())),
-            "pair": signal.get("pair", "BTC/USDT"),
-            "action": signal.get("action", "BUY"),
-            "price": float(signal.get("price", 0.0)),
-            "stop_loss": float(signal.get("stop_loss", signal.get("price", 0.0) * 0.975)),
-            "take_profit": float(signal.get("take_profit", signal.get("price", 0.0) * 1.04)),
+            "time": int(signal.get("time") or time.time()),
+            "pair": pair,
+            "action": action,
+            "side": "LONG" if action == "BUY" else "SHORT",
+            "price": price,
+            "entry_price": price,
+            "stop_loss": float(signal.get("stop_loss") or default_sl),
+            "take_profit": float(signal.get("take_profit") or default_tp),
             "status": signal.get("status", "ACTIVE_IN_POSITION"),
             "exit_price": signal.get("exit_price"),
             "exit_reason": signal.get("exit_reason"),
             "pnl_pct": float(signal.get("pnl_pct", 0.0)),
             "annotation": signal.get("annotation", "AI Live Signal"),
             "reasoning_md": signal.get("reasoning_md", ""),
-            "strategy": signal.get("strategy", "PropFirmVsaWickRejectionStrategy"),
+            "strategy": clean_strat,
         }
         updated = [entry] + signals
         _write_json_locked(self._path, updated)
         # Also bump signals_count in state.json
         state_manager.patch({"signals_count": len(updated)})
-        logger.info(f"[SignalStore] Signal #{new_id} added: {entry['action']} @ {entry['price']}")
+        logger.info(f"[SignalStore] Signal #{new_id} added: {entry['action']} {entry['pair']} ({clean_strat}) @ {entry['price']}")
         return updated
 
-    def clear(self) -> List[Dict[str, Any]]:
-        """Clears all signals from disk and resets signals_count to 0."""
+    def close_position(
+        self,
+        signal_id: Optional[int] = None,
+        strategy: Optional[str] = None,
+        exit_price: float = 0.0,
+        exit_reason: str = "MANUAL_CLOSE",
+        pnl_pct: Optional[float] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Close an active position by ID or latest open position for a strategy."""
+        signals = self.get_all()
+        target = None
+        for s in signals:
+            if s.get("status") == "ACTIVE_IN_POSITION":
+                if signal_id is not None and s.get("id") == signal_id:
+                    target = s
+                    break
+                elif strategy is not None and s.get("strategy", "").replace(".py", "").lower() == strategy.replace(".py", "").lower():
+                    target = s
+                    break
+                elif signal_id is None and strategy is None:
+                    target = s
+                    break
+
+        if not target:
+            return None
+
+        target["status"] = "CLOSED"
+        target["exit_price"] = exit_price
+        target["exit_reason"] = exit_reason
+        if pnl_pct is not None:
+            target["pnl_pct"] = round(pnl_pct, 2)
+        elif exit_price > 0 and target.get("price", 0) > 0:
+            entry_p = target["price"]
+            is_long = target.get("action") == "BUY" or target.get("side") == "LONG"
+            raw_pnl = ((exit_price - entry_p) / entry_p * 100) if is_long else ((entry_p - exit_price) / entry_p * 100)
+            target["pnl_pct"] = round(raw_pnl, 2)
+
+        _write_json_locked(self._path, signals)
+        logger.info(f"[SignalStore] Position #{target['id']} closed for {target['strategy']}: exit {exit_price}, pnl {target['pnl_pct']}%")
+        return target
+
+    def update_signal(self, signal_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        signals = self.get_all()
+        for s in signals:
+            if s.get("id") == signal_id:
+                s.update(updates)
+                _write_json_locked(self._path, signals)
+                return s
+        return None
+
+    def clear(self, strategy: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Clears signals from disk. If strategy specified, only clears signals for that strategy."""
+        if strategy and strategy != "ALL":
+            clean = strategy.replace(".py", "").lower()
+            all_sigs = self.get_all()
+            remaining = [s for s in all_sigs if s.get("strategy", "").replace(".py", "").lower() != clean]
+            _write_json_locked(self._path, remaining)
+            state_manager.patch({"signals_count": len(remaining)})
+            logger.info(f"[SignalStore] Signals cleared for strategy '{strategy}'. Remaining: {len(remaining)}")
+            return remaining
         _write_json_locked(self._path, [])
         state_manager.patch({"signals_count": 0})
         logger.info("[SignalStore] All signals cleared.")
         return []
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self, strategy: Optional[str] = None) -> Dict[str, Any]:
         """
         Compute live performance stats from closed signals.
         Returns win_rate, profit_factor, sharpe_live, total_pnl_pct, etc.
+        If strategy is None, also returns a per-strategy breakdown in 'by_strategy'.
         """
-        signals = self.get_all()
+        signals = self.get_all(strategy)
         closed = [
             s for s in signals
             if s.get("exit_reason") and s.get("pnl_pct") is not None
@@ -307,7 +407,7 @@ class SignalStore:
             else:
                 cur = 0
 
-        return {
+        res = {
             "total_trades": total,
             "open_trades": len(open_trades),
             "wins": len(wins),
@@ -322,6 +422,17 @@ class SignalStore:
             "gross_loss_pct": round(gross_loss, 2),
             "max_consecutive_losses": max_consec,
         }
+
+        # If overall stats requested, compute breakdown per strategy
+        if not strategy or strategy == "ALL":
+            all_raw = self.get_all()
+            strats_seen = set(s.get("strategy", "Unknown") for s in all_raw if s.get("strategy"))
+            by_strat = {}
+            for strat_name in strats_seen:
+                by_strat[strat_name] = self.get_stats(strat_name)
+            res["by_strategy"] = by_strat
+
+        return res
 
 
 # ─────────────────────────────────────────────────────────────
@@ -658,6 +769,7 @@ class StrategyRegistry:
     def get_portfolio_summary(self) -> Dict[str, Any]:
         """
         Computes aggregate portfolio-level performance across ALL currently active strategies (ACTIVE_LIVE).
+        Provides real live bot execution telemetry alongside historical backtest benchmarks.
         """
         strategies = self.get_all(sync=False)
         active_strats = [s for s in strategies if s.get("status") == "ACTIVE_LIVE"]
@@ -672,67 +784,95 @@ class StrategyRegistry:
                 "combined_profit_factor": 0.0,
                 "total_realized_pnl": 0.0,
                 "symbols": [],
-                "best_performer": None
+                "best_performer": None,
+                "live_trades": 0,
+                "live_wins": 0,
+                "live_losses": 0,
+                "live_win_rate": 0.0,
+                "live_realized_pnl": 0.0,
+                "live_profit_factor": 0.0,
+                "backtest_trades": 0,
+                "backtest_win_rate": 0.0,
+                "backtest_sharpe": 0.0,
+                "backtest_profit_factor": 0.0,
             }
 
-        total_trades = 0
-        total_wins = 0
-        weighted_sharpe_sum = 0.0
-        total_pnl = 0.0
-        profit_factors = []
+        strategy_names = [s.get("name", "") for s in active_strats]
         symbols = []
-        strategy_names = []
-
         for s in active_strats:
-            name = s.get("name", "")
-            strategy_names.append(name)
             sym = s.get("symbol", "")
             if sym and sym not in symbols:
                 symbols.append(sym)
 
+        # 1. Real Live execution stats across active strategies (matching Signal screen single source of truth)
+        all_signals = signal_store.get_all()
+        active_clean_names = [s.get("name", "").replace(".py", "").lower() for s in active_strats]
+        active_closed_signals = [
+            sig for sig in all_signals
+            if sig.get("exit_reason") and sig.get("pnl_pct") is not None and
+            any(name in sig.get("strategy", "").lower() for name in active_clean_names)
+        ]
+
+        live_trades_count = len(active_closed_signals)
+        live_wins_count = len([s for s in active_closed_signals if s.get("pnl_pct", 0) > 0])
+        live_losses_count = len([s for s in active_closed_signals if s.get("pnl_pct", 0) <= 0])
+        live_wr_pct = round((live_wins_count / live_trades_count * 100.0), 1) if live_trades_count > 0 else 0.0
+        live_total_pnl = round(sum(s.get("pnl_pct", 0.0) for s in active_closed_signals), 2)
+        live_gross_profit = sum(s.get("pnl_pct", 0.0) for s in active_closed_signals if s.get("pnl_pct", 0) > 0)
+        live_gross_loss = abs(sum(s.get("pnl_pct", 0.0) for s in active_closed_signals if s.get("pnl_pct", 0) <= 0))
+        live_pf = round(live_gross_profit / live_gross_loss, 2) if live_gross_loss > 0 else (99.0 if live_gross_profit > 0 else 0.0)
+
+        # 2. Historical backtest benchmarks
+        bt_trades_sum = 0
+        bt_wins_sum = 0
+        bt_sharpe_weighted = 0.0
+        bt_pfs = []
+        for s in active_strats:
             bt = s.get("latest_backtest", {})
-            trades = bt.get("trades", 0)
-            win_rate = bt.get("win_rate", 0.0)
-            sharpe = bt.get("sharpe", 0.0)
+            t = bt.get("trades", 0)
+            raw_wr = bt.get("win_rate", 0.0)
+            norm_wr = raw_wr if raw_wr <= 1.0 else (raw_wr / 100.0)
+            sh = bt.get("sharpe", 0.0)
             pf = bt.get("profit_factor", 0.0)
 
-            # Check live signals summary if available
-            sig_sum = self.get_signals_summary(name)
-            live_trades = sig_sum.get("total_signals", 0)
-            live_stats = self.get_live_stats_for_strategy(name)
-            
-            if live_stats and live_stats.get("total_trades", 0) > 0:
-                l_trades = live_stats["total_trades"]
-                l_wins = live_stats["wins"]
-                total_trades += l_trades
-                total_wins += l_wins
-                total_pnl += live_stats.get("total_pnl_pct", 0.0)
-                weighted_sharpe_sum += sharpe * l_trades
-            else:
-                norm_win_rate = win_rate if win_rate <= 1.0 else (win_rate / 100.0)
-                total_trades += trades
-                total_wins += int(trades * norm_win_rate)
-                weighted_sharpe_sum += sharpe * max(1, trades)
-
+            bt_trades_sum += t
+            bt_wins_sum += int(t * norm_wr)
+            bt_sharpe_weighted += sh * max(1, t)
             if pf > 0:
-                profit_factors.append(pf)
+                bt_pfs.append(pf)
 
-        blended_win_rate = round((total_wins / total_trades * 100.0), 1) if total_trades > 0 else 0.0
-        blended_sharpe = round((weighted_sharpe_sum / max(1, total_trades)), 2) if total_trades > 0 else round(sum(s.get("latest_backtest", {}).get("sharpe", 0.0) for s in active_strats) / len(active_strats), 2)
-        combined_pf = round(sum(profit_factors) / len(profit_factors), 2) if profit_factors else 0.0
+        bt_blended_win_rate = round((bt_wins_sum / bt_trades_sum * 100.0), 1) if bt_trades_sum > 0 else 0.0
+        bt_blended_sharpe = round((bt_sharpe_weighted / max(1, bt_trades_sum)), 2) if bt_trades_sum > 0 else round(sum(s.get("latest_backtest", {}).get("sharpe", 0.0) for s in active_strats) / len(active_strats), 2)
+        bt_combined_pf = round(sum(bt_pfs) / len(bt_pfs), 2) if bt_pfs else 0.0
 
         best = max(active_strats, key=lambda s: s.get("ranking_score", 0.0), default=None)
 
         return {
             "active_count": len(active_strats),
             "active_strategies": strategy_names,
-            "blended_win_rate": blended_win_rate,
-            "blended_sharpe": blended_sharpe,
-            "total_trades": total_trades,
-            "combined_profit_factor": combined_pf,
-            "total_realized_pnl": round(total_pnl, 2),
             "symbols": symbols,
-            "best_performer": best.get("name") if best else None
+            "best_performer": best.get("name") if best else None,
+
+            # Real Live Metrics (1:1 with Signal Screen telemetry)
+            "live_trades": live_trades_count,
+            "live_wins": live_wins_count,
+            "live_losses": live_losses_count,
+            "live_win_rate": live_wr_pct,
+            "live_realized_pnl": live_total_pnl,
+            "live_profit_factor": live_pf,
+
+            # Historical Backtest Benchmarks
+            "backtest_trades": bt_trades_sum,
+            "backtest_win_rate": bt_blended_win_rate,
+            "backtest_sharpe": bt_blended_sharpe,
+            "backtest_profit_factor": bt_combined_pf,
+
+            # Unified root fields
+            "blended_win_rate": live_wr_pct if live_trades_count > 0 else bt_blended_win_rate,
+            "blended_sharpe": bt_blended_sharpe,
+            "total_trades": live_trades_count if live_trades_count > 0 else bt_trades_sum,
+            "combined_profit_factor": live_pf if live_trades_count > 0 else bt_combined_pf,
+            "total_realized_pnl": live_total_pnl,
         }
 
     def get_distribution_analytics(self) -> Dict[str, Any]:
@@ -814,12 +954,12 @@ class StrategyRegistry:
 
     def get_live_stats_for_strategy(self, strategy_name: str) -> Dict[str, Any]:
         """Calculates live performance metrics for a specific strategy from signal_store."""
-        clean_name = strategy_name.replace(".py", "")
+        clean_name = strategy_name.replace(".py", "").lower()
         signals = signal_store.get_all()
-        # Filter signals matching strategy
+        # Filter signals matching strategy case-insensitively
         strat_signals = [
             s for s in signals
-            if clean_name in s.get("strategy", "") or s.get("strategy", "").replace(".py", "") == clean_name
+            if clean_name in s.get("strategy", "").lower() or s.get("strategy", "").replace(".py", "").lower() == clean_name
         ]
         closed = [s for s in strat_signals if s.get("exit_reason") and s.get("pnl_pct") is not None]
         wins = [s for s in closed if s.get("pnl_pct", 0) > 0]
@@ -850,6 +990,8 @@ class StrategyRegistry:
             "wins": len(wins),
             "losses": len(losses),
             "win_rate": round(win_rate, 4),
+            "gross_profit": round(gross_profit, 2),
+            "gross_loss": round(gross_loss, 2),
             "profit_factor": profit_factor,
             "sharpe_live": sharpe_live,
             "total_pnl_pct": total_pnl,
@@ -857,11 +999,11 @@ class StrategyRegistry:
 
     def get_live_equity_for_strategy(self, strategy_name: str) -> List[Dict[str, Any]]:
         """Reconstructs live equity curve progression from closed trades for this strategy."""
-        clean_name = strategy_name.replace(".py", "")
+        clean_name = strategy_name.replace(".py", "").lower()
         signals = signal_store.get_all()
         strat_signals = [
             s for s in signals
-            if clean_name in s.get("strategy", "") or s.get("strategy", "").replace(".py", "") == clean_name
+            if clean_name in s.get("strategy", "").lower() or s.get("strategy", "").replace(".py", "").lower() == clean_name
         ]
         closed = [s for s in strat_signals if s.get("exit_reason") and s.get("pnl_pct") is not None]
         if not closed:
@@ -890,16 +1032,18 @@ class StrategyRegistry:
         return equity_curve
 
     def get_signals_summary(self, strategy_name: str) -> Dict[str, Any]:
-        """Provides recent signals and trades summary for this strategy."""
-        clean_name = strategy_name.replace(".py", "")
+        """Provides recent signals and trades summary for this strategy sorted newest first."""
+        clean_name = strategy_name.replace(".py", "").lower()
         signals = signal_store.get_all()
         strat_signals = [
             s for s in signals
-            if clean_name in s.get("strategy", "") or s.get("strategy", "").replace(".py", "") == clean_name
+            if clean_name in s.get("strategy", "").lower() or s.get("strategy", "").replace(".py", "").lower() == clean_name
         ]
+        # Sort newest first
+        strat_signals.sort(key=lambda s: s.get("time", 0), reverse=True)
         return {
             "total_signals": len(strat_signals),
-            "recent_signals": strat_signals[:10],
+            "recent_signals": strat_signals[:25],
         }
 
     def register_strategy(self, strat_data: Dict[str, Any]) -> Dict[str, Any]:

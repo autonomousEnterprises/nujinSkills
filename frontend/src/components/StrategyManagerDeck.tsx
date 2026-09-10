@@ -11,6 +11,7 @@ import {
 interface StrategyManagerDeckProps {
   theme?: 'dark' | 'light';
   strategies: ManagedStrategy[];
+  signals?: any[];
   activeStrategy: string;
   portfolioSummary?: PortfolioSummary | null;
   distributionAnalytics?: DistributionAnalytics | null;
@@ -25,6 +26,7 @@ interface StrategyManagerDeckProps {
 export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
   theme = 'dark',
   strategies = [],
+  signals = [],
   activeStrategy,
   portfolioSummary,
   distributionAnalytics,
@@ -40,6 +42,9 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
 
   // Screen Tabs
   const [activeTab, setActiveTab] = useState<'LEADERBOARD' | 'DRIFT_TRAJECTORY' | 'DISTRIBUTION'>('LEADERBOARD');
+
+  // Metric View Mode: 'LIVE' (Real Bot Telemetry) or 'BACKTEST' (Historical Benchmark)
+  const [tableMetricMode, setTableMetricMode] = useState<'LIVE' | 'BACKTEST'>('LIVE');
 
   // Search, Filter & Sort
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,10 +85,17 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
     let totalTrades = 0;
     let totalWins = 0;
     let weightedSharpeSum = 0;
-    let totalPnl = 0;
     const pfs: number[] = [];
     const syms: string[] = [];
     const names: string[] = [];
+
+    // Live metrics from signals / live_stats
+    let liveTrades = 0;
+    let liveWins = 0;
+    let liveLosses = 0;
+    let livePnl = 0;
+    let liveGrossProfit = 0;
+    let liveGrossLoss = 0;
 
     activeStrats.forEach((s) => {
       names.push(s.name);
@@ -99,22 +111,43 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
       totalWins += Math.round(trades * normWr);
       weightedSharpeSum += sh * Math.max(1, trades);
       if (pf > 0) pfs.push(pf);
+
+      if (s.live_stats && s.live_stats.total_trades > 0) {
+        liveTrades += s.live_stats.total_trades;
+        liveWins += s.live_stats.wins || 0;
+        liveLosses += s.live_stats.losses || 0;
+        livePnl += s.live_stats.total_pnl_pct || 0;
+        liveGrossProfit += s.live_stats.gross_profit || 0;
+        liveGrossLoss += s.live_stats.gross_loss || 0;
+      }
     });
 
-    const blendedWr = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0;
+    const liveWr = liveTrades > 0 ? (liveWins / liveTrades) * 100 : 0;
+    const livePf = liveGrossLoss > 0 ? liveGrossProfit / liveGrossLoss : (liveGrossProfit > 0 ? 99 : 0);
+    const btWr = totalTrades > 0 ? (totalWins / totalTrades) * 100 : 0;
     const blendedSh = totalTrades > 0 ? weightedSharpeSum / totalTrades : (activeStrats.length > 0 ? activeStrats.reduce((a, b) => a + (b.latest_backtest?.sharpe || 0), 0) / activeStrats.length : 0);
     const combinedPf = pfs.length > 0 ? pfs.reduce((a, b) => a + b, 0) / pfs.length : 0;
 
     return {
       active_count: activeStrats.length,
       active_strategies: names,
-      blended_win_rate: Number(blendedWr.toFixed(1)),
+      blended_win_rate: Number((liveTrades > 0 ? liveWr : btWr).toFixed(1)),
       blended_sharpe: Number(blendedSh.toFixed(2)),
-      total_trades: totalTrades,
-      combined_profit_factor: Number(combinedPf.toFixed(2)),
-      total_realized_pnl: Number(totalPnl.toFixed(2)),
+      total_trades: liveTrades > 0 ? liveTrades : totalTrades,
+      combined_profit_factor: Number((liveTrades > 0 ? livePf : combinedPf).toFixed(2)),
+      total_realized_pnl: Number(livePnl.toFixed(2)),
       symbols: syms,
-      best_performer: activeStrats[0]?.name || null
+      best_performer: activeStrats[0]?.name || null,
+      live_trades: liveTrades,
+      live_wins: liveWins,
+      live_losses: liveLosses,
+      live_win_rate: Number(liveWr.toFixed(1)),
+      live_realized_pnl: Number(livePnl.toFixed(2)),
+      live_profit_factor: Number(livePf.toFixed(2)),
+      backtest_trades: totalTrades,
+      backtest_win_rate: Number(btWr.toFixed(1)),
+      backtest_sharpe: Number(blendedSh.toFixed(2)),
+      backtest_profit_factor: Number(combinedPf.toFixed(2)),
     };
   }, [strategies, portfolioSummary]);
 
@@ -477,7 +510,7 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
           isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
           <span className={`text-[10px] flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> BLENDED WIN RATE
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> {portfolio.live_trades ? 'LIVE REALIZED WIN RATE' : 'BENCHMARK WIN RATE'}
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className={`text-2xl font-bold ${
@@ -485,9 +518,15 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
             }`}>
               {portfolio.blended_win_rate.toFixed(1)}%
             </span>
-            <span className="text-[10px] text-slate-400">Portfolio Aggregate</span>
+            <span className="text-[10px] text-slate-400">
+              {portfolio.live_trades ? `${portfolio.live_wins || 0}W / ${portfolio.live_losses || 0}L` : 'Portfolio Aggregate'}
+            </span>
           </div>
-          <span className="text-[10px] text-slate-500">{portfolio.total_trades} Total Executed Trades</span>
+          <span className="text-[10px] text-slate-500">
+            {portfolio.live_trades
+              ? `${portfolio.live_trades} Live Closed Trades · BT: ${(portfolio.backtest_win_rate || 58.9).toFixed(1)}%`
+              : `${portfolio.total_trades} Total Executed Trades`}
+          </span>
         </div>
 
         {/* Card 3: Combined Expected Sharpe */}
@@ -517,13 +556,15 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
           isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
           <span className={`text-[10px] flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            <DollarSign className="w-3.5 h-3.5 text-amber-400" /> REALIZED NET PnL
+            <Zap className="w-3.5 h-3.5 text-amber-400" /> REALIZED NET PnL
           </span>
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-bold text-white">
-              ${portfolio.total_realized_pnl.toFixed(2)}
+            <span className={`text-2xl font-bold ${
+              portfolio.total_realized_pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'
+            }`}>
+              {portfolio.total_realized_pnl >= 0 ? '+' : ''}{portfolio.total_realized_pnl.toFixed(2)}%
             </span>
-            <span className="text-[10px] text-slate-400">Live Signals</span>
+            <span className="text-[10px] text-slate-400">Live Bot Net</span>
           </div>
           <span className="text-[10px] text-amber-500 truncate">
             {portfolio.symbols.length > 0 ? portfolio.symbols.join(' · ') : 'Multi-Asset Flow'}
@@ -618,6 +659,32 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
               ))}
             </div>
 
+            {/* Metric Mode Toggle: Live Telemetry vs Backtest Benchmark */}
+            <div className="flex items-center bg-slate-900/80 p-0.5 rounded-lg border border-slate-800 text-xs">
+              <button
+                onClick={() => setTableMetricMode('LIVE')}
+                className={`px-3 py-1 rounded font-bold flex items-center gap-1.5 transition-all ${
+                  tableMetricMode === 'LIVE'
+                    ? 'bg-sky-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+                title="View real-time live trading bot execution stats (Win Rate, Realized PnL, Closed Trades)"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300" /> Live Bot Telemetry
+              </button>
+              <button
+                onClick={() => setTableMetricMode('BACKTEST')}
+                className={`px-3 py-1 rounded font-bold flex items-center gap-1.5 transition-all ${
+                  tableMetricMode === 'BACKTEST'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+                title="View historical quantitative backtest baseline benchmarks (Win Rate, Sharpe, DSR, Max DD)"
+              >
+                <BarChart2 className="w-3.5 h-3.5 text-emerald-300" /> Backtest Benchmark
+              </button>
+            </div>
+
             {/* Search and Sort controls */}
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -676,10 +743,21 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
                     <th className="py-2.5 px-3">Strategy Name &amp; Profile</th>
                     <th className="py-2.5 px-3">Status</th>
                     <th className="py-2.5 px-3">Asset</th>
-                    <th className="py-2.5 px-3 text-right">Win Rate</th>
-                    <th className="py-2.5 px-3 text-right">Sharpe</th>
-                    <th className="py-2.5 px-3 text-right">DSR</th>
-                    <th className="py-2.5 px-3 text-right">Max DD</th>
+                    {tableMetricMode === 'LIVE' ? (
+                      <>
+                        <th className="py-2.5 px-3 text-right text-sky-400 font-bold">Live Win%</th>
+                        <th className="py-2.5 px-3 text-right text-amber-400 font-bold">Realized Net PnL</th>
+                        <th className="py-2.5 px-3 text-right text-sky-400 font-bold">Live PF</th>
+                        <th className="py-2.5 px-3 text-right text-slate-300 font-bold">Live Trades</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="py-2.5 px-3 text-right">Win Rate</th>
+                        <th className="py-2.5 px-3 text-right">Sharpe</th>
+                        <th className="py-2.5 px-3 text-right">DSR</th>
+                        <th className="py-2.5 px-3 text-right">Max DD</th>
+                      </>
+                    )}
                     <th className="py-2.5 px-3 text-center">Drift (Daily)</th>
                     <th className="py-2.5 px-3 text-right">Actions</th>
                   </tr>
@@ -698,6 +776,20 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
                       const driftHistory = strat.cron_config?.drift_history || [];
                       const isLive = strat.status === 'ACTIVE_LIVE';
                       const isLoading = actionLoading[strat.name] || false;
+
+                      // Resolve strategy-specific live signals
+                      const recentFromRegistry = strat.signals_summary?.recent_signals || [];
+                      const cleanStratName = (strat.name || '').replace('.py', '').toLowerCase();
+                      const matchingPropSignals = (signals || []).filter((s: any) => {
+                        const sStrat = (s.strategy || '').replace('.py', '').toLowerCase();
+                        return sStrat === cleanStratName || cleanStratName.includes(sStrat);
+                      });
+                      const signalsMap = new Map<number, any>();
+                      matchingPropSignals.forEach((s: any) => signalsMap.set(s.id, s));
+                      recentFromRegistry.forEach((s: any) => {
+                        if (!signalsMap.has(s.id)) signalsMap.set(s.id, s);
+                      });
+                      const stratSignals = Array.from(signalsMap.values()).sort((a: any, b: any) => (b.time || 0) - (a.time || 0));
 
                       let driftBadge = (
                         <span className="text-[10px] text-slate-500">STABLE</span>
@@ -743,9 +835,18 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
                               </button>
                             </td>
                             <td className="py-3 px-3">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 {getRankBadge(strat.rank)}
                                 <span className="font-bold text-sm text-slate-100">{strat.name}</span>
+                                {strat.live_stats && strat.live_stats.total_trades > 0 && (
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    strat.live_stats.total_pnl_pct >= 0
+                                      ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-700'
+                                      : 'bg-rose-950/80 text-rose-400 border border-rose-700'
+                                  }`}>
+                                    Live: {strat.live_stats.total_pnl_pct >= 0 ? '+' : ''}{strat.live_stats.total_pnl_pct.toFixed(2)}%
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[11px] text-slate-400 truncate max-w-sm mt-0.5">
                                 {strat.target_profile || strat.display_name}
@@ -757,22 +858,71 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
                             <td className="py-3 px-3 font-semibold text-slate-300">
                               {strat.symbol || '–'} <span className="text-[10px] text-slate-500">{strat.timeframe}</span>
                             </td>
-                            <td className="py-3 px-3 text-right font-bold text-slate-200">
-                              {bt.win_rate != null ? `${((bt.win_rate <= 1.0 ? bt.win_rate : bt.win_rate/100) * 100).toFixed(1)}%` : '–'}
-                            </td>
-                            <td className={`py-3 px-3 text-right font-bold ${
-                              (bt.sharpe || 0) >= 2.0 ? 'text-emerald-400' : (bt.sharpe || 0) >= 1.2 ? 'text-cyan-400' : 'text-slate-400'
-                            }`}>
-                              {bt.sharpe != null ? bt.sharpe.toFixed(2) : '–'}
-                            </td>
-                            <td className={`py-3 px-3 text-right font-bold ${
-                              (bt.dsr || 0) >= 0.95 ? 'text-emerald-400' : (bt.dsr || 0) >= 0.7 ? 'text-amber-400' : 'text-rose-400'
-                            }`}>
-                              {bt.dsr != null ? bt.dsr.toFixed(2) : '–'}
-                            </td>
-                            <td className="py-3 px-3 text-right font-bold text-rose-400">
-                              {bt.max_drawdown != null ? `${(bt.max_drawdown * 100).toFixed(2)}%` : '–'}
-                            </td>
+                            {tableMetricMode === 'LIVE' ? (
+                              <>
+                                <td className="py-3 px-3 text-right font-bold text-slate-200">
+                                  {strat.live_stats && strat.live_stats.total_trades > 0 ? (
+                                    <div>
+                                      <span className={strat.live_stats.win_rate >= 0.5 ? 'text-emerald-400' : 'text-rose-400'}>
+                                        {(strat.live_stats.win_rate * 100).toFixed(1)}%
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 block font-normal">
+                                        {strat.live_stats.wins}W / {strat.live_stats.losses}L
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-500">–</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold font-mono">
+                                  {strat.live_stats && strat.live_stats.total_trades > 0 ? (
+                                    <span className={strat.live_stats.total_pnl_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                      {strat.live_stats.total_pnl_pct >= 0 ? '+' : ''}{strat.live_stats.total_pnl_pct.toFixed(2)}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-500">0.00%</span>
+                                  )}
+                                </td>
+                                <td className={`py-3 px-3 text-right font-bold ${
+                                  (strat.live_stats?.profit_factor || 0) >= 1.5 ? 'text-emerald-400' : (strat.live_stats?.profit_factor || 0) > 0 ? 'text-amber-400' : 'text-slate-400'
+                                }`}>
+                                  {strat.live_stats && strat.live_stats.total_trades > 0 ? strat.live_stats.profit_factor.toFixed(2) : '–'}
+                                </td>
+                                <td className="py-3 px-3 text-right font-medium text-slate-300">
+                                  {strat.live_stats ? (
+                                    <div>
+                                      <span>{strat.live_stats.total_trades} Closed</span>
+                                      {strat.live_stats.open_trades > 0 && (
+                                        <span className="text-[10px] text-amber-400 block font-bold">
+                                          {strat.live_stats.open_trades} Open
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-500">0</span>
+                                  )}
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="py-3 px-3 text-right font-bold text-slate-200">
+                                  {bt.win_rate != null ? `${((bt.win_rate <= 1.0 ? bt.win_rate : bt.win_rate/100) * 100).toFixed(1)}%` : '–'}
+                                </td>
+                                <td className={`py-3 px-3 text-right font-bold ${
+                                  (bt.sharpe || 0) >= 2.0 ? 'text-emerald-400' : (bt.sharpe || 0) >= 1.2 ? 'text-cyan-400' : 'text-slate-400'
+                                }`}>
+                                  {bt.sharpe != null ? bt.sharpe.toFixed(2) : '–'}
+                                </td>
+                                <td className={`py-3 px-3 text-right font-bold ${
+                                  (bt.dsr || 0) >= 0.95 ? 'text-emerald-400' : (bt.dsr || 0) >= 0.7 ? 'text-amber-400' : 'text-rose-400'
+                                }`}>
+                                  {bt.dsr != null ? bt.dsr.toFixed(2) : '–'}
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold text-rose-400">
+                                  {bt.max_drawdown != null ? `${(bt.max_drawdown * 100).toFixed(2)}%` : '–'}
+                                </td>
+                              </>
+                            )}
                             <td className="py-3 px-3 text-center">
                               {driftBadge}
                             </td>
@@ -975,6 +1125,129 @@ export const StrategyManagerDeck: React.FC<StrategyManagerDeckProps> = ({
                                         </span>
                                       </div>
                                     </div>
+                                  </div>
+
+                                  {/* Strategy Signals & Executed Trades Audit Panel */}
+                                  <div className={`p-3 rounded-lg border flex flex-col gap-2 ${
+                                    isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200'
+                                  }`}>
+                                    <div className="flex items-center justify-between border-b pb-2 border-slate-800 flex-wrap gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                        <span className="font-bold text-xs text-slate-200 tracking-wide uppercase">
+                                          Recent Signals &amp; Executed Trades Audit
+                                        </span>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                                          {stratSignals.length} Recorded
+                                        </span>
+                                      </div>
+                                      {strat.live_stats && strat.live_stats.total_trades > 0 ? (
+                                        <div className="flex items-center gap-3 text-xs">
+                                          <span className="text-slate-400">
+                                            Live WR: <strong className={`font-bold ${strat.live_stats.win_rate >= 0.5 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                              {(strat.live_stats.win_rate * 100).toFixed(1)}% ({strat.live_stats.wins}W/{strat.live_stats.losses}L)
+                                            </strong>
+                                          </span>
+                                          <span className="text-slate-400">
+                                            Live Realized Net PnL: <strong className={`font-bold ${strat.live_stats.total_pnl_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                              {strat.live_stats.total_pnl_pct >= 0 ? '+' : ''}{strat.live_stats.total_pnl_pct.toFixed(2)}%
+                                            </strong>
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-[10px] text-slate-500 italic">No live closed trades yet</span>
+                                      )}
+                                    </div>
+
+                                    {stratSignals.length === 0 ? (
+                                      <div className="py-6 flex flex-col items-center justify-center text-xs text-slate-500 gap-1">
+                                        <span>No signals or trades executed yet for {strat.name}.</span>
+                                        <span className="text-[10px] text-slate-600">
+                                          When the bot supervisor or AI triggers live orders, they will stream here in real-time.
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <div className="overflow-x-auto max-h-56">
+                                        <table className="w-full text-left text-xs border-collapse">
+                                          <thead>
+                                            <tr className="text-slate-400 border-b border-slate-800 text-[10px] uppercase font-bold">
+                                              <th className="py-1.5 px-2.5">ID / Time</th>
+                                              <th className="py-1.5 px-2.5">Pair</th>
+                                              <th className="py-1.5 px-2.5">Side</th>
+                                              <th className="py-1.5 px-2.5">Status</th>
+                                              <th className="py-1.5 px-2.5 text-right">Entry Price</th>
+                                              <th className="py-1.5 px-2.5 text-right">Exit Price</th>
+                                              <th className="py-1.5 px-2.5">Exit Reason</th>
+                                              <th className="py-1.5 px-2.5 text-right">Realized PnL</th>
+                                              <th className="py-1.5 px-2.5">Annotation &amp; Thesis</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-slate-800/60 text-[11px]">
+                                            {stratSignals.map((sig: any) => {
+                                              const isLong = (sig.action === 'BUY' || sig.side === 'LONG');
+                                              const isClosed = sig.status === 'CLOSED' || sig.exit_reason;
+                                              const pnl = sig.pnl_pct;
+                                              const isWin = pnl != null && pnl > 0;
+                                              const isLoss = pnl != null && pnl < 0;
+
+                                              return (
+                                                <tr key={sig.id} className="hover:bg-slate-900/50 transition-colors">
+                                                  <td className="py-1.5 px-2.5 text-slate-300 font-mono">
+                                                    <span className="font-bold text-sky-400">#{sig.id}</span>
+                                                    <div className="text-[10px] text-slate-500">
+                                                      {sig.time ? new Date(sig.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '–'}
+                                                    </div>
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5 font-bold text-slate-200">
+                                                    {sig.pair}
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                      isLong ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'
+                                                    }`}>
+                                                      {sig.side || (isLong ? 'LONG' : 'SHORT')}
+                                                    </span>
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                      isClosed ? 'bg-slate-800 text-slate-300' : 'bg-amber-950 text-amber-400 border border-amber-800 animate-pulse'
+                                                    }`}>
+                                                      {isClosed ? 'CLOSED' : 'OPEN'}
+                                                    </span>
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5 text-right font-mono text-slate-300">
+                                                    {sig.entry_price || sig.price ? `$${Number(sig.entry_price || sig.price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '–'}
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5 text-right font-mono text-slate-300">
+                                                    {sig.exit_price ? `$${Number(sig.exit_price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '–'}
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5">
+                                                    <span className="text-[10px] text-slate-400 font-mono">
+                                                      {sig.exit_reason || (isClosed ? 'CLOSED' : 'ACTIVE_IN_POSITION')}
+                                                    </span>
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5 text-right font-mono font-bold">
+                                                    {pnl != null ? (
+                                                      <span className={isWin ? 'text-emerald-400' : isLoss ? 'text-rose-400' : 'text-slate-400'}>
+                                                        {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%
+                                                      </span>
+                                                    ) : (
+                                                      <span className="text-slate-500">–</span>
+                                                    )}
+                                                  </td>
+                                                  <td className="py-1.5 px-2.5 text-slate-400 max-w-xs truncate" title={sig.reasoning_md || sig.annotation}>
+                                                    <span className="text-slate-300 font-medium">{sig.annotation || '–'}</span>
+                                                    {sig.reasoning_md && (
+                                                      <div className="text-[10px] text-slate-500 truncate">{sig.reasoning_md}</div>
+                                                    )}
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </td>

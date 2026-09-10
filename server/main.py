@@ -53,6 +53,19 @@ class UpdateStrategyStatusRequest(BaseModel):
 class RunStrategyBacktestRequest(BaseModel):
     strategy: str
 
+class CloseSignalRequest(BaseModel):
+    id: Optional[int] = None
+    strategy: Optional[str] = None
+    exit_price: float
+    exit_reason: Optional[str] = "MANUAL_CLOSE"
+    pnl_pct: Optional[float] = None
+
+class ClearSignalsRequest(BaseModel):
+    strategy: Optional[str] = None
+
+class StopBotRequest(BaseModel):
+    strategy: Optional[str] = None
+
 class StartTradeRequest(BaseModel):
     side: str
     entry_price: Optional[float] = None
@@ -120,16 +133,63 @@ async def get_widgets():
     return {"widgets": list(manager.widget_state.values())}
 
 @app.get("/api/signals")
-async def get_signals():
-    signals_list = signal_store.get_all()
-    active = signal_store.get_active()
-    return {"signals": signals_list, "active_signal": active}
+async def get_signals(strategy: Optional[str] = None):
+    signals_list = signal_store.get_all(strategy)
+    active = signal_store.get_active(strategy)
+    all_actives = signal_store.get_active_signals()
+    return {
+        "signals": signals_list,
+        "active_signal": active,
+        "active_signals": all_actives,
+        "total": len(signals_list)
+    }
 
 @app.post("/api/signals/clear")
-async def clear_signals():
-    signal_store.clear()
-    await manager.broadcast({"event_type": "SIGNALS_CLEARED", "payload": []})
-    return {"status": "SUCCESS", "message": "All test signals cleared."}
+async def clear_signals(req: Optional[ClearSignalsRequest] = None):
+    strat = req.strategy if req else None
+    remaining = signal_store.clear(strat)
+    await manager.broadcast({"event_type": "SIGNALS_CLEARED", "payload": {"strategy": strat, "remaining": len(remaining)}})
+    
+    # Broadcast updated strategy live metrics & portfolio summary
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    await manager.broadcast({
+        "event_type": "STRATEGIES_UPDATED",
+        "payload": {
+            "strategies": all_strats,
+            "portfolio_summary": portfolio,
+            "distribution_analytics": distribution
+        }
+    })
+    return {"status": "SUCCESS", "message": f"Signals cleared{' for ' + strat if strat else ''}."}
+
+@app.post("/api/signals/close")
+async def close_signal_position(req: CloseSignalRequest):
+    closed = signal_store.close_position(
+        signal_id=req.id,
+        strategy=req.strategy,
+        exit_price=req.exit_price,
+        exit_reason=req.exit_reason or "MANUAL_CLOSE",
+        pnl_pct=req.pnl_pct
+    )
+    if not closed:
+        raise HTTPException(status_code=404, detail="No active position found matching criteria")
+    await manager.broadcast({"event_type": "SIGNAL_CLOSED", "payload": closed})
+
+    # Broadcast updated strategy live metrics & portfolio summary
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    await manager.broadcast({
+        "event_type": "STRATEGIES_UPDATED",
+        "payload": {
+            "strategies": all_strats,
+            "portfolio_summary": portfolio,
+            "distribution_analytics": distribution
+        }
+    })
+    return {"status": "SUCCESS", "closed_signal": closed}
 
 @app.post("/api/broadcast")
 async def broadcast_event(envelope: EventEnvelope):
@@ -137,8 +197,24 @@ async def broadcast_event(envelope: EventEnvelope):
     await manager.broadcast(envelope.model_dump())
 
     if envelope.event_type == "SIGNAL_TRIGGERED":
-        telegram_gateway.format_and_send_signal(envelope.payload)
+        # Resolve strategy name if missing in payload
+        if not envelope.payload.get("strategy"):
+            envelope.payload["strategy"] = state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
         signal_store.add(envelope.payload)          # ← StateManager handles file I/O + signals_count bump
+        telegram_gateway.format_and_send_signal(envelope.payload)
+
+        # Broadcast updated strategy live metrics & portfolio summary
+        all_strats = strategy_registry.get_all(sync=False)
+        portfolio = strategy_registry.get_portfolio_summary()
+        distribution = strategy_registry.get_distribution_analytics()
+        await manager.broadcast({
+            "event_type": "STRATEGIES_UPDATED",
+            "payload": {
+                "strategies": all_strats,
+                "portfolio_summary": portfolio,
+                "distribution_analytics": distribution
+            }
+        })
     elif envelope.event_type == "TELEGRAM_ALERT":
         telegram_gateway.format_and_send_signal(envelope.payload)
     elif envelope.event_type == "UPSERT_WIDGET" and envelope.payload.get("component") == "MetricCard":
@@ -155,9 +231,16 @@ async def deploy_bot(req: DeployBotRequest):
     return {**res, "state": bt_result["state"]}
 
 @app.post("/api/bot/stop")
-async def stop_bot():
-    res = bot_supervisor.stop_bot()
-    new_state = state_manager.patch({"status": "STOPPED"})
+async def stop_bot(req: Optional[StopBotRequest] = None):
+    strat = req.strategy if req else None
+    res = bot_supervisor.stop_bot(strat)
+    if strat:
+        state_manager.update_status(strat, "DEACTIVATED")
+    else:
+        for s in state_manager.get().get("active_strategies", []):
+            state_manager.update_status(s, "DEACTIVATED")
+        state_manager.patch({"status": "STOPPED"})
+    new_state = state_manager.get()
     await manager.broadcast({"event_type": "STATE_UPDATED", "payload": new_state})
     return res
 
@@ -212,9 +295,9 @@ async def get_backtest_results(strategy: Optional[str] = None):
     return run_real_backtest(active_strat, save_as_active=False)
 
 @app.get("/api/signals/stats")
-async def get_live_signal_stats():
+async def get_live_signal_stats(strategy: Optional[str] = None):
     """Live performance stats — delegates to SignalStore (single source of truth)."""
-    return signal_store.get_stats()
+    return signal_store.get_stats(strategy)
 
 
 @app.get("/api/strategies")

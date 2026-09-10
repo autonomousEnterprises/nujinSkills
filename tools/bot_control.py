@@ -17,9 +17,11 @@ def deploy_bot(strategy: str, mode: str, endpoint: str):
     except Exception as e:
         print(f"[BotControl] Error communicating with server: {e}")
 
-def stop_bot(endpoint: str):
+def stop_bot(endpoint: str, strategy: str = ""):
     url = f"{endpoint}/api/bot/stop"
-    req = urllib.request.Request(url, data=b"{}", headers={"Content-Type": "application/json"})
+    payload = {"strategy": strategy} if strategy else {}
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     
     try:
         with urllib.request.urlopen(req) as resp:
@@ -42,14 +44,15 @@ def check_status(endpoint: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Trading Bot Supervisor Control CLI")
     parser.add_argument("action", choices=["deploy", "stop", "status"], help="Action to execute")
-    parser.add_argument("--strategy", default="TrapFade_v1", help="Strategy name to deploy")
+    parser.add_argument("--strategy", default="", help="Strategy name to deploy or stop (leave empty to stop all)")
     parser.add_argument("--mode", choices=["dry-run", "live"], default="dry-run", help="Execution mode")
     parser.add_argument("--endpoint", default="http://localhost:8000", help="Backend API endpoint")
     args = parser.parse_args()
 
     if args.action == "deploy":
-        deploy_bot(args.strategy, args.mode, args.endpoint)
+        deploy_strat = args.strategy or "GoatFundedTraderXauusdScalper"
+        deploy_bot(deploy_strat, args.mode, args.endpoint)
     elif args.action == "stop":
-        stop_bot(args.endpoint)
+        stop_bot(args.endpoint, args.strategy)
     elif args.action == "status":
         check_status(args.endpoint)

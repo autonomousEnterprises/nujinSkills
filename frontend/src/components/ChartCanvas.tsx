@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi, SeriesMarker, Time } from 'lightweight-charts';
 import { SignalData } from '../hooks/useWebSocket';
-import { Layers, Activity, BarChart2, TrendingUp } from 'lucide-react';
+import { Layers, Activity, BarChart2, TrendingUp, ChevronDown, Check, Sparkles } from 'lucide-react';
 
 interface TradeDetail {
   id: number;
@@ -44,6 +44,11 @@ interface LegendValues {
   hh15?: number;
   ll15?: number;
   volume?: number;
+  // VSA / Bollinger indicators
+  bbUpper?: number;
+  bbMiddle?: number;
+  bbLower?: number;
+  hurst?: number;
 }
 
 export interface InspectableSignal {
@@ -61,6 +66,14 @@ export interface InspectableSignal {
   isLiveActive?: boolean;
 }
 
+export interface StrategyItem {
+  name: string;
+  path?: string;
+  size_bytes?: number;
+  last_modified?: number;
+  [key: string]: any;
+}
+
 interface ChartCanvasProps {
   latestSignal: SignalData | null;
   signals?: SignalData[];
@@ -69,9 +82,77 @@ interface ChartCanvasProps {
   tradeMarkers?: any[];
   tradesDetail?: TradeDetail[];
   activeStrategy?: string;
+  strategies?: StrategyItem[];
+  onSelectStrategy?: (stratName: string) => void;
 }
 
 // ── Quantitative Indicator Calculation Utilities ──
+function calculateBollingerBands(data: { time: Time; close: number }[], period: number = 20, mult: number = 2.0) {
+  if (!data || data.length === 0) return { upper: [], middle: [], lower: [] };
+  const upper: { time: Time; value: number }[] = [];
+  const middle: { time: Time; value: number }[] = [];
+  const lower: { time: Time; value: number }[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    const start = Math.max(0, i - period + 1);
+    let sum = 0;
+    const count = i - start + 1;
+    for (let j = start; j <= i; j++) {
+      sum += data[j].close;
+    }
+    const sma = sum / count;
+    let sumSq = 0;
+    for (let j = start; j <= i; j++) {
+      const diff = data[j].close - sma;
+      sumSq += diff * diff;
+    }
+    const std = Math.sqrt(sumSq / count);
+    const up = Number((sma + mult * std).toFixed(2));
+    const mid = Number(sma.toFixed(2));
+    const dn = Number((sma - mult * std).toFixed(2));
+    const time = data[i].time;
+    upper.push({ time, value: up });
+    middle.push({ time, value: mid });
+    lower.push({ time, value: dn });
+  }
+  return { upper, middle, lower };
+}
+
+function calculateHurstProxy(data: { time: Time; close: number }[], period: number = 50) {
+  if (!data || data.length === 0) return [];
+  const result: { time: Time; value: number }[] = [];
+  const ret1: number[] = [];
+  const ret5: number[] = [];
+  for (let i = 0; i < data.length; i++) {
+    ret1.push(i > 0 && data[i - 1].close > 0 ? Math.log(data[i].close / data[i - 1].close) : 0);
+    ret5.push(i >= 5 && data[i - 5].close > 0 ? Math.log(data[i].close / data[i - 5].close) : 0);
+  }
+
+  for (let i = 0; i < data.length; i++) {
+    const start = Math.max(0, i - period + 1);
+    const count = i - start + 1;
+    let sum1 = 0;
+    let sum5 = 0;
+    for (let j = start; j <= i; j++) {
+      sum1 += ret1[j];
+      sum5 += ret5[j];
+    }
+    const m1 = sum1 / count;
+    const m5 = sum5 / count;
+    let var1 = 0;
+    let var5 = 0;
+    for (let j = start; j <= i; j++) {
+      var1 += (ret1[j] - m1) ** 2;
+      var5 += (ret5[j] - m5) ** 2;
+    }
+    var1 = var1 / count;
+    var5 = var5 / count;
+    const ratio = (var5 / (Math.max(var1, 1e-6) * 5.0));
+    const clipped = Math.min(0.9, Math.max(0.1, ratio));
+    result.push({ time: data[i].time, value: Number(clipped.toFixed(3)) });
+  }
+  return result;
+}
 function calculateEMA(data: { time: Time; close: number }[], period: number) {
   if (!data || data.length === 0) return [];
   const k = 2 / (period + 1);
@@ -161,10 +242,47 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   tradeMarkers = [],
   tradesDetail = [],
   activeStrategy = 'GoatFundedTraderXauusdScalper',
+  strategies = [],
+  onSelectStrategy,
 }) => {
   const isDark = theme === 'dark';
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+
+  // Strategy & Symbol Setup
+  const cleanStrategyName = (selectedStrategy || activeStrategy || 'GoatFundedTraderXauusdScalper').replace('.py', '');
+  const isGoldStrategy = useMemo(() => {
+    const s = cleanStrategyName.toLowerCase();
+    return s.includes('xau') || s.includes('goat') || s.includes('gold');
+  }, [cleanStrategyName]);
+  const isXauActive = isGoldStrategy;
+
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(isGoldStrategy ? 'XAU/USD' : 'BTC/USDT');
+  const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
+  const [lastLivePrice, setLastLivePrice] = useState<number | null>(null);
+
+  // In-Chart Strategy Selector Dropdown State
+  const [isStrategyMenuOpen, setIsStrategyMenuOpen] = useState<boolean>(false);
+  const strategyMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (strategyMenuRef.current && !strategyMenuRef.current.contains(e.target as Node)) {
+        setIsStrategyMenuOpen(false);
+      }
+    };
+    if (isStrategyMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isStrategyMenuOpen]);
+
+  const defaultStrategies: StrategyItem[] = [
+    { name: 'GoatFundedTraderXauusdScalper.py' },
+    { name: 'PropFirmVsaWickRejection.py' },
+    { name: 'TrapFade_v1.py' },
+  ];
+  const strategyList = strategies && strategies.length > 0 ? strategies : defaultStrategies;
 
   // Series References
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -173,20 +291,22 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const ema200SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const hh15SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ll15SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bbUpperSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bbMiddleSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bbLowerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
-  // Strategy & Symbol Setup
-  const isXauActive =
-    (activeStrategy || selectedStrategy || '').toLowerCase().includes('xau') ||
-    (activeStrategy || selectedStrategy || '').toLowerCase().includes('goat');
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(isXauActive ? 'XAU/USD' : 'XAU/USD');
-  const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
-  const [lastLivePrice, setLastLivePrice] = useState<number | null>(null);
-
-  // Indicator Toggles
+  // Indicator Toggles (Gold Scalper Specific)
   const [showRibbon, setShowRibbon] = useState<boolean>(true);
   const [showMacroEma, setShowMacroEma] = useState<boolean>(true);
   const [showRanges, setShowRanges] = useState<boolean>(true);
+
+  // Indicator Toggles (VSA / Wick Rejection Specific)
+  const [showBollingerBands, setShowBollingerBands] = useState<boolean>(true);
+  const [showSma20, setShowSma20] = useState<boolean>(true);
+  const [showHurst, setShowHurst] = useState<boolean>(true);
+
+  // Common Toggles
   const [showVolume, setShowVolume] = useState<boolean>(true);
   const [showPositionBox, setShowPositionBox] = useState<boolean>(true);
 
@@ -195,11 +315,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   // Sync symbol if active strategy changes
   useEffect(() => {
-    const isGold =
-      (activeStrategy || selectedStrategy || '').toLowerCase().includes('xau') ||
-      (activeStrategy || selectedStrategy || '').toLowerCase().includes('goat');
-    setSelectedSymbol(isGold ? 'XAU/USD' : 'BTC/USDT');
-  }, [activeStrategy, selectedStrategy]);
+    setSelectedSymbol(isGoldStrategy ? 'XAU/USD' : 'BTC/USDT');
+  }, [isGoldStrategy]);
 
   const [candles, setCandles] = useState<any[]>([]);
   const activeCandleRef = useRef<{ time: Time; open: number; high: number; low: number; close: number; volume: number } | null>(null);
@@ -222,6 +339,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const ema21Data = useMemo(() => calculateEMA(candles, 21), [candles]);
   const ema200Data = useMemo(() => calculateEMA(candles, Math.min(200, candles.length || 200)), [candles]);
   const { hh: hh15Data, ll: ll15Data } = useMemo(() => calculateHHLL(candles, 15), [candles]);
+  const { upper: bbUpperData, middle: bbMiddleData, lower: bbLowerData } = useMemo(() => calculateBollingerBands(candles, 20, 2.0), [candles]);
+  const hurstData = useMemo(() => calculateHurstProxy(candles, 50), [candles]);
   const volumeData = useMemo(() => calculateVolumeSeries(candles), [candles]);
 
   // Latest candle fallback for legend when not hovering
@@ -235,6 +354,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const lastHh = hh15Data[hh15Data.length - 1]?.value;
     const lastLl = ll15Data[ll15Data.length - 1]?.value;
     const lastVol = volumeData[volumeData.length - 1]?.value;
+    const lastBbUp = bbUpperData[bbUpperData.length - 1]?.value;
+    const lastBbMid = bbMiddleData[bbMiddleData.length - 1]?.value;
+    const lastBbLow = bbLowerData[bbLowerData.length - 1]?.value;
+    const lastHurst = hurstData[hurstData.length - 1]?.value;
 
     return {
       time: Number(last.time),
@@ -249,8 +372,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       hh15: lastHh,
       ll15: lastLl,
       volume: lastVol,
+      bbUpper: lastBbUp,
+      bbMiddle: lastBbMid,
+      bbLower: lastBbLow,
+      hurst: lastHurst,
     };
-  }, [candles, ema9Data, ema21Data, ema200Data, hh15Data, ll15Data, volumeData]);
+  }, [candles, ema9Data, ema21Data, ema200Data, hh15Data, ll15Data, volumeData, bbUpperData, bbMiddleData, bbLowerData, hurstData]);
 
   const activeLegend = hoverLegend || liveLegend || latestCandleLegend;
 
@@ -584,10 +711,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     if (signals && signals.length > 0) {
       for (let i = 0; i < signals.length; i++) {
         const s = signals[i];
-        if (!s.timestamp || (!s.entry_price && !s.price)) continue;
+        const rawTime = s.time ? Number(s.time) : (s.timestamp ? Math.floor(s.timestamp / 1000) : 0);
+        if (!rawTime || (!s.entry_price && !s.price)) continue;
         const entryPrice = Number(s.entry_price || s.price);
         const isBuy = s.action === 'BUY' || s.action === 'LONG';
-        const entryTime = Math.floor(s.timestamp / 1000);
+        const entryTime = rawTime;
         if (list.some((existing) => Math.abs(existing.entry_time - entryTime) < 2)) continue;
         list.push({
           id: `live-${i}`,
@@ -610,9 +738,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     if (latestSignal && (latestSignal.entry_price || latestSignal.price)) {
       const entryPrice = Number(latestSignal.entry_price || latestSignal.price);
       const isBuy = latestSignal.action === 'BUY' || latestSignal.action === 'LONG';
-      const entryTime = latestSignal.timestamp
-        ? Math.floor(latestSignal.timestamp / 1000)
-        : (candles.length > 0 ? (candles[candles.length - 1].time as number) : 0);
+      const rawTime = latestSignal.time
+        ? Number(latestSignal.time)
+        : (latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : (candles.length > 0 ? (candles[candles.length - 1].time as number) : 0));
+      const entryTime = rawTime;
       const exists = list.some((existing) => Math.abs(existing.entry_time - entryTime) < 2);
       if (!exists) {
         const isClosed = Boolean(
@@ -988,7 +1117,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       crosshairMarkerVisible: true,
     });
     ema9Series.setData(ema9Data);
-    ema9Series.applyOptions({ visible: showRibbon });
+    ema9Series.applyOptions({ visible: isGoldStrategy && showRibbon });
 
     // 4. Medium Ribbon EMA 21 (Amber / Orange)
     const ema21Series = chart.addLineSeries({
@@ -999,7 +1128,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       crosshairMarkerVisible: true,
     });
     ema21Series.setData(ema21Data);
-    ema21Series.applyOptions({ visible: showRibbon });
+    ema21Series.applyOptions({ visible: isGoldStrategy && showRibbon });
 
     // 5. Macro Baseline EMA 200 (Purple / Violet)
     const ema200Series = chart.addLineSeries({
@@ -1010,7 +1139,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       crosshairMarkerVisible: true,
     });
     ema200Series.setData(ema200Data);
-    ema200Series.applyOptions({ visible: showMacroEma });
+    ema200Series.applyOptions({ visible: isGoldStrategy && showMacroEma });
 
     // 6. 15-Minute Dynamic Range HH15 & LL15 (Step / Dashed Breakout Channels)
     const hh15Series = chart.addLineSeries({
@@ -1031,10 +1160,43 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     });
     hh15Series.setData(hh15Data);
     ll15Series.setData(ll15Data);
-    hh15Series.applyOptions({ visible: showRanges });
-    ll15Series.applyOptions({ visible: showRanges });
+    hh15Series.applyOptions({ visible: isGoldStrategy && showRanges });
+    ll15Series.applyOptions({ visible: isGoldStrategy && showRanges });
 
-    // 7. Crosshair Hover Subscription for Dynamic Legend Readout
+    // 7. Bollinger Bands (20, 2.0 std) for VSA / Wick Rejection
+    const bbUpperSeries = chart.addLineSeries({
+      color: '#f43f5e', // Rose / Red upper band
+      lineWidth: 1.5,
+      lineStyle: 2, // Dashed
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    bbUpperSeries.setData(bbUpperData);
+    bbUpperSeries.applyOptions({ visible: !isGoldStrategy && showBollingerBands });
+
+    const bbMiddleSeries = chart.addLineSeries({
+      color: '#eab308', // Amber SMA 20 Middle Basis
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: true,
+    });
+    bbMiddleSeries.setData(bbMiddleData);
+    bbMiddleSeries.applyOptions({ visible: !isGoldStrategy && showSma20 });
+
+    const bbLowerSeries = chart.addLineSeries({
+      color: '#06b6d4', // Cyan lower band
+      lineWidth: 1.5,
+      lineStyle: 2, // Dashed
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    bbLowerSeries.setData(bbLowerData);
+    bbLowerSeries.applyOptions({ visible: !isGoldStrategy && showBollingerBands });
+
+    // 8. Crosshair Hover Subscription for Dynamic Legend Readout
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) {
         setHoverLegend(null);
@@ -1046,7 +1208,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       const e200 = param.seriesData.get(ema200Series) as any;
       const hh = param.seriesData.get(hh15Series) as any;
       const ll = param.seriesData.get(ll15Series) as any;
+      const bbUp = param.seriesData.get(bbUpperSeries) as any;
+      const bbMid = param.seriesData.get(bbMiddleSeries) as any;
+      const bbLow = param.seriesData.get(bbLowerSeries) as any;
       const vol = param.seriesData.get(volumeSeries) as any;
+      const curHurst = hurstData.find((h) => h.time === param.time)?.value;
 
       if (cData) {
         const chg = cData.open ? ((cData.close - cData.open) / cData.open) * 100 : 0;
@@ -1063,6 +1229,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           hh15: hh?.value,
           ll15: ll?.value,
           volume: vol?.value,
+          bbUpper: bbUp?.value,
+          bbMiddle: bbMid?.value,
+          bbLower: bbLow?.value,
+          hurst: curHurst,
         });
       }
     });
@@ -1077,6 +1247,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     ema200SeriesRef.current = ema200Series;
     hh15SeriesRef.current = hh15Series;
     ll15SeriesRef.current = ll15Series;
+    bbUpperSeriesRef.current = bbUpperSeries;
+    bbMiddleSeriesRef.current = bbMiddleSeries;
+    bbLowerSeriesRef.current = bbLowerSeries;
 
     candlesRef.current = [...candles];
     ema9DataRef.current = [...ema9Data];
@@ -1153,18 +1326,27 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   // Sync Dynamic Indicator Visibility Toggles
   useEffect(() => {
-    if (ema9SeriesRef.current) ema9SeriesRef.current.applyOptions({ visible: showRibbon });
-    if (ema21SeriesRef.current) ema21SeriesRef.current.applyOptions({ visible: showRibbon });
-  }, [showRibbon]);
+    if (ema9SeriesRef.current) ema9SeriesRef.current.applyOptions({ visible: isGoldStrategy && showRibbon });
+    if (ema21SeriesRef.current) ema21SeriesRef.current.applyOptions({ visible: isGoldStrategy && showRibbon });
+  }, [showRibbon, isGoldStrategy]);
 
   useEffect(() => {
-    if (ema200SeriesRef.current) ema200SeriesRef.current.applyOptions({ visible: showMacroEma });
-  }, [showMacroEma]);
+    if (ema200SeriesRef.current) ema200SeriesRef.current.applyOptions({ visible: isGoldStrategy && showMacroEma });
+  }, [showMacroEma, isGoldStrategy]);
 
   useEffect(() => {
-    if (hh15SeriesRef.current) hh15SeriesRef.current.applyOptions({ visible: showRanges });
-    if (ll15SeriesRef.current) ll15SeriesRef.current.applyOptions({ visible: showRanges });
-  }, [showRanges]);
+    if (hh15SeriesRef.current) hh15SeriesRef.current.applyOptions({ visible: isGoldStrategy && showRanges });
+    if (ll15SeriesRef.current) ll15SeriesRef.current.applyOptions({ visible: isGoldStrategy && showRanges });
+  }, [showRanges, isGoldStrategy]);
+
+  useEffect(() => {
+    if (bbUpperSeriesRef.current) bbUpperSeriesRef.current.applyOptions({ visible: !isGoldStrategy && showBollingerBands });
+    if (bbLowerSeriesRef.current) bbLowerSeriesRef.current.applyOptions({ visible: !isGoldStrategy && showBollingerBands });
+  }, [showBollingerBands, isGoldStrategy]);
+
+  useEffect(() => {
+    if (bbMiddleSeriesRef.current) bbMiddleSeriesRef.current.applyOptions({ visible: !isGoldStrategy && showSma20 });
+  }, [showSma20, isGoldStrategy]);
 
   useEffect(() => {
     if (volumeSeriesRef.current) volumeSeriesRef.current.applyOptions({ visible: showVolume });
@@ -1253,8 +1435,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     }
   }, [allInspectableSignals, selectedSignalIndex, showPositionBox, displayMarkers]);
 
-  const cleanStrategyName = (activeStrategy || selectedStrategy || '').replace('.py', '');
-
   return (
     <div className={`w-full h-full relative overflow-hidden flex flex-col ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
       {/* ── Chart Top Toolbar: Symbol, Strategy, & Indicator Toggles ── */}
@@ -1263,7 +1443,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           isDark ? 'bg-[#161b22] border-[#30363d] text-white' : 'bg-white border-slate-200 text-slate-800'
         }`}
       >
-        {/* Left: Symbol & Strategy */}
+        {/* Left: Symbol & Strategy Selector */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 font-bold tracking-wide">
             <span className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
@@ -1275,10 +1455,121 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
           <span className="text-slate-600 hidden sm:inline">|</span>
 
-          <div className="hidden md:flex items-center gap-1.5 text-[11px] font-mono">
-            <Activity className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="text-slate-400">Strategy:</span>
-            <span className="font-semibold text-indigo-300">{cleanStrategyName}</span>
+          {/* Interactive In-Chart Strategy Selector */}
+          <div className="relative" ref={strategyMenuRef}>
+            <button
+              onClick={() => setIsStrategyMenuOpen(!isStrategyMenuOpen)}
+              className={`flex items-center gap-2 px-2.5 py-1 rounded border transition-all font-mono text-xs cursor-pointer ${
+                isStrategyMenuOpen
+                  ? 'bg-indigo-600 text-white border-indigo-400 shadow-md ring-2 ring-indigo-500/30'
+                  : isDark
+                  ? 'bg-[#21262d] text-indigo-300 border-[#30363d] hover:bg-[#30363d] hover:border-indigo-500/60'
+                  : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-400'
+              }`}
+              title="Click to Switch Strategy Chart View & Indicator Suite"
+            >
+              <Activity className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Strategy:</span>
+              <span className="font-bold text-white max-w-[140px] sm:max-w-[200px] truncate">
+                {cleanStrategyName}
+              </span>
+              <span className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${
+                isGoldStrategy
+                  ? 'bg-amber-950/60 border-amber-600/40 text-amber-300'
+                  : 'bg-cyan-950/60 border-cyan-600/40 text-cyan-300'
+              }`}>
+                {isGoldStrategy ? 'XAU 1m' : 'BTC 15m'}
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 shrink-0 ${isStrategyMenuOpen ? 'rotate-180 text-white' : 'text-slate-400'}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isStrategyMenuOpen && (
+              <div className={`absolute top-full left-0 mt-1.5 w-[360px] max-w-[92vw] rounded-xl border shadow-2xl z-50 p-2 font-mono transition-all ${
+                isDark ? 'bg-[#161b22] border-[#30363d] text-white shadow-black/80' : 'bg-white border-slate-300 text-slate-900 shadow-slate-400/50'
+              }`}>
+                <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-700/40 mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-300">Chart Strategy Selector</span>
+                  </div>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                    {strategyList.length} Available
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1 max-h-[320px] overflow-y-auto pr-0.5">
+                  {strategyList.map((strat) => {
+                    const sClean = strat.name.replace('.py', '');
+                    const isSelected = cleanStrategyName === sClean;
+                    const isLiveBot = (activeStrategy || '').replace('.py', '') === sClean;
+                    const isGold = sClean.toLowerCase().includes('xau') || sClean.toLowerCase().includes('goat') || sClean.toLowerCase().includes('gold');
+
+                    return (
+                      <button
+                        key={strat.name}
+                        onClick={() => {
+                          onSelectStrategy?.(strat.name);
+                          setIsStrategyMenuOpen(false);
+                        }}
+                        className={`w-full text-left p-2.5 rounded-lg border transition-all flex flex-col gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? isDark
+                              ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/40'
+                              : 'bg-indigo-50 border-indigo-400 text-indigo-950'
+                            : isDark
+                            ? 'bg-[#0d1117] border-[#30363d] hover:bg-[#21262d] hover:border-slate-500 text-slate-300'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-xs truncate">
+                            <Activity className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-indigo-400' : 'text-slate-500'}`} />
+                            <span className="truncate">{sClean}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {isLiveBot && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-bold flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" /> BOT
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span className="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold">
+                                VIEWING
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`px-1.5 py-0.5 rounded border font-semibold text-[9px] ${
+                              isGold
+                                ? 'bg-amber-950/70 border-amber-600/40 text-amber-300'
+                                : 'bg-cyan-950/70 border-cyan-600/40 text-cyan-300'
+                            }`}>
+                              {isGold ? 'XAU/USD · 1m' : 'BTC/USDT · 15m'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 truncate">
+                              {isGold ? 'Momentum Trend' : 'VSA Wick Rejection'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-[9px] text-slate-500 flex items-center gap-1">
+                          <span className="text-slate-400 font-semibold">Indicators:</span>
+                          <span className="truncate">
+                            {isGold
+                              ? 'EMA 9/21/200 · HH/LL 15m · Vol Surge'
+                              : 'Bollinger Bands (20,2) · Hurst Proxy · Vol Z'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1391,64 +1682,124 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         <div className="flex items-center gap-1.5 font-mono text-[10px]">
           <span className="text-slate-500 mr-1 hidden lg:inline font-bold uppercase text-[9px]">Indicators:</span>
 
-          {/* Ribbon 9/21 Toggle */}
-          <button
-            onClick={() => setShowRibbon(!showRibbon)}
-            className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all ${
-              showRibbon
-                ? isDark
-                  ? 'bg-sky-950/70 border-sky-500/70 text-sky-300 shadow-sm'
-                  : 'bg-sky-50 border-sky-300 text-sky-700'
-                : isDark
-                ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
-                : 'bg-slate-100 border-slate-200 text-slate-400'
-            }`}
-            title="Toggle Momentum Ribbon (EMA 9 Fast & EMA 21 Medium)"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-            <span>EMA 9/21</span>
-          </button>
+          {isGoldStrategy ? (
+            <>
+              {/* Ribbon 9/21 Toggle */}
+              <button
+                onClick={() => setShowRibbon(!showRibbon)}
+                className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showRibbon
+                    ? isDark
+                      ? 'bg-sky-950/70 border-sky-500/70 text-sky-300 shadow-sm'
+                      : 'bg-sky-50 border-sky-300 text-sky-700'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                    : 'bg-slate-100 border-slate-200 text-slate-400'
+                }`}
+                title="Toggle Momentum Ribbon (EMA 9 Fast & EMA 21 Medium)"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                <span>EMA 9/21</span>
+              </button>
 
-          {/* Macro EMA 200 Toggle */}
-          <button
-            onClick={() => setShowMacroEma(!showMacroEma)}
-            className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all ${
-              showMacroEma
-                ? isDark
-                  ? 'bg-purple-950/70 border-purple-500/70 text-purple-300 shadow-sm'
-                  : 'bg-purple-50 border-purple-300 text-purple-700'
-                : isDark
-                ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
-                : 'bg-slate-100 border-slate-200 text-slate-400'
-            }`}
-            title="Toggle Macro Baseline (EMA 200 Trend Filter)"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-            <span>EMA 200</span>
-          </button>
+              {/* Macro EMA 200 Toggle */}
+              <button
+                onClick={() => setShowMacroEma(!showMacroEma)}
+                className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showMacroEma
+                    ? isDark
+                      ? 'bg-purple-950/70 border-purple-500/70 text-purple-300 shadow-sm'
+                      : 'bg-purple-50 border-purple-300 text-purple-700'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                    : 'bg-slate-100 border-slate-200 text-slate-400'
+                }`}
+                title="Toggle Macro Baseline (EMA 200 Trend Filter)"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                <span>EMA 200</span>
+              </button>
 
-          {/* 15m Range Channel Toggle */}
-          <button
-            onClick={() => setShowRanges(!showRanges)}
-            className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all ${
-              showRanges
-                ? isDark
-                  ? 'bg-emerald-950/70 border-emerald-500/70 text-emerald-300 shadow-sm'
-                  : 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                : isDark
-                ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
-                : 'bg-slate-100 border-slate-200 text-slate-400'
-            }`}
-            title="Toggle 15m Dynamic Range Channels (HH15 & LL15)"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>HH/LL 15m</span>
-          </button>
+              {/* 15m Range Channel Toggle */}
+              <button
+                onClick={() => setShowRanges(!showRanges)}
+                className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showRanges
+                    ? isDark
+                      ? 'bg-emerald-950/70 border-emerald-500/70 text-emerald-300 shadow-sm'
+                      : 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                    : 'bg-slate-100 border-slate-200 text-slate-400'
+                }`}
+                title="Toggle 15m Dynamic Range Channels (HH15 & LL15)"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>HH/LL 15m</span>
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Bollinger Bands Toggle */}
+              <button
+                onClick={() => setShowBollingerBands(!showBollingerBands)}
+                className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showBollingerBands
+                    ? isDark
+                      ? 'bg-pink-950/70 border-pink-500/70 text-pink-300 shadow-sm'
+                      : 'bg-pink-50 border-pink-300 text-pink-700'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                    : 'bg-slate-100 border-slate-200 text-slate-400'
+                }`}
+                title="Toggle Bollinger Bands (20, ±2.0 std)"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-pink-400" />
+                <span>BB (20, 2)</span>
+              </button>
+
+              {/* SMA 20 Basis Toggle */}
+              <button
+                onClick={() => setShowSma20(!showSma20)}
+                className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showSma20
+                    ? isDark
+                      ? 'bg-amber-950/70 border-amber-500/70 text-amber-300 shadow-sm'
+                      : 'bg-amber-50 border-amber-300 text-amber-700'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                    : 'bg-slate-100 border-slate-200 text-slate-400'
+                }`}
+                title="Toggle SMA 20 Middle Basis"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>SMA 20</span>
+              </button>
+
+              {/* Hurst Regime Toggle */}
+              <button
+                onClick={() => setShowHurst(!showHurst)}
+                className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  showHurst
+                    ? isDark
+                      ? 'bg-purple-950/70 border-purple-500/70 text-purple-300 shadow-sm'
+                      : 'bg-purple-50 border-purple-300 text-purple-700'
+                    : isDark
+                    ? 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                    : 'bg-slate-100 border-slate-200 text-slate-400'
+                }`}
+                title="Toggle Hurst Exponent / Regime Indicator"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                <span>Hurst &lt;0.48</span>
+              </button>
+            </>
+          )}
 
           {/* Volume Histogram Toggle */}
           <button
             onClick={() => setShowVolume(!showVolume)}
-            className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all ${
+            className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
               showVolume
                 ? isDark
                   ? 'bg-teal-950/70 border-teal-500/70 text-teal-300 shadow-sm'
@@ -1460,13 +1811,13 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             title="Toggle Volume Histogram with Z-Score Surge Detection"
           >
             <BarChart2 className="w-3 h-3" />
-            <span>Volume</span>
+            <span>{isGoldStrategy ? 'Volume' : 'Volume Z'}</span>
           </button>
 
           {/* Position Boxes Toggle */}
           <button
             onClick={() => setShowPositionBox(!showPositionBox)}
-            className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all ${
+            className={`px-2 py-1 rounded border flex items-center gap-1.5 transition-all cursor-pointer ${
               showPositionBox
                 ? isDark
                   ? 'bg-indigo-950/70 border-indigo-500/70 text-indigo-300 shadow-sm'
@@ -1492,18 +1843,18 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         {/* OHLCV Readout */}
         <div className="flex items-center gap-2">
           <span>
-            O: <span className="font-semibold text-slate-200">${activeLegend.open?.toFixed(2) || '–'}</span>
+            O: <span className="font-semibold text-slate-200">${activeLegend.open != null ? (isXauActive ? activeLegend.open.toFixed(2) : activeLegend.open.toFixed(1)) : '–'}</span>
           </span>
           <span>
-            H: <span className="font-semibold text-slate-200">${activeLegend.high?.toFixed(2) || '–'}</span>
+            H: <span className="font-semibold text-slate-200">${activeLegend.high != null ? (isXauActive ? activeLegend.high.toFixed(2) : activeLegend.high.toFixed(1)) : '–'}</span>
           </span>
           <span>
-            L: <span className="font-semibold text-slate-200">${activeLegend.low?.toFixed(2) || '–'}</span>
+            L: <span className="font-semibold text-slate-200">${activeLegend.low != null ? (isXauActive ? activeLegend.low.toFixed(2) : activeLegend.low.toFixed(1)) : '–'}</span>
           </span>
           <span>
             C:{' '}
             <span className={`font-bold ${activeLegend.changePct && activeLegend.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              ${activeLegend.close?.toFixed(2) || '–'} (
+              ${activeLegend.close != null ? (isXauActive ? activeLegend.close.toFixed(2) : activeLegend.close.toFixed(1)) : '–'} (
               {activeLegend.changePct != null ? `${activeLegend.changePct >= 0 ? '+' : ''}${activeLegend.changePct.toFixed(2)}%` : '–'})
             </span>
           </span>
@@ -1513,36 +1864,72 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
         {/* Strategy Indicator Real-Time Values */}
         <div className="flex items-center gap-3 flex-wrap">
-          {showRibbon && (
+          {isGoldStrategy ? (
             <>
-              <span className="flex items-center gap-1 text-sky-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-                EMA(9): <span>${activeLegend.ema9?.toFixed(2) || '–'}</span>
-              </span>
-              <span className="flex items-center gap-1 text-amber-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                EMA(21): <span>${activeLegend.ema21?.toFixed(2) || '–'}</span>
-              </span>
+              {showRibbon && (
+                <>
+                  <span className="flex items-center gap-1 text-sky-400 font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                    EMA(9): <span>${activeLegend.ema9?.toFixed(2) || '–'}</span>
+                  </span>
+                  <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    EMA(21): <span>${activeLegend.ema21?.toFixed(2) || '–'}</span>
+                  </span>
+                </>
+              )}
+
+              {showMacroEma && (
+                <span className="flex items-center gap-1 text-purple-400 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                  EMA(200): <span>${activeLegend.ema200?.toFixed(2) || '–'}</span>
+                </span>
+              )}
+
+              {showRanges && (
+                <>
+                  <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    HH15: <span>${activeLegend.hh15?.toFixed(2) || '–'}</span>
+                  </span>
+                  <span className="flex items-center gap-1 text-rose-400 font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                    LL15: <span>${activeLegend.ll15?.toFixed(2) || '–'}</span>
+                  </span>
+                </>
+              )}
             </>
-          )}
-
-          {showMacroEma && (
-            <span className="flex items-center gap-1 text-purple-400 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-              EMA(200): <span>${activeLegend.ema200?.toFixed(2) || '–'}</span>
-            </span>
-          )}
-
-          {showRanges && (
+          ) : (
             <>
-              <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                HH15: <span>${activeLegend.hh15?.toFixed(2) || '–'}</span>
-              </span>
-              <span className="flex items-center gap-1 text-rose-400 font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                LL15: <span>${activeLegend.ll15?.toFixed(2) || '–'}</span>
-              </span>
+              {showSma20 && (
+                <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  SMA(20): <span>${activeLegend.bbMiddle?.toFixed(1) || '–'}</span>
+                </span>
+              )}
+
+              {showBollingerBands && (
+                <>
+                  <span className="flex items-center gap-1 text-pink-400 font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-pink-400" />
+                    Upper BB: <span>${activeLegend.bbUpper?.toFixed(1) || '–'}</span>
+                  </span>
+                  <span className="flex items-center gap-1 text-cyan-400 font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    Lower BB: <span>${activeLegend.bbLower?.toFixed(1) || '–'}</span>
+                  </span>
+                </>
+              )}
+
+              {showHurst && activeLegend.hurst != null && (
+                <span className="flex items-center gap-1 text-purple-400 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                  Hurst:{' '}
+                  <span className={activeLegend.hurst < 0.48 ? 'text-emerald-400' : 'text-slate-400'}>
+                    {activeLegend.hurst.toFixed(3)} {activeLegend.hurst < 0.48 ? '(Mean-Reverting)' : '(Trending)'}
+                  </span>
+                </span>
+              )}
             </>
           )}
 

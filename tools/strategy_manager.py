@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import urllib.request
+from typing import Optional, Dict, Any, List
 
 TOOL_NAME = "[StrategyManager]"
 
@@ -246,16 +247,49 @@ def summary(endpoint: str):
         print(f"    Sharpe: {bt.get('sharpe', 0.0)} | DSR: {bt.get('dsr', 0.0)} | Win%: {bt.get('win_rate', 0.0)*100:.1f}% | MDD: {bt.get('max_drawdown', 0.0)*100:.2f}% | Drift Snapshots: {drift_cnt}")
     print("=" * 76 + "\n")
 
+def show_signals(strategy: Optional[str], endpoint: str):
+    from server.state_manager import signal_store
+    sigs = signal_store.get_all(strategy)
+    actives = signal_store.get_active_signals()
+    stats = signal_store.get_stats(strategy)
+
+    title_suffix = f" FOR '{strategy}'" if strategy else " ACROSS ALL STRATEGIES"
+    print("\n" + "=" * 76)
+    print(f"{TOOL_NAME} STRATEGY LIVE SIGNALS & POSITIONS{title_suffix}")
+    print("=" * 76)
+    print(f"  Total Signals:   {len(sigs)}")
+    print(f"  Active In Pos:   {len(actives)}")
+    print(f"  Live Win Rate:   {stats.get('win_rate', 0.0)*100:.1f}% ({stats.get('wins', 0)}W / {stats.get('losses', 0)}L)")
+    print(f"  Profit Factor:   {stats.get('profit_factor', 0.0)}")
+    print(f"  Total Live PnL:  {stats.get('total_pnl_pct', 0.0):+.2f}%")
+    print("-" * 76)
+
+    if actives:
+        print("  [CURRENT OPEN POSITIONS]:")
+        for a in actives:
+            print(f"   🟢 #{a.get('id')} [{a.get('strategy')}] {a.get('action')} {a.get('pair')} @ ${a.get('price'):,.2f}")
+            print(f"      SL: ${a.get('stop_loss', 0):,.2f} | TP: ${a.get('take_profit', 0):,.2f} | Annotation: {a.get('annotation')}")
+        print("-" * 76)
+    else:
+        print("  [CURRENT OPEN POSITIONS]: None (Scanning market regimes)\n" + "-" * 76)
+
+    print("  [RECENT SIGNALS HISTORY (Latest 10)]:")
+    for s in sigs[:10]:
+        status_icon = "🟢" if s.get("status") == "ACTIVE_IN_POSITION" else ("✅" if s.get("pnl_pct", 0) > 0 else "❌")
+        pnl_str = f"{s.get('pnl_pct', 0):+.2f}%" if s.get("status") != "ACTIVE_IN_POSITION" else "IN PROGRESS"
+        print(f"   {status_icon} #{s.get('id')} [{s.get('strategy')}] {s.get('action')} {s.get('pair')} @ ${s.get('price'):,.2f} -> {s.get('exit_reason', 'OPEN')} ({pnl_str})")
+    print("=" * 76 + "\n")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EdgeMiner AI Strategy Management CLI")
     parser.add_argument(
         "action",
-        choices=["list", "status", "backtest", "cron", "rank", "register", "summary", "portfolio", "drift"],
-        help="list | status | backtest | cron | rank | register | summary | portfolio | drift"
+        choices=["list", "status", "backtest", "cron", "rank", "register", "summary", "portfolio", "drift", "signals"],
+        help="list | status | backtest | cron | rank | register | summary | portfolio | drift | signals"
     )
     parser.add_argument("pos_strategy", nargs="?", default=None, help="Optional positional strategy name")
     parser.add_argument("pos_status", nargs="?", default=None, help="Optional positional status")
-    parser.add_argument("--strategy",  default="GoatFundedTraderXauusdScalper.py", help="Strategy filename or name")
+    parser.add_argument("--strategy",  default="", help="Strategy filename or name (filter for signals, target for status)")
     parser.add_argument("--status",    default="CRON_BACKTEST", choices=["ACTIVE_LIVE", "CRON_BACKTEST", "DEACTIVATED"], help="Target status")
     parser.add_argument("--exclusive", action="store_true", help="Demote other active strategies if activating this one")
     parser.add_argument("--thesis",    default="Out-of-the-Box Edge Hypothesis",   help="Core thesis description")
@@ -277,4 +311,5 @@ if __name__ == "__main__":
     elif args.action == "summary":   summary(args.endpoint)
     elif args.action == "portfolio": show_portfolio(args.endpoint)
     elif args.action == "drift":     show_drift_distribution(args.endpoint)
+    elif args.action == "signals":   show_signals(effective_strategy, args.endpoint)
 

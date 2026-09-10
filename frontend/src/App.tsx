@@ -196,18 +196,14 @@ export const App: React.FC = () => {
   return (
     <div className={`w-screen h-screen flex flex-col overflow-hidden ${theme === 'dark' ? 'bg-[#0d1117] text-white' : 'bg-slate-100 text-slate-900'}`}>
 
-      {/* Header — strategy mega menu always accessible */}
+      {/* Header — clean top bar */}
       <Header
         activeScreen={activeScreen}
         setActiveScreen={setActiveScreen}
         isConnected={isConnected}
         theme={theme}
         setTheme={setTheme}
-        selectedStrategy={selectedStrategy}
         activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
-        strategies={strategies}
-        onSelectStrategy={handleSelectStrategy}
-        onActivateStrategy={handleActivateStrategy}
       />
 
       {/* F1 — Live Chart */}
@@ -220,6 +216,8 @@ export const App: React.FC = () => {
           tradeMarkers={selectedBacktestData?.trade_markers || activeState?.trade_markers || []}
           tradesDetail={selectedBacktestData?.trades_detail || activeState?.trades_detail || []}
           activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
+          strategies={strategies}
+          onSelectStrategy={handleSelectStrategy}
         />
       </main>
 
@@ -232,6 +230,8 @@ export const App: React.FC = () => {
           selectedStrategy={selectedStrategy}
           selectedBacktestData={selectedBacktestData}
           activeState={activeState}
+          managedStrategies={managedStrategies}
+          portfolioSummary={portfolioSummary}
         />
       </main>
 
@@ -254,6 +254,7 @@ export const App: React.FC = () => {
         <StrategyManagerDeck
           theme={theme}
           strategies={managedStrategies}
+          signals={signals}
           activeStrategy={activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'}
           portfolioSummary={portfolioSummary}
           distributionAnalytics={distributionAnalytics}

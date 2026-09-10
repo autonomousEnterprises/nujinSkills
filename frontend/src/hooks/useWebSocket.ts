@@ -92,6 +92,18 @@ export interface PortfolioSummary {
   total_realized_pnl: number;
   symbols: string[];
   best_performer?: string | null;
+  // Live bot execution breakdown
+  live_trades?: number;
+  live_wins?: number;
+  live_losses?: number;
+  live_win_rate?: number;
+  live_realized_pnl?: number;
+  live_profit_factor?: number;
+  // Backtest benchmark breakdown
+  backtest_trades?: number;
+  backtest_win_rate?: number;
+  backtest_sharpe?: number;
+  backtest_profit_factor?: number;
 }
 
 export interface DistributionAnalytics {
@@ -199,6 +211,20 @@ export function useWebSocket() {
             // Strategy backtest preview completed — update live state with backtest results
             if (payload?.state) {
               setLiveSystemState((prev) => ({ ...prev, ...payload.state }));
+            }
+            break;
+          }
+          case 'SIGNAL_CLOSED': {
+            setSignals((prev) =>
+              prev.map((s) => (s.id === payload.id ? { ...s, ...payload } : s))
+            );
+            break;
+          }
+          case 'SIGNALS_CLEARED': {
+            if (payload?.strategy) {
+              setSignals((prev) => prev.filter((s) => s.strategy !== payload.strategy));
+            } else {
+              setSignals([]);
             }
             break;
           }

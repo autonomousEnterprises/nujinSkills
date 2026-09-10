@@ -50,11 +50,13 @@ class TelegramGateway:
         take_profit = payload.get("take_profit", 0.0)
         annotation = payload.get("annotation", "Edge Triggered")
         reasoning = payload.get("reasoning_md", "")
+        strategy = payload.get("strategy", "").replace(".py", "")
+        strat_tag = f" • *{strategy}*" if strategy else ""
 
         icon = "🟢" if action.upper() == "BUY" else "🔴"
         # Numbers on their own line — tap once to select & paste into MetaTrader
         text = (
-            f"{icon} *{action} {pair}* — EdgeMiner Signal\n"
+            f"{icon} *{action} {pair}*{strat_tag} — EdgeMiner Signal\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
             f"📈 *Entry*\n"
             f"`{price:.2f}`\n\n"

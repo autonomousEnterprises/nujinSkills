@@ -362,8 +362,9 @@ if __name__ == "__main__":
 | `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
 | `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
 | `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
-| `tools/strategy_manager.py` | `[StrategyManager]` | **Strategy Lifecycle CLI:** parallel multi-bot execution, portfolio aggregation, status (`ACTIVE_LIVE`, `CRON_BACKTEST`, `DEACTIVATED`), daily cron drift (24h), rankings | `list`, `status`, `portfolio`, `drift`, `backtest`, `cron`, `rank`, `register`, `summary` |
-| `tools/state_control.py` | `[StateControl]` | **AI State CLI:** read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add`, `strategies`, `schema` |
+| `tools/strategy_manager.py` | `[StrategyManager]` | **Strategy Lifecycle CLI:** parallel multi-bot execution, portfolio aggregation, status (`ACTIVE_LIVE`, `CRON_BACKTEST`, `DEACTIVATED`), daily cron drift (24h), rankings, active signals inspection | `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `rank`, `register`, `summary` |
+| `tools/state_control.py` | `[StateControl]` | **AI State CLI:** read/patch state, deploy/stop strategies, manage & close signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add`, `signal-close`, `strategies`, `schema` |
+| `tools/bot_control.py` | `[BotControl]` | **Bot Supervisor CLI:** deploy or stop trading bots per strategy or all | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
 | `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
 | `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
 | `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI telemetry server & Telegram gateway | `start`, `stop`, `status`, `--port` |

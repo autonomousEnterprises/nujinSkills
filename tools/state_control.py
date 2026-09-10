@@ -2,7 +2,9 @@
 import argparse
 import json
 import urllib.request
+import urllib.parse
 import sys
+from typing import Optional, Dict, Any, List
 
 def get_state(key: str, endpoint: str):
     url = f"{endpoint}/api/state"
@@ -61,33 +63,59 @@ def stop_strategy(endpoint: str):
     except Exception as e:
         print(f"[StateControl] Error stopping strategy: {e}")
 
-def get_signals(endpoint: str):
-    url = f"{endpoint}/api/signals"
+def get_signals(endpoint: str, strategy: str = ""):
+    param = f"?strategy={urllib.parse.quote(strategy)}" if strategy else ""
+    url = f"{endpoint}/api/signals{param}"
     try:
-        with urllib.request.urlopen(url, timeout=3) as resp:
+        with urllib.request.urlopen(url, timeout=2) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            print(f"[StateControl] Signals ({len(data.get('signals', []))} total):")
+            strats_label = f" for '{strategy}'" if strategy else ""
+            print(f"[StateControl] Signals{strats_label} ({len(data.get('signals', []))} total, {len(data.get('active_signals', []))} active):")
             print(json.dumps(data, indent=2))
-    except Exception as e:
-        print(f"[StateControl] Error fetching signals: {e}")
+            return
+    except Exception:
+        # Offline / direct disk fallback
+        import os, sys
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        from server.state_manager import signal_store
+        sigs = signal_store.get_all(strategy)
+        actives = signal_store.get_active_signals()
+        active = signal_store.get_active(strategy)
+        strats_label = f" for '{strategy}'" if strategy else ""
+        print(f"[StateControl] Signals (Local Direct){strats_label} ({len(sigs)} total, {len(actives)} active):")
+        print(json.dumps({"signals": sigs, "active_signal": active, "active_signals": actives}, indent=2))
 
-def get_signal_stats(endpoint: str):
-    url = f"{endpoint}/api/signals/stats"
+def get_signal_stats(endpoint: str, strategy: str = ""):
+    param = f"?strategy={urllib.parse.quote(strategy)}" if strategy else ""
+    url = f"{endpoint}/api/signals/stats{param}"
     try:
-        with urllib.request.urlopen(url, timeout=3) as resp:
+        with urllib.request.urlopen(url, timeout=2) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            print(f"[StateControl] Live Signal Performance Stats:")
+            strats_label = f" for '{strategy}'" if strategy else ""
+            print(f"[StateControl] Live Signal Performance Stats{strats_label}:")
             print(json.dumps(data, indent=2))
-    except Exception as e:
-        print(f"[StateControl] Error fetching signal stats: {e}")
+            return
+    except Exception:
+        # Offline / direct disk fallback
+        import os, sys
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        from server.state_manager import signal_store
+        stats = signal_store.get_stats(strategy)
+        strats_label = f" for '{strategy}'" if strategy else ""
+        print(f"[StateControl] Live Signal Performance Stats (Local Direct){strats_label}:")
+        print(json.dumps(stats, indent=2))
 
-def add_signal(signal_json: str, endpoint: str):
+def add_signal(signal_json: str, endpoint: str, strategy: str = "", pair: str = ""):
     url = f"{endpoint}/api/broadcast"
     try:
-        payload = json.loads(signal_json)
+        payload = json.loads(signal_json) if signal_json.strip().startswith("{") else {}
     except json.JSONDecodeError as e:
         print(f"[StateControl] Invalid JSON: {e}")
         sys.exit(1)
+    if strategy and "strategy" not in payload:
+        payload["strategy"] = strategy
+    if pair and "pair" not in payload:
+        payload["pair"] = pair
     envelope = {"event_type": "SIGNAL_TRIGGERED", "payload": payload}
     data = json.dumps(envelope).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
@@ -96,6 +124,25 @@ def add_signal(signal_json: str, endpoint: str):
             print(f"[StateControl] Signal broadcast result: HTTP {resp.status}")
     except Exception as e:
         print(f"[StateControl] Error broadcasting signal: {e}")
+
+def close_signal(endpoint: str, signal_id: Optional[int], strategy: str, exit_price: float, reason: str, pnl_pct: Optional[float]):
+    url = f"{endpoint}/api/signals/close"
+    payload: Dict[str, Any] = {"exit_price": exit_price, "exit_reason": reason}
+    if signal_id is not None:
+        payload["id"] = signal_id
+    if strategy:
+        payload["strategy"] = strategy
+    if pnl_pct is not None:
+        payload["pnl_pct"] = pnl_pct
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            print(f"[StateControl] Signal Closed Successfully:")
+            print(json.dumps(res, indent=2))
+    except Exception as e:
+        print(f"[StateControl] Error closing signal: {e}")
 
 def get_schema(endpoint: str):
     # Schema is derived from DEFAULT_STATE — request state and display its keys
@@ -134,33 +181,40 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EdgeMiner State Control CLI — shared state for server, frontend, and AI agent.")
     parser.add_argument(
         "action",
-        choices=["get", "patch", "deploy", "stop", "signals", "signal-stats", "signal-add", "schema", "strategies"],
+        choices=["get", "patch", "deploy", "stop", "signals", "signal-stats", "signal-add", "signal-close", "schema", "strategies"],
         help=(
             "get: read state or a dotted key | "
             "patch: merge-patch state with JSON | "
             "deploy: run backtest and activate strategy | "
             "stop: deactivate active strategy | "
-            "signals: list all signals | "
-            "signal-stats: live win rate, PF, Sharpe, PnL | "
+            "signals: list all signals (supports --strategy) | "
+            "signal-stats: live win rate, PF, Sharpe, PnL (supports --strategy) | "
             "signal-add: broadcast a new signal | "
+            "signal-close: close an open position | "
             "schema: show state schema | "
             "strategies: list all managed strategies with status and rank"
         )
     )
-    parser.add_argument("--key",      default="",                       help="Dotted key path for 'get', e.g. backtest_summary.sharpe")
-    parser.add_argument("--patch",    default="{}",                     help="JSON object to merge-patch into state")
-    parser.add_argument("--strategy", default="PropFirmVsaWickRejection.py", help="Strategy filename to deploy")
-    parser.add_argument("--mode",     default="dry-run", choices=["dry-run", "live"], help="Bot execution mode (default: dry-run)")
-    parser.add_argument("--signal",   default="{}",                     help="Signal JSON object for signal-add")
-    parser.add_argument("--endpoint", default="http://localhost:8000",  help="Backend API endpoint (default: http://localhost:8000)")
+    parser.add_argument("--key",        default="",                       help="Dotted key path for 'get', e.g. backtest_summary.sharpe")
+    parser.add_argument("--patch",      default="{}",                     help="JSON object to merge-patch into state")
+    parser.add_argument("--strategy",   default="",                       help="Strategy name (filter, target, or tag)")
+    parser.add_argument("--pair",       default="",                       help="Asset pair symbol (e.g. XAU/USD, BTC/USDT)")
+    parser.add_argument("--mode",       default="dry-run", choices=["dry-run", "live"], help="Bot execution mode (default: dry-run)")
+    parser.add_argument("--signal",     default="{}",                     help="Signal JSON object for signal-add")
+    parser.add_argument("--id",         type=int, default=None,           help="Signal ID for signal-close")
+    parser.add_argument("--exit-price", type=float, default=0.0,          help="Exit price for signal-close")
+    parser.add_argument("--reason",     default="MANUAL_CLOSE",           help="Exit reason (TAKE_PROFIT, STOP_LOSS, MANUAL_CLOSE)")
+    parser.add_argument("--pnl",        type=float, default=None,         help="Realized PnL % for signal-close")
+    parser.add_argument("--endpoint",   default="http://localhost:8000",  help="Backend API endpoint (default: http://localhost:8000)")
     args = parser.parse_args()
 
     if   args.action == "get":          get_state(args.key, args.endpoint)
     elif args.action == "patch":        patch_state(args.patch, args.endpoint)
-    elif args.action == "deploy":       deploy_strategy(args.strategy, args.mode, args.endpoint)
+    elif args.action == "deploy":       deploy_strategy(args.strategy or "GoatFundedTraderXauusdScalper.py", args.mode, args.endpoint)
     elif args.action == "stop":         stop_strategy(args.endpoint)
-    elif args.action == "signals":      get_signals(args.endpoint)
-    elif args.action == "signal-stats": get_signal_stats(args.endpoint)
-    elif args.action == "signal-add":   add_signal(args.signal, args.endpoint)
+    elif args.action == "signals":      get_signals(args.endpoint, args.strategy)
+    elif args.action == "signal-stats": get_signal_stats(args.endpoint, args.strategy)
+    elif args.action == "signal-add":   add_signal(args.signal, args.endpoint, args.strategy, args.pair)
+    elif args.action == "signal-close": close_signal(args.endpoint, args.id, args.strategy, args.exit_price, args.reason, args.pnl)
     elif args.action == "schema":       get_schema(args.endpoint)
     elif args.action == "strategies":   get_managed_strategies(args.endpoint)
