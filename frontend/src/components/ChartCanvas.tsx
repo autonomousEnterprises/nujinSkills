@@ -212,6 +212,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const updateBoxCoordinatesRef = useRef<() => void>(() => {});
   const initialCenteredRef = useRef<boolean>(false);
   const priceLinesRef = useRef<any[]>([]);
+  const ema9DataRef = useRef<{ time: Time; value: number }[]>([]);
+  const ema21DataRef = useRef<{ time: Time; value: number }[]>([]);
+  const ema200DataRef = useRef<{ time: Time; value: number }[]>([]);
+  const [liveLegend, setLiveLegend] = useState<LegendValues | null>(null);
 
   // Compute indicator series datasets
   const ema9Data = useMemo(() => calculateEMA(candles, 9), [candles]);
@@ -248,7 +252,151 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     };
   }, [candles, ema9Data, ema21Data, ema200Data, hh15Data, ll15Data, volumeData]);
 
-  const activeLegend = hoverLegend || latestCandleLegend;
+  const activeLegend = hoverLegend || liveLegend || latestCandleLegend;
+
+  // Incremental EMA calculation for live ticking bars
+  const getUpdatedEma = (
+    emaArray: { time: Time; value: number }[],
+    period: number,
+    time: Time,
+    close: number
+  ): number => {
+    if (!emaArray || emaArray.length === 0) return close;
+    const k = 2 / (period + 1);
+    const lastItem = emaArray[emaArray.length - 1];
+
+    if (lastItem.time === time) {
+      const prevEma = emaArray.length > 1 ? emaArray[emaArray.length - 2].value : lastItem.value;
+      const val = Number((close * k + prevEma * (1 - k)).toFixed(2));
+      lastItem.value = val;
+      return val;
+    } else if ((time as number) > (lastItem.time as number)) {
+      const prevEma = lastItem.value;
+      const val = Number((close * k + prevEma * (1 - k)).toFixed(2));
+      emaArray.push({ time, value: val });
+      return val;
+    }
+    return lastItem.value;
+  };
+
+  // Synchronous multi-series updater: candle + volume + EMA9/21/200 + HH15/LL15
+  const updateLiveCandleAndIndicators = (candle: {
+    time: Time;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume?: number;
+  }) => {
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.update(candle);
+    }
+
+    const currentList = candlesRef.current;
+    if (!currentList || currentList.length === 0) return;
+
+    const lastIdx = currentList.length - 1;
+    const lastC = currentList[lastIdx];
+    if (lastC.time === candle.time) {
+      currentList[lastIdx] = candle;
+    } else if ((candle.time as number) > (lastC.time as number)) {
+      currentList.push(candle);
+    }
+
+    // 1. Volume Series
+    if (volumeSeriesRef.current) {
+      const v = candle.volume || 10;
+      const isUp = candle.close >= candle.open;
+      const volWindow = 20;
+      let isSurge = false;
+      const startIdx = Math.max(0, currentList.length - 1 - volWindow);
+      const endIdx = currentList.length - 1;
+      const count = endIdx - startIdx;
+      if (count >= 5) {
+        let sum = 0;
+        for (let j = startIdx; j < endIdx; j++) sum += currentList[j].volume || 10;
+        const mean = sum / count;
+        let sumSq = 0;
+        for (let j = startIdx; j < endIdx; j++) {
+          const diff = (currentList[j].volume || 10) - mean;
+          sumSq += diff * diff;
+        }
+        const std = Math.sqrt(sumSq / count) || 1e-6;
+        if ((v - mean) / std > 0.4) isSurge = true;
+      }
+      const barColor = isUp
+        ? (isSurge ? 'rgba(38, 166, 154, 0.95)' : 'rgba(38, 166, 154, 0.45)')
+        : (isSurge ? 'rgba(239, 83, 80, 0.95)' : 'rgba(239, 83, 80, 0.45)');
+
+      volumeSeriesRef.current.update({
+        time: candle.time,
+        value: v,
+        color: barColor,
+      });
+    }
+
+    // 2. EMA Series
+    let e9Val = candle.close;
+    let e21Val = candle.close;
+    let e200Val = candle.close;
+
+    if (ema9SeriesRef.current && ema9DataRef.current) {
+      e9Val = getUpdatedEma(ema9DataRef.current, 9, candle.time, candle.close);
+      ema9SeriesRef.current.update({ time: candle.time, value: e9Val });
+    }
+    if (ema21SeriesRef.current && ema21DataRef.current) {
+      e21Val = getUpdatedEma(ema21DataRef.current, 21, candle.time, candle.close);
+      ema21SeriesRef.current.update({ time: candle.time, value: e21Val });
+    }
+    if (ema200SeriesRef.current && ema200DataRef.current) {
+      e200Val = getUpdatedEma(ema200DataRef.current, Math.min(200, currentList.length), candle.time, candle.close);
+      ema200SeriesRef.current.update({ time: candle.time, value: e200Val });
+    }
+
+    // 3. HH15 & LL15 Series
+    let hhVal = candle.high;
+    let llVal = candle.low;
+    if (currentList.length >= 2) {
+      const curIdx = currentList.length - 1;
+      const start = Math.max(0, curIdx - 15);
+      const end = curIdx;
+      let maxH = -Infinity;
+      let minL = Infinity;
+      for (let j = start; j < end; j++) {
+        if (currentList[j].high > maxH) maxH = currentList[j].high;
+        if (currentList[j].low < minL) minL = currentList[j].low;
+      }
+      hhVal = Number(maxH.toFixed(2));
+      llVal = Number(minL.toFixed(2));
+
+      if (hh15SeriesRef.current) {
+        hh15SeriesRef.current.update({ time: candle.time, value: hhVal });
+      }
+      if (ll15SeriesRef.current) {
+        ll15SeriesRef.current.update({ time: candle.time, value: llVal });
+      }
+    }
+
+    // 4. Live Legend Sync
+    setLiveLegend({
+      time: Number(candle.time),
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      changePct: candle.open ? ((candle.close - candle.open) / candle.open) * 100 : 0,
+      ema9: e9Val,
+      ema21: e21Val,
+      ema200: e200Val,
+      hh15: hhVal,
+      ll15: llVal,
+      volume: candle.volume || 10,
+    });
+
+    if (updateBoxCoordinatesRef.current) {
+      updateBoxCoordinatesRef.current();
+    }
+  };
 
   // 1. Fetch Initial Candles
   const fetchCandles = () => {
@@ -259,7 +407,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       .then((res) => res.json())
       .then((data) => {
         if (data.data && data.data.length > 0) {
+          candlesRef.current = [...data.data];
           setCandles(data.data);
+          ema9DataRef.current = calculateEMA(data.data, 9);
+          ema21DataRef.current = calculateEMA(data.data, 21);
+          ema200DataRef.current = calculateEMA(data.data, Math.min(200, data.data.length || 200));
           const lastC = data.data[data.data.length - 1];
           if (lastC) {
             setLastLivePrice(lastC.close);
@@ -320,43 +472,39 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               }
 
               activeCandleRef.current = liveCandle;
-              if (candleSeriesRef.current) {
-                candleSeriesRef.current.update(liveCandle);
-              }
+              updateLiveCandleAndIndicators(liveCandle);
               return;
             }
 
             const rawTs = data.quote.timestamp ? parseInt(data.quote.timestamp) : Math.floor(Date.now() / 1000);
             const minuteTime = (Math.floor(rawTs / 60) * 60) as Time;
 
-            if (candleSeriesRef.current) {
-              let cur = activeCandleRef.current;
-              if (!cur || (cur.time as number) < (minuteTime as number)) {
-                if (cur && (minuteTime as number) - (cur.time as number) > 120) {
-                  fetchCandles();
-                  return;
-                }
-                const openPrice = cur ? cur.close : p;
-                cur = {
-                  time: minuteTime,
-                  open: openPrice,
-                  high: Math.max(openPrice, p),
-                  low: Math.min(openPrice, p),
-                  close: p,
-                  volume: data.quote.volume_1m || 10.0,
-                };
-              } else {
-                cur = {
-                  ...cur,
-                  time: cur.time,
-                  high: Math.max(cur.high, p),
-                  low: Math.min(cur.low, p),
-                  close: p,
-                };
+            let cur = activeCandleRef.current;
+            if (!cur || (cur.time as number) < (minuteTime as number)) {
+              if (cur && (minuteTime as number) - (cur.time as number) > 120) {
+                fetchCandles();
+                return;
               }
-              activeCandleRef.current = cur;
-              candleSeriesRef.current.update(cur);
+              const openPrice = cur ? cur.close : p;
+              cur = {
+                time: minuteTime,
+                open: openPrice,
+                high: Math.max(openPrice, p),
+                low: Math.min(openPrice, p),
+                close: p,
+                volume: data.quote.volume_1m || 10.0,
+              };
+            } else {
+              cur = {
+                ...cur,
+                time: cur.time,
+                high: Math.max(cur.high, p),
+                low: Math.min(cur.low, p),
+                close: p,
+              };
             }
+            activeCandleRef.current = cur;
+            updateLiveCandleAndIndicators(cur);
           }
         } catch (e) {
           console.error('Error polling OANDA Spot Gold quote:', e);
@@ -390,9 +538,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               volume: parseFloat(k.v),
             };
             setLastLivePrice(updatedCandle.close);
-            if (candleSeriesRef.current) {
-              candleSeriesRef.current.update(updatedCandle);
-            }
+            activeCandleRef.current = updatedCandle;
+            updateLiveCandleAndIndicators(updatedCandle);
           }
         } catch (e) {
           console.error('Error parsing WS kline:', e);
@@ -930,6 +1077,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     ema200SeriesRef.current = ema200Series;
     hh15SeriesRef.current = hh15Series;
     ll15SeriesRef.current = ll15Series;
+
+    candlesRef.current = [...candles];
+    ema9DataRef.current = [...ema9Data];
+    ema21DataRef.current = [...ema21Data];
+    ema200DataRef.current = [...ema200Data];
 
     const handleRangeChange = () => {
       requestAnimationFrame(() => {
