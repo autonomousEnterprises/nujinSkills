@@ -54,7 +54,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         wick_thresh = 0.40
         vol_thresh = 0.4
         stoploss_pct = 0.0025   # ~$11.00 gold move (0.50% account risk for GFT)
-        takeprofit_pct = 0.0050 # ~$22.00 gold move (1:2 Risk-Reward)
+        takeprofit_pct = 0.0030 # ~$13.20 gold move (1:1.2 Risk-Reward)
         min_bars = 2            # Goat Funded Trader MINIMUM 2-minute holding rule
         max_bars = 15           # MAXIMUM 15-minute scalp cutoff
         trials = 50
@@ -165,6 +165,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     exit_idx = i + 1
                     exit_price = entry_price
                     exit_reason = "BARS_HOLD"
+                    final_exit_idx = exit_idx
                     
                     while exit_idx < min(i + max_bars + 1, n):
                         bar_curr = df_c.iloc[exit_idx]
@@ -173,53 +174,34 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                         curr_close = float(bar_curr['close'])
                         bars_held = exit_idx - i
                         
-                        if is_xauusd:
-                            if side == "LONG":
-                                if curr_close <= stop_loss:
-                                    exit_price = stop_loss
-                                    exit_reason = "STOP_LOSS"
-                                    break
-                                elif curr_close >= take_profit and bars_held >= min_bars:
-                                    exit_price = take_profit
-                                    exit_reason = "TAKE_PROFIT"
-                                    break
-                            else: # SHORT
-                                if curr_close >= stop_loss:
-                                    exit_price = stop_loss
-                                    exit_reason = "STOP_LOSS"
-                                    break
-                                elif curr_close <= take_profit and bars_held >= min_bars:
-                                    exit_price = take_profit
-                                    exit_reason = "TAKE_PROFIT"
-                                    break
-                        else:
-                            if side == "LONG":
-                                if curr_low <= stop_loss:
-                                    exit_price = stop_loss
-                                    exit_reason = "STOP_LOSS"
-                                    break
-                                elif curr_high >= take_profit and bars_held >= min_bars:
-                                    exit_price = take_profit
-                                    exit_reason = "TAKE_PROFIT"
-                                    break
-                            else: # SHORT
-                                if curr_high >= stop_loss:
-                                    exit_price = stop_loss
-                                    exit_reason = "STOP_LOSS"
-                                    break
-                                elif curr_low <= take_profit and bars_held >= min_bars:
-                                    exit_price = take_profit
-                                    exit_reason = "TAKE_PROFIT"
-                                    break
+                        if side == "LONG":
+                            if curr_low <= stop_loss:
+                                exit_price = stop_loss
+                                exit_reason = "STOP_LOSS"
+                                final_exit_idx = exit_idx
+                                break
+                            elif curr_high >= take_profit and bars_held >= min_bars:
+                                exit_price = take_profit
+                                exit_reason = "TAKE_PROFIT"
+                                final_exit_idx = exit_idx
+                                break
+                        else: # SHORT
+                            if curr_high >= stop_loss:
+                                exit_price = stop_loss
+                                exit_reason = "STOP_LOSS"
+                                final_exit_idx = exit_idx
+                                break
+                            elif curr_low <= take_profit and bars_held >= min_bars:
+                                exit_price = take_profit
+                                exit_reason = "TAKE_PROFIT"
+                                final_exit_idx = exit_idx
+                                break
                         
                         exit_price = curr_close
+                        final_exit_idx = exit_idx
                         exit_idx += 1
                             
-                    if exit_idx >= n:
-                        exit_idx = n - 1
-                        exit_price = float(df_c.iloc[exit_idx]['close'])
-                        
-                    exit_bar = df_c.iloc[exit_idx]
+                    exit_bar = df_c.iloc[final_exit_idx]
                     exit_time = int(exit_bar['timestamp'])
                     
                     if side == "LONG":
@@ -263,7 +245,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     })
                     
                     # Advance index past exit candle to prevent overlapping trades
-                    i = exit_idx + 1
+                    i = final_exit_idx + 1
                 else:
                     i += 1
         except Exception as err:
@@ -302,10 +284,10 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     
     mean_ret = float(np.mean(returns_arr))
     std_ret = float(np.std(returns_arr))
-    sharpe = float((mean_ret / max(std_ret, 1e-6)) * np.sqrt(252 * 24))
+    sharpe = float((mean_ret / max(std_ret, 1e-6)) * np.sqrt(252))
     expectancy_bps = float(mean_ret * 10000.0)
 
-    dsr = round(min(0.99, max(0.60, 0.50 + sharpe * 0.25)), 2)
+    dsr = round(min(0.99, max(0.60, 0.50 + sharpe * 0.15)), 2)
     mdd_99 = round(max(0.01, max_dd * 2.2), 4)
     
     backtest_summary = {
@@ -409,14 +391,24 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
 
             # Return Distribution Histogram Bins
             all_pnls = [tr["pnl_pct"] for tr in trades_detail]
-            bins_def = [
-                {"bin_label": "<-3.0%", "min": -999.0, "max": -3.0, "win": False},
-                {"bin_label": "-3.0% to -1.5%", "min": -3.0, "max": -1.5, "win": False},
-                {"bin_label": "-1.5% to 0%", "min": -1.5, "max": 0.0, "win": False},
-                {"bin_label": "0% to +1.5%", "min": 0.0, "max": 1.5, "win": True},
-                {"bin_label": "+1.5% to +3.0%", "min": 1.5, "max": 3.0, "win": True},
-                {"bin_label": ">+3.0%", "min": 3.0, "max": 999.0, "win": True}
-            ]
+            if is_xauusd:
+                bins_def = [
+                    {"bin_label": "<-0.20%", "min": -999.0, "max": -0.20, "win": False},
+                    {"bin_label": "-0.20% to -0.10%", "min": -0.20, "max": -0.10, "win": False},
+                    {"bin_label": "-0.10% to 0%", "min": -0.10, "max": 0.0, "win": False},
+                    {"bin_label": "0% to +0.10%", "min": 0.0, "max": 0.10, "win": True},
+                    {"bin_label": "+0.10% to +0.20%", "min": 0.10, "max": 0.20, "win": True},
+                    {"bin_label": ">+0.20%", "min": 0.20, "max": 999.0, "win": True}
+                ]
+            else:
+                bins_def = [
+                    {"bin_label": "<-3.0%", "min": -999.0, "max": -3.0, "win": False},
+                    {"bin_label": "-3.0% to -1.5%", "min": -3.0, "max": -1.5, "win": False},
+                    {"bin_label": "-1.5% to 0%", "min": -1.5, "max": 0.0, "win": False},
+                    {"bin_label": "0% to +1.5%", "min": 0.0, "max": 1.5, "win": True},
+                    {"bin_label": "+1.5% to +3.0%", "min": 1.5, "max": 3.0, "win": True},
+                    {"bin_label": ">+3.0%", "min": 3.0, "max": 999.0, "win": True}
+                ]
             for b in bins_def:
                 cnt = sum(1 for p in all_pnls if b["min"] <= p < b["max"])
                 return_distribution.append({

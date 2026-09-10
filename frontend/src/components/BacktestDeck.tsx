@@ -199,7 +199,7 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
               <div className={`text-lg font-bold mt-1 ${getValColor(summary?.expectancy_bps)}`}>
                 {summary?.expectancy_bps != null ? summary.expectancy_bps + ' bps' : '–'}
               </div>
-              <span className="text-[10px] text-slate-500">Friction: 5.0 bps</span>
+              <span className="text-[10px] text-slate-500">{cleanSelectedName.toLowerCase().includes('btc') ? 'Friction: 5.0 bps' : 'Friction: 0.5 bps'}</span>
             </div>
 
             <div className={`border p-3 rounded-lg ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -219,9 +219,10 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
             <div className={`border rounded-lg p-4 flex flex-col justify-between ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
 
               {/* Header: title + period badges */}
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
-                  <TrendingUp className="w-4 h-4" /> EQUITY GROWTH CURVE &amp; DRAWDOWN
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-xs font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  <TrendingUp className="w-4 h-4 text-emerald-500" />
+                  EQUITY GROWTH CURVE &amp; DRAWDOWN
                 </span>
                 {(() => {
                   const eqCurve = selectedBacktestData?.equity_curve;
@@ -236,8 +237,8 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   if (eqCurve && eqCurve.length >= 2) {
                     const firstTs = eqCurve[0].time;
                     const lastTs  = eqCurve[eqCurve.length - 1].time;
-                    const calcDays = Math.round(Math.abs(toMs(lastTs) - toMs(firstTs)) / 86400000);
-                    const daysLabel = calcDays >= 28 ? '30D' : '30D'; // User directive: always 30D backtests
+                    const calcDays = Math.max(1, Math.round(Math.abs(toMs(lastTs) - toMs(firstTs)) / 86400000));
+                    const daysLabel = calcDays >= 28 ? '30D' : `${calcDays}D`;
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">{daysLabel} BACKTEST</span>
@@ -248,7 +249,7 @@ export const BacktestDeck: React.FC<BacktestDeckProps> = ({
                   }
                   return (
                     <div className="flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">30D BACKTEST</span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400 text-[10px] font-bold">10D BACKTEST</span>
                       <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300 text-[10px] font-mono font-bold">{pairBadge}</span>
                     </div>
                   );

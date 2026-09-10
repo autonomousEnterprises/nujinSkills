@@ -68,7 +68,7 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
 async def _async_fetch_oanda_bars(resolution: str = "15", n_bars: int = 3000) -> List[Dict[str, Any]]:
     """Connects to TradingView data feed to extract real OANDA:XAUUSD bars."""
     uri = "wss://data.tradingview.com/socket.io/websocket"
-    async with websockets.connect(uri, origin="https://www.tradingview.com", ping_interval=20) as ws:
+    async with websockets.connect(uri, origin="https://www.tradingview.com", ping_interval=20, max_size=50_000_000) as ws:
         await ws.recv()
 
         def fmt(m):
@@ -161,9 +161,17 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880) -> List[Di
                 try:
                     df_fresh = pd.DataFrame(candles)
                     df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
-                    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-                    df_fresh.to_csv(csv_path, index=False)
-                    logger.info(f"[DataManager] Synced {len(candles)} live OANDA 1m bars to cache {csv_path}")
+                    if os.path.exists(csv_path):
+                        df_old = pd.read_csv(csv_path)
+                        df_merged = pd.concat([df_old, df_fresh], ignore_index=True)
+                        df_merged.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                        df_merged.sort_values(by="timestamp", inplace=True)
+                        df_merged.to_csv(csv_path, index=False)
+                        logger.info(f"[DataManager] Merged {len(candles)} live bars into {csv_path} (total: {len(df_merged)} bars)")
+                    else:
+                        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+                        df_fresh.to_csv(csv_path, index=False)
+                        logger.info(f"[DataManager] Synced {len(candles)} live OANDA 1m bars to cache {csv_path}")
                 except Exception as e_csv:
                     logger.warning(f"[DataManager] Could not write fresh cache CSV: {e_csv}")
             return candles[-count:] if count else candles
@@ -318,11 +326,11 @@ def sync_xauusd_scalp_candles(output_path: str = "data/xauusd_candles_1m.csv") -
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 with concurrent.futures.ThreadPoolExecutor() as pool:
-                    bars_1m = pool.submit(lambda: asyncio.run(_async_fetch_oanda_bars("1", 10000))).result()
+                    bars_1m = pool.submit(lambda: asyncio.run(_async_fetch_oanda_bars("1", 30000))).result()
             else:
-                bars_1m = asyncio.run(_async_fetch_oanda_bars("1", 10000))
+                bars_1m = asyncio.run(_async_fetch_oanda_bars("1", 30000))
         except RuntimeError:
-            bars_1m = asyncio.run(_async_fetch_oanda_bars("1", 10000))
+            bars_1m = asyncio.run(_async_fetch_oanda_bars("1", 30000))
     except Exception as e:
         logger.warning(f"[DataManager] OANDA 1m bar fetch error: {e}")
 
