@@ -367,12 +367,14 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
 
                 # Classify trade into market regime
                 reg = regime_map.get(tr["entry_time"], "ranging_market")
-                regime_trades[reg].append(tr["pnl_pct"])
+                tr["regime"] = reg
+                regime_trades[reg].append(tr)
 
-            # Compute Regime Metrics
-            for reg, pnl_list in regime_trades.items():
-                t_cnt = len(pnl_list)
+            # Compute Regime Metrics & Regime-Specific Equity Growth Curves
+            for reg, tr_list in regime_trades.items():
+                t_cnt = len(tr_list)
                 if t_cnt > 0:
+                    pnl_list = [t["pnl_pct"] for t in tr_list]
                     arr_pnl = np.array(pnl_list)
                     w_rate = float(np.mean(arr_pnl > 0))
                     g_prof = float(np.sum(arr_pnl[arr_pnl > 0])) if np.any(arr_pnl > 0) else 0.0
@@ -384,11 +386,43 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     else:
                         pf = 0.0
                     net_pnl = round(float(np.sum(arr_pnl)), 2)
+
+                    # Sequential equity growth curve within this specific regime
+                    reg_eq = 100.0
+                    peak_reg_eq = 100.0
+                    max_reg_dd = 0.0
+                    reg_curve = [{"time": tr_list[0]["entry_time"], "equity_pct": 100.0, "drawdown_pct": 0.0, "trade_num": 0}]
+                    for idx_t, tr in enumerate(tr_list, start=1):
+                        reg_eq *= (1.0 + tr["pnl_pct"] / 100.0)
+                        peak_reg_eq = max(peak_reg_eq, reg_eq)
+                        dd = round(((peak_reg_eq - reg_eq) / peak_reg_eq) * 100.0, 2)
+                        max_reg_dd = max(max_reg_dd, dd)
+                        reg_curve.append({
+                            "time": tr["exit_time"],
+                            "equity_pct": round(reg_eq, 2),
+                            "drawdown_pct": dd,
+                            "pnl_pct": tr["pnl_pct"],
+                            "trade_num": idx_t
+                        })
+
                     regime_breakdown[reg] = {
                         "trade_count": t_cnt,
                         "win_rate": round(w_rate, 3),
                         "profit_factor": pf,
-                        "net_pnl_pct": net_pnl
+                        "net_pnl_pct": net_pnl,
+                        "peak_equity_pct": round(peak_reg_eq, 2),
+                        "max_drawdown_pct": round(max_reg_dd, 2),
+                        "equity_curve": reg_curve
+                    }
+                else:
+                    regime_breakdown[reg] = {
+                        "trade_count": 0,
+                        "win_rate": 0.0,
+                        "profit_factor": 0.0,
+                        "net_pnl_pct": 0.0,
+                        "peak_equity_pct": 100.0,
+                        "max_drawdown_pct": 0.0,
+                        "equity_curve": []
                     }
 
             # Return Distribution Histogram Bins
