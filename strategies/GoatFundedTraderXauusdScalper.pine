@@ -2,7 +2,16 @@
 indicator("Goat Funded Trader XAUUSD Momentum Scalper [GIT-15]", "GFT Gold Scalper [v6]", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-// 1. INPUTS & PROP FIRM RISK PARAMETERS
+// 1. CONSTANTS & PALETTE DEFINITIONS
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+c_bullish       = #10b981
+c_bearish       = #f43f5e
+c_slate         = #94a3b8
+c_table_bg      = #0f141c
+c_table_border  = #30363d
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// 2. INPUTS & PROP FIRM RISK PARAMETERS
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 
 // ── Trading Session Inputs ──
@@ -44,7 +53,7 @@ consistency_pct = input.float(15.0, "GFT Consistency Cap %", group=grp_gft, tool
 
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-// 2. INDICATOR & SESSION COMPUTATION
+// 3. INDICATOR & SESSION COMPUTATION
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 
 // ── Session Time Detection (UTC) ──
@@ -75,7 +84,7 @@ atr_val         = ta.atr(14)
 
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-// 3. TRADE SIGNALS & STATE MACHINE
+// 4. TRADE SIGNALS & STATE MACHINE
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 
 var int   trade_side        = 0      // 0 = Flat, 1 = Long, -1 = Short
@@ -120,24 +129,24 @@ exit_trade      = false
 
 if trade_side == 1 // ACTIVE LONG
     if close <= trade_sl
-        exit_msg    := "SL Hit (-" + str.tostring(sl_pct, "0.2") + "%)"
+        exit_msg    := "SL Hit (-" + str.tostring(sl_pct, "0.00") + "%)"
         exit_trade  := true
     else if close >= trade_tp1 and bars_held >= min_hold_bars
-        exit_msg    := "TP1 Hit (+" + str.tostring(tp1_pct, "0.2") + "% | " + str.tostring(bars_held) + "m hold)"
+        exit_msg    := "TP1 Hit (+" + str.tostring(tp1_pct, "0.00") + "% | " + str.tostring(bars_held) + "m hold)"
         exit_trade  := true
     else if bars_held >= max_hold_bars
-        exit_msg    := "Max 15m Cutoff (" + str.tostring((close - trade_entry_price) / trade_entry_price * 100.0, "+0.2") + "%)"
+        exit_msg    := "Max 15m Cutoff (" + str.tostring((close - trade_entry_price) / trade_entry_price * 100.0, "0.00") + "%)"
         exit_trade  := true
 
 else if trade_side == -1 // ACTIVE SHORT
     if close >= trade_sl
-        exit_msg    := "SL Hit (-" + str.tostring(sl_pct, "0.2") + "%)"
+        exit_msg    := "SL Hit (-" + str.tostring(sl_pct, "0.00") + "%)"
         exit_trade  := true
     else if close <= trade_tp1 and bars_held >= min_hold_bars
-        exit_msg    := "TP1 Hit (+" + str.tostring(tp1_pct, "0.2") + "% | " + str.tostring(bars_held) + "m hold)"
+        exit_msg    := "TP1 Hit (+" + str.tostring(tp1_pct, "0.00") + "% | " + str.tostring(bars_held) + "m hold)"
         exit_trade  := true
     else if bars_held >= max_hold_bars
-        exit_msg    := "Max 15m Cutoff (" + str.tostring((trade_entry_price - close) / trade_entry_price * 100.0, "+0.2") + "%)"
+        exit_msg    := "Max 15m Cutoff (" + str.tostring((trade_entry_price - close) / trade_entry_price * 100.0, "0.00") + "%)"
         exit_trade  := true
 
 if exit_trade
@@ -145,7 +154,7 @@ if exit_trade
 
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-// 4. CHART PLOTS & VISUAL ANNOTATIONS
+// 5. CHART PLOTS & VISUAL ANNOTATIONS
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 
 // ── Momentum Ribbon Plots ──
@@ -156,20 +165,20 @@ fill(p_fast, p_med, color=ema_fast > ema_med ? color.new(color.teal, 85) : color
 plot(ema_macro, "EMA 200 (Macro)", color=color.new(color.yellow, 20), linewidth=2)
 
 // ── 15-Minute Dynamic Extremes Plots ──
-plot(hh_range, "15m Highest High", color=color.new(color.emerald, 60), style=plot.style_linebr, linewidth=1)
-plot(ll_range, "15m Lowest Low", color=color.new(color.rose, 60), style=plot.style_linebr, linewidth=1)
+plot(hh_range, "15m Highest High", color=color.new(c_bullish, 60), style=plot.style_linebr, linewidth=1)
+plot(ll_range, "15m Lowest Low", color=color.new(c_bearish, 60), style=plot.style_linebr, linewidth=1)
 
 // ── Entry Shapes ──
-plotshape(buy_trigger, "Buy Signal", shape.triangleup, location.belowbar, color.emerald, size=size.normal)
-plotshape(sell_trigger, "Sell Signal", shape.triangledown, location.abovebar, color.rose, size=size.normal)
+plotshape(series=buy_trigger, title="Buy Signal", style=shape.triangleup, location=location.belowbar, color=c_bullish, size=size.normal)
+plotshape(series=sell_trigger, title="Sell Signal", style=shape.triangledown, location=location.abovebar, color=c_bearish, size=size.normal)
 
 // ── Trade Visual Labels ──
 if buy_trigger
     label.new(
          bar_index, low - atr_val,
          "🟢 BUY SCALP\nEntry: $" + str.tostring(trade_entry_price, "#.##") +
-         "\nSL: $" + str.tostring(trade_sl, "#.##") + " (-" + str.tostring(sl_pct, "0.2") + "%)" +
-         "\nTP1: $" + str.tostring(trade_tp1, "#.##") + " (+" + str.tostring(tp1_pct, "0.2") + "%)" +
+         "\nSL: $" + str.tostring(trade_sl, "#.##") + " (-" + str.tostring(sl_pct, "0.00") + "%)" +
+         "\nTP1: $" + str.tostring(trade_tp1, "#.##") + " (+" + str.tostring(tp1_pct, "0.00") + "%)" +
          "\n🔒 Hold Lock: Min 2m | Max 15m",
          color=color.new(#0d5242, 10), textcolor=color.white, style=label.style_label_up, size=size.small
      )
@@ -178,8 +187,8 @@ if sell_trigger
     label.new(
          bar_index, high + atr_val,
          "🔴 SELL SCALP\nEntry: $" + str.tostring(trade_entry_price, "#.##") +
-         "\nSL: $" + str.tostring(trade_sl, "#.##") + " (-" + str.tostring(sl_pct, "0.2") + "%)" +
-         "\nTP1: $" + str.tostring(trade_tp1, "#.##") + " (+" + str.tostring(tp1_pct, "0.2") + "%)" +
+         "\nSL: $" + str.tostring(trade_sl, "#.##") + " (-" + str.tostring(sl_pct, "0.00") + "%)" +
+         "\nTP1: $" + str.tostring(trade_tp1, "#.##") + " (+" + str.tostring(tp1_pct, "0.00") + "%)" +
          "\n🔒 Hold Lock: Min 2m | Max 15m",
          color=color.new(#5c1d1d, 10), textcolor=color.white, style=label.style_label_down, size=size.small
      )
@@ -194,10 +203,10 @@ if exit_trade
 
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-// 5. GOAT FUNDED TRADER (GFT) RISK HUD TABLE
+// 6. GOAT FUNDED TRADER (GFT) RISK HUD TABLE
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 
-var table hud = table.new(position.top_right, 2, 9, bgcolor=color.new(#0f141c, 10), border_color=color.new(#30363d, 0), border_width=1)
+var table hud = table.new(position.top_right, 2, 9, bgcolor=color.new(c_table_bg, 10), border_color=color.new(c_table_border, 0), border_width=1)
 
 if show_hud and barstate.islast
     // Calculate GFT Sizing Metrics
@@ -214,40 +223,38 @@ if show_hud and barstate.islast
     session_label      = in_overlap ? "🟢 LONDON / NY OVERLAP" : in_london ? "🔵 LONDON SESSION" : in_ny ? "🟣 NEW YORK SESSION" : "⚪ CLOSED / ASIAN DRIFT"
     session_col        = in_overlap ? color.purple : in_london ? color.blue : in_ny ? color.fuchsia : color.gray
     
-    table.cell(hud, 0, 0, "🐐 GOAT FUNDED TRADER", text_color=color.yellow, text_size=size.small, text_halign=text.halign_left)
-    table.cell(hud, 1, 0, "XAUUSD GIT-15", text_color=color.white, text_size=size.small, text_halign=text.halign_right)
+    table.cell(hud, 0, 0, "🐐 GOAT FUNDED TRADER", text_color=color.yellow, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud, 1, 0, "XAUUSD GIT-15", text_color=color.white, text_size=size.small, text_halign=text.align_right)
 
-    table.cell(hud, 0, 1, "Session Status", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 1, session_label, text_color=session_col, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 1, "Session Status", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 1, session_label, text_color=session_col, text_size=size.tiny, text_halign=text.align_right)
 
-    table.cell(hud, 0, 2, "Account Size", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 2, "$" + str.tostring(account_size, "#,###"), text_color=color.white, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 2, "Account Size", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 2, "$" + str.tostring(account_size, "#,###"), text_color=color.white, text_size=size.tiny, text_halign=text.align_right)
 
-    table.cell(hud, 0, 3, "Max Risk / Trade (0.5%)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 3, "$" + str.tostring(risk_dollars, "#,###") + " (" + str.tostring(suggested_lots, "0.00") + " Lots)", text_color=color.aqua, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 3, "Max Risk / Trade (0.5%)", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 3, "$" + str.tostring(risk_dollars, "#,###") + " (" + str.tostring(suggested_lots, "0.00") + " Lots)", text_color=color.aqua, text_size=size.tiny, text_halign=text.align_right)
 
-    table.cell(hud, 0, 4, "Daily Loss Limit (3.0%)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 4, "-$" + str.tostring(daily_loss_hard, "#,###") + " (Safe: $" + str.tostring(daily_budget_soft, "#,###") + ")", text_color=color.rose, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 4, "Daily Loss Limit (3.0%)", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 4, "-$" + str.tostring(daily_loss_hard, "#,###") + " (Safe: $" + str.tostring(daily_budget_soft, "#,###") + ")", text_color=c_bearish, text_size=size.tiny, text_halign=text.align_right)
 
-    table.cell(hud, 0, 5, "15% Consistency Ceiling", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 5, "$" + str.tostring(consistency_cap, "#,###") + " Max Daily PnL", text_color=color.orange, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 5, "15% Consistency Ceiling", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 5, "$" + str.tostring(consistency_cap, "#,###") + " Max Daily PnL", text_color=color.orange, text_size=size.tiny, text_halign=text.align_right)
 
-    table.cell(hud, 0, 6, "Min Hold Clock (Anti-Arb)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 6, "2 Minutes (120s Locked)", text_color=color.yellow, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 6, "Min Hold Clock (Anti-Arb)", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 6, "2 Minutes (120s Locked)", text_color=color.yellow, text_size=size.tiny, text_halign=text.align_right)
 
-    table.cell(hud, 0, 7, "Max Scalp Cutoff", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 7, "15 Minutes (Forced Exit)", text_color=color.orange, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 7, "Max Scalp Cutoff", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 7, "15 Minutes (Forced Exit)", text_color=color.orange, text_size=size.tiny, text_halign=text.align_right)
 
-    table.cell(hud, 0, 8, "Vol Z-Score | ATR (14)", text_color=color.slateGray, text_size=size.tiny, text_halign=text.halign_left)
-    table.cell(hud, 1, 8, str.tostring(vol_z, "+0.2") + "σ | $" + str.tostring(atr_val, "#.##"), text_color=vol_z > vol_z_thresh ? color.emerald : color.gray, text_size=size.tiny, text_halign=text.halign_right)
+    table.cell(hud, 0, 8, "Vol Z-Score | ATR (14)", text_color=c_slate, text_size=size.tiny, text_halign=text.align_left)
+    table.cell(hud, 1, 8, str.tostring(vol_z, "0.00") + "σ | $" + str.tostring(atr_val, "#.##"), text_color=vol_z > vol_z_thresh ? c_bullish : color.gray, text_size=size.tiny, text_halign=text.align_right)
 
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-// 6. ALERTS (TELEGRAM & WEBHOOK COMPATIBLE)
+// 7. ALERTS (TELEGRAM & WEBHOOK COMPATIBLE)
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 
 alertcondition(buy_trigger, title="GFT Buy Scalp Signal", message='{"event": "SIGNAL_TRIGGERED", "pair": "XAU/USD", "action": "BUY", "price": {{close}}, "strategy": "GoatFundedTraderXauusdScalper", "min_hold": "2m", "max_hold": "15m"}')
-
 alertcondition(sell_trigger, title="GFT Sell Scalp Signal", message='{"event": "SIGNAL_TRIGGERED", "pair": "XAU/USD", "action": "SELL", "price": {{close}}, "strategy": "GoatFundedTraderXauusdScalper", "min_hold": "2m", "max_hold": "15m"}')
-
 alertcondition(exit_trade, title="GFT Trade Exit", message='{"event": "TRADE_CLOSED", "pair": "XAU/USD", "price": {{close}}, "reason": "EXIT"}')
