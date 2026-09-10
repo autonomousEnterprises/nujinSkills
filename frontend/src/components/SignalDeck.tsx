@@ -4,7 +4,7 @@ import {
   Send, Zap, Cpu, CheckCircle2, ShieldCheck, ArrowUpRight, ArrowDownRight,
   Clock, Target, AlertTriangle, RefreshCw, Activity, MessageSquare,
   TrendingUp, BarChart3, Award, Percent, DollarSign, XCircle, Trash2,
-  Check, Filter, Layers, ExternalLink, Play
+  Check, Filter, Layers, ExternalLink, Play, Square
 } from 'lucide-react';
 
 interface SignalDeckProps {
@@ -240,8 +240,9 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
     }
   };
 
-  // List of active strategies in supervisor
-  const activeBots = systemStatus?.bot?.active_strategies || (activeState?.active_strategies || [cleanSelectedName]);
+  // Bot running status & active strategies list
+  const isRunning = Boolean(systemStatus?.bot?.is_running);
+  const activeBots: string[] = isRunning ? (systemStatus?.bot?.active_strategies || activeState?.active_strategies || []) : [];
 
   // Combined signals list with WS events
   const allSignals = useMemo(() => {
@@ -376,33 +377,45 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
             </div>
           </div>
 
-          {/* Right side: Dual Live Tickers & Action Controls */}
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Live Gold Ticker */}
-            <div className={`px-3 py-1.5 rounded border text-center transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="text-[9px] text-amber-500 font-bold uppercase flex items-center justify-center gap-1">
-                <span>🟡 OANDA SPOT XAU/USD</span>
-              </div>
-              <div className={`text-base font-bold transition-colors ${goldPriceFlash === 'up' ? 'text-emerald-300' : goldPriceFlash === 'down' ? 'text-rose-300' : 'text-amber-400'}`}>
-                {liveGoldPrice ? `$${liveGoldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-              </div>
-            </div>
+          {/* Right side: Bot Controls (Start/Stop), Refresh & Clear */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Start Bot button */}
+            <button
+              onClick={() => handleDeployBot()}
+              disabled={actionLoading || isRunning}
+              title={isRunning ? "Bot supervisor is currently running" : "Start Bot supervisor"}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all shadow-sm ${
+                isRunning
+                  ? 'bg-emerald-950/40 border-emerald-900/60 text-emerald-500/50 cursor-not-allowed'
+                  : 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500 text-white hover:shadow-emerald-900/30'
+              }`}
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{isRunning ? 'Bot Running' : 'Start Bot'}</span>
+            </button>
 
-            {/* Live BTC Ticker */}
-            <div className={`px-3 py-1.5 rounded border text-center transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
-              <div className="text-[9px] text-sky-500 font-bold uppercase flex items-center justify-center gap-1">
-                <span>🔵 BINANCE BTC/USDT</span>
-              </div>
-              <div className={`text-base font-bold transition-colors ${btcPriceFlash === 'up' ? 'text-emerald-300' : btcPriceFlash === 'down' ? 'text-rose-300' : 'text-sky-400'}`}>
-                {liveBtcPrice ? `$${liveBtcPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-              </div>
-            </div>
+            {/* Stop Bot button */}
+            <button
+              onClick={() => handleStopBot()}
+              disabled={actionLoading || !isRunning}
+              title={!isRunning ? "Bot supervisor is currently stopped" : "Stop Bot supervisor"}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all shadow-sm ${
+                !isRunning
+                  ? 'bg-slate-800/40 border-slate-800 text-slate-600 cursor-not-allowed'
+                  : 'bg-rose-600 hover:bg-rose-500 border-rose-500 text-white hover:shadow-rose-900/30'
+              }`}
+            >
+              <Square className="w-3 h-3 fill-current" />
+              <span>Stop Bot</span>
+            </button>
+
+            <div className="w-[1px] h-5 bg-slate-700/50 mx-1 hidden sm:block" />
 
             {/* Refresh button */}
             <button
               onClick={fetchSignals}
               disabled={loading}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border transition-all text-xs ${isDark ? 'bg-[#21262d] border-[#30363d] text-slate-300 hover:bg-[#30363d]' : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs ${isDark ? 'bg-[#21262d] border-[#30363d] text-slate-300 hover:bg-[#30363d]' : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'}`}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               <span>Refresh</span>
@@ -413,7 +426,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
               onClick={handleClearSignals}
               disabled={actionLoading}
               title="Clear signals"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded border transition-all text-xs ${isDark ? 'bg-[#21262d] border-[#30363d] text-slate-400 hover:text-rose-400 hover:border-rose-800' : 'bg-slate-200 border-slate-300 text-slate-600 hover:text-rose-600'}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs ${isDark ? 'bg-[#21262d] border-[#30363d] text-slate-400 hover:text-rose-400 hover:border-rose-800' : 'bg-slate-200 border-slate-300 text-slate-600 hover:text-rose-600'}`}
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Clear</span>
@@ -592,21 +605,46 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
 
         {/* ── CURRENT ACTIVE OPEN POSITIONS (PARALLEL MULTI-BOT) ── */}
         <div className={`border rounded-xl p-5 ${isDark ? 'bg-[#161b22] border-[#30363d]' : 'bg-white border-slate-200 shadow-sm'}`}>
-          <div className="flex items-center justify-between border-b pb-3 mb-4 border-slate-700/50">
-            <span className="font-bold text-sm flex items-center gap-2 text-emerald-400">
-              <Zap className="w-4 h-4 fill-current" />
-              CURRENT ACTIVE OPEN POSITIONS ({openPositions.length} IN FLIGHT)
-            </span>
-            {openPositions.length > 0 ? (
-              <span className="px-2.5 py-1 rounded-full bg-emerald-950 border border-emerald-600 text-emerald-400 text-[10px] font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                {openPositions.length} ACTIVE POSITION{openPositions.length > 1 ? 'S' : ''} RUNNING
+          <div className="flex flex-wrap items-center justify-between border-b pb-3 mb-4 border-slate-700/50 gap-3">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-sm flex items-center gap-2 text-emerald-400">
+                <Zap className="w-4 h-4 fill-current" />
+                CURRENT ACTIVE OPEN POSITIONS ({openPositions.length} IN FLIGHT)
               </span>
-            ) : (
-              <span className="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-600 text-slate-400 text-[10px] font-bold">
-                NO OPEN POSITIONS — SCANNING REGIMES
-              </span>
-            )}
+              {openPositions.length > 0 ? (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-950 border border-emerald-600 text-emerald-400 text-[10px] font-bold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  {openPositions.length} ACTIVE POSITION{openPositions.length > 1 ? 'S' : ''} RUNNING
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-600 text-slate-400 text-[10px] font-bold">
+                  NO OPEN POSITIONS — SCANNING REGIMES
+                </span>
+              )}
+            </div>
+
+            {/* Live Spot Market Feeds in Active Positions Card */}
+            <div className="flex items-center gap-2">
+              {/* OANDA Spot Quote */}
+              <div className={`px-2.5 py-1 rounded-lg border text-right transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                <div className="text-[9px] text-amber-500 font-bold uppercase flex items-center justify-end gap-1">
+                  <span>🟡 OANDA SPOT XAU/USD</span>
+                </div>
+                <div className={`text-xs font-bold font-mono transition-colors ${goldPriceFlash === 'up' ? 'text-emerald-300' : goldPriceFlash === 'down' ? 'text-rose-300' : 'text-amber-400'}`}>
+                  {liveGoldPrice ? `$${liveGoldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                </div>
+              </div>
+
+              {/* Binance Spot Quote */}
+              <div className={`px-2.5 py-1 rounded-lg border text-right transition-colors ${isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'}`}>
+                <div className="text-[9px] text-sky-500 font-bold uppercase flex items-center justify-end gap-1">
+                  <span>🔵 BINANCE SPOT BTC/USDT</span>
+                </div>
+                <div className={`text-xs font-bold font-mono transition-colors ${btcPriceFlash === 'up' ? 'text-emerald-300' : btcPriceFlash === 'down' ? 'text-rose-300' : 'text-sky-400'}`}>
+                  {liveBtcPrice ? `$${liveBtcPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                </div>
+              </div>
+            </div>
           </div>
 
           {openPositions.length > 0 ? (
@@ -644,7 +682,7 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                     </div>
 
                     {/* Pricing Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-900/30 p-3 rounded-lg border border-slate-800">
                       <div>
                         <span className="text-[9px] text-slate-500 block uppercase">Entry Price</span>
                         <span className="text-base font-bold text-sky-400 font-mono">${pos.price?.toLocaleString()}</span>
@@ -652,15 +690,34 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
                       <div>
                         <span className="text-[9px] text-slate-500 block uppercase">Stop Loss</span>
                         <span className="text-base font-bold text-rose-400 font-mono">${pos.stop_loss?.toLocaleString() || '—'}</span>
+                        {pos.stop_loss && liveRefPrice && (
+                          <span className="text-[9px] text-slate-500 block font-mono">
+                            {(((pos.stop_loss - liveRefPrice) / liveRefPrice) * 100).toFixed(2)}% dist
+                          </span>
+                        )}
                       </div>
                       <div>
                         <span className="text-[9px] text-slate-500 block uppercase">Take Profit</span>
                         <span className="text-base font-bold text-emerald-400 font-mono">${pos.take_profit?.toLocaleString() || '—'}</span>
+                        {pos.take_profit && liveRefPrice && (
+                          <span className="text-[9px] text-slate-500 block font-mono">
+                            {(((pos.take_profit - liveRefPrice) / liveRefPrice) * 100).toFixed(2)}% dist
+                          </span>
+                        )}
                       </div>
                       <div>
-                        <span className="text-[9px] text-slate-500 block uppercase">Current Price</span>
-                        <span className="text-base font-bold text-slate-200 font-mono">
-                          ${liveRefPrice ? liveRefPrice.toLocaleString() : '—'}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-slate-500 uppercase">Live Spot Price</span>
+                          <span className={`text-[8px] font-bold px-1 rounded ${isGold ? 'bg-amber-950 text-amber-300' : 'bg-sky-950 text-sky-300'}`}>
+                            {isGold ? 'OANDA' : 'BINANCE'}
+                          </span>
+                        </div>
+                        <span className={`text-base font-bold font-mono transition-colors ${
+                          isGold
+                            ? (goldPriceFlash === 'up' ? 'text-emerald-300' : goldPriceFlash === 'down' ? 'text-rose-300' : 'text-amber-400')
+                            : (btcPriceFlash === 'up' ? 'text-emerald-300' : btcPriceFlash === 'down' ? 'text-rose-300' : 'text-sky-400')
+                        }`}>
+                          ${liveRefPrice ? liveRefPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
                         </span>
                       </div>
                     </div>
@@ -700,9 +757,16 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
               })}
             </div>
           ) : (
-            <div className="py-8 text-center text-xs text-slate-400">
-              <Activity className="w-8 h-8 mx-auto mb-2 text-slate-600 animate-pulse" />
-              No open position matching current filter scope. Bots are running and scanning live regimes.
+            <div className="py-8 text-center text-xs text-slate-400 space-y-2">
+              <Activity className="w-8 h-8 mx-auto text-slate-600 animate-pulse" />
+              <div className="font-bold text-slate-300">
+                No open positions matching current filter scope.
+              </div>
+              <div className="text-[11px] text-slate-500">
+                {isRunning
+                  ? 'Bot supervisor is actively running and streaming real-time regime telemetry.'
+                  : 'Bot supervisor is currently idle. Click "Start Bot" in the top header toolbar to start.'}
+              </div>
             </div>
           )}
         </div>
