@@ -209,13 +209,14 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     else:
                         pnl_pct = round(((entry_price - exit_price) / entry_price) * 100.0, 2)
                     
+                    price_fmt = f"${entry_price:.1f}" if is_xauusd else f"${entry_price/1000:.1f}k"
                     # Entry Marker
                     trade_markers.append({
                         "time": entry_time,
                         "position": "belowBar" if side == "LONG" else "aboveBar",
                         "color": "#26a69a" if side == "LONG" else "#ef5350",
                         "shape": "arrowUp" if side == "LONG" else "arrowDown",
-                        "text": f"{side} ${entry_price/1000:.1f}k",
+                        "text": f"{side} {price_fmt}",
                         "entry_price": entry_price,
                         "stop_loss": stop_loss,
                         "take_profit": take_profit,
@@ -418,6 +419,13 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                 })
         except Exception as e_eq:
             logger.error(f"Error computing equity curve / regime breakdown: {e_eq}")
+
+    state["trade_markers"] = trade_markers
+    state["trades_detail"] = trades_detail
+    state["equity_curve"] = equity_curve
+    state["return_distribution"] = return_distribution
+    state["regime_breakdown"] = regime_breakdown
+    state["thesis_props"] = thesis_props
 
     if save_as_active:
         state_manager.set_full(state)  # atomic locked write via StateManager

@@ -187,7 +187,19 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const activeCandleRef = useRef<{ time: Time; open: number; high: number; low: number; close: number; volume: number } | null>(null);
   const [displayMarkers, setDisplayMarkers] = useState<SeriesMarker<Time>[]>([]);
   const [positionBoxes, setPositionBoxes] = useState<PositionBoxCoord[]>([]);
-  const [activeTradeLevels, setActiveTradeLevels] = useState<{ entry: number; sl: number; tp: number; rr: string } | null>(null);
+  const [selectedTradeIndex, setSelectedTradeIndex] = useState<number | null>(null);
+  const [activeTradeLevels, setActiveTradeLevels] = useState<{
+    entry: number;
+    sl: number;
+    tp: number;
+    rr: string;
+    side?: string;
+    tradeId?: number | string;
+    exitReason?: string;
+    pnlPct?: number;
+    isLive?: boolean;
+  } | null>(null);
+  const priceLinesRef = useRef<any[]>([]);
 
   // Compute indicator series datasets
   const ema9Data = useMemo(() => calculateEMA(candles, 9), [candles]);
@@ -230,7 +242,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const fetchCandles = () => {
     const isGold = selectedSymbol.toLowerCase().includes('xau') || selectedSymbol.toLowerCase().includes('gold');
     const apiSym = isGold ? 'XAUUSD' : selectedSymbol;
-    const url = `/api/candles?symbol=${encodeURIComponent(apiSym)}&count=2880&mode=live`;
+    const url = `/api/candles?symbol=${encodeURIComponent(apiSym)}&count=8000&mode=live`;
     fetch(url)
       .then((res) => res.json())
       .then((data) => {
@@ -377,46 +389,123 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     };
   }, [selectedSymbol]);
 
-  // 3. Trade Markers & Active Open Position Levels Resolution
+  // Sync Default Selected Historical Trade
+  useEffect(() => {
+    if (tradesDetail && tradesDetail.length > 0) {
+      setSelectedTradeIndex((prev) => {
+        if (prev === null || prev < 0 || prev >= tradesDetail.length) {
+          return tradesDetail.length - 1;
+        }
+        return prev;
+      });
+    } else {
+      setSelectedTradeIndex(null);
+    }
+  }, [tradesDetail]);
+
+  // Center Chart onto Given Trade
+  const centerOnTrade = (trade: TradeDetail) => {
+    if (!chartRef.current || !trade) return;
+    try {
+      const t = trade.entry_time;
+      const tExit = trade.exit_time || (t + 15 * 60);
+      const span = Math.max(tExit - t, 3600);
+      chartRef.current.timeScale().setVisibleRange({
+        from: (t - span * 3) as Time,
+        to: (tExit + span * 3) as Time,
+      });
+      setTimeout(updateBoxCoordinates, 50);
+    } catch (e) {}
+  };
+
+  // 3. Trade Markers & Active/Historical Trade Levels Resolution
   useEffect(() => {
     if (candles.length === 0) return;
-    const minTime = candles[0].time as number;
     const maxTime = candles[candles.length - 1].time as number;
+    const candleTimeSet = new Set(candles.map((c) => c.time as number));
 
-    let currentOpenTrade: any = null;
-    if (latestSignal && latestSignal.status === 'ACTIVE_IN_POSITION') {
-      currentOpenTrade = latestSignal;
-    } else if (tradesDetail && tradesDetail.length > 0) {
-      const last = tradesDetail[tradesDetail.length - 1];
-      if (last.exit_reason === 'ACTIVE_IN_POSITION') {
-        currentOpenTrade = last;
-      }
-    }
-
-    if (currentOpenTrade) {
-      const entry = currentOpenTrade.entry_price;
-      const sl = currentOpenTrade.stop_loss;
-      const tp = currentOpenTrade.take_profit;
+    // A. Resolve Active Trade Levels for Entry, SL, TP Lines
+    if (latestSignal && latestSignal.entry_price && (latestSignal.status === 'ACTIVE_IN_POSITION' || !latestSignal.exit_price)) {
+      const entry = latestSignal.entry_price;
+      const isBuy = latestSignal.action === 'BUY' || latestSignal.action === 'LONG';
+      const sl = latestSignal.stop_loss || (isBuy ? entry * 0.9975 : entry * 1.0025);
+      const tp = latestSignal.take_profit || (isBuy ? entry * 1.0030 : entry * 0.9970);
       const risk = Math.abs(entry - sl);
       const reward = Math.abs(tp - entry);
-      const rr = risk > 0 ? (reward / risk).toFixed(2) : '0.00';
-      setActiveTradeLevels({ entry, sl, tp, rr });
+      const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.20';
+      setActiveTradeLevels({
+        entry,
+        sl,
+        tp,
+        rr,
+        side: latestSignal.action || (isBuy ? 'LONG' : 'SHORT'),
+        tradeId: 'LIVE',
+        exitReason: 'ACTIVE_IN_POSITION',
+        isLive: true,
+      });
+    } else if (tradesDetail && tradesDetail.length > 0) {
+      const idx = selectedTradeIndex !== null && selectedTradeIndex >= 0 && selectedTradeIndex < tradesDetail.length
+        ? selectedTradeIndex
+        : tradesDetail.length - 1;
+      const tr = tradesDetail[idx];
+      if (tr) {
+        const entry = tr.entry_price;
+        const sl = tr.stop_loss;
+        const tp = tr.take_profit;
+        const risk = Math.abs(entry - sl);
+        const reward = Math.abs(tp - entry);
+        const rr = risk > 0 ? (reward / risk).toFixed(2) : '1.20';
+        setActiveTradeLevels({
+          entry,
+          sl,
+          tp,
+          rr,
+          side: tr.side,
+          tradeId: tr.id,
+          exitReason: tr.exit_reason,
+          pnlPct: tr.pnl_pct,
+          isLive: false,
+        });
+      }
     } else {
       setActiveTradeLevels(null);
     }
 
+    // B. Resolve Display Markers
+    const validMarkers: SeriesMarker<Time>[] = [];
     if (tradeMarkers && tradeMarkers.length > 0) {
-      const filtered = tradeMarkers.filter((m) => (m.time as number) >= minTime && (m.time as number) <= maxTime);
-      const validMarkers: SeriesMarker<Time>[] = filtered.map((m) => ({
-        time: m.time as Time,
-        position: m.position,
-        color: m.color,
-        shape: m.shape,
-        text: m.text,
-      }));
-      setDisplayMarkers(validMarkers);
+      for (const m of tradeMarkers) {
+        const t = Number(m.time);
+        if (candleTimeSet.has(t)) {
+          validMarkers.push({
+            time: t as Time,
+            position: m.position || 'aboveBar',
+            color: m.color || '#38bdf8',
+            shape: m.shape || 'arrowUp',
+            text: m.text || '',
+          });
+        }
+      }
     }
-  }, [selectedStrategy, tradeMarkers, tradesDetail, candles, latestSignal]);
+
+    // If live upcoming signal exists, add live signal marker
+    if (latestSignal && latestSignal.entry_price) {
+      const isBuy = latestSignal.action === 'BUY' || latestSignal.action === 'LONG';
+      const sigTs = latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : maxTime;
+      const markerTime = sigTs >= maxTime ? maxTime : (candleTimeSet.has(sigTs) ? sigTs : maxTime);
+      validMarkers.push({
+        time: markerTime as Time,
+        position: isBuy ? 'belowBar' : 'aboveBar',
+        color: isBuy ? '#10b981' : '#ef4444',
+        shape: isBuy ? 'arrowUp' : 'arrowDown',
+        text: `LIVE: ${latestSignal.action || 'SIGNAL'} @ $${latestSignal.entry_price.toFixed(2)}`,
+      });
+    }
+
+    // Must be sorted in ascending order of time for lightweight-charts
+    validMarkers.sort((a, b) => (a.time as number) - (b.time as number));
+    setDisplayMarkers(validMarkers);
+  }, [selectedStrategy, tradeMarkers, tradesDetail, candles, latestSignal, selectedTradeIndex]);
 
   // 4. Precision Clamped Position Box Resolution
   const updateBoxCoordinates = () => {
@@ -425,24 +514,25 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       return;
     }
 
-    let targetTrade: TradeDetail | null = null;
-    if (tradesDetail && tradesDetail.length > 0) {
-      const last = tradesDetail[tradesDetail.length - 1];
-      if (last.exit_reason === 'ACTIVE_IN_POSITION') {
-        targetTrade = last;
-      }
-    } else if (latestSignal && latestSignal.status === 'ACTIVE_IN_POSITION') {
+    let targetTrade: any = null;
+    let isLiveTrade = false;
+
+    if (latestSignal && latestSignal.entry_price && (latestSignal.status === 'ACTIVE_IN_POSITION' || !latestSignal.exit_price)) {
       targetTrade = {
-        id: 99,
+        id: 'LIVE',
         entry_time: latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : candles[candles.length - 1]?.time,
-        entry_price: latestSignal.entry_price || 0,
-        stop_loss: latestSignal.stop_loss || 0,
-        take_profit: latestSignal.take_profit || 0,
+        entry_price: latestSignal.entry_price,
+        stop_loss: latestSignal.stop_loss || (latestSignal.action === 'BUY' ? latestSignal.entry_price * 0.9975 : latestSignal.entry_price * 1.0025),
+        take_profit: latestSignal.take_profit || (latestSignal.action === 'BUY' ? latestSignal.entry_price * 1.0030 : latestSignal.entry_price * 0.9970),
         exit_time: candles[candles.length - 1]?.time,
-        exit_price: 0,
-        exit_reason: 'ACTIVE_IN_POSITION',
         pnl_pct: 0,
       };
+      isLiveTrade = true;
+    } else if (tradesDetail && tradesDetail.length > 0) {
+      const idx = selectedTradeIndex !== null && selectedTradeIndex >= 0 && selectedTradeIndex < tradesDetail.length
+        ? selectedTradeIndex
+        : tradesDetail.length - 1;
+      targetTrade = tradesDetail[idx];
     }
 
     if (!targetTrade || !targetTrade.entry_price) {
@@ -453,6 +543,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const chart = chartRef.current;
     const series = candleSeriesRef.current;
     const containerHeight = chartContainerRef.current.clientHeight || 400;
+    const containerWidth = chartContainerRef.current.clientWidth || 800;
 
     const yEntryRaw = series.priceToCoordinate(targetTrade.entry_price);
     if (yEntryRaw === null) {
@@ -460,13 +551,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       return;
     }
 
-    const x1Raw = chart.timeScale().timeToCoordinate(targetTrade.entry_time as Time);
-    const x2Raw = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
-
     const getBoundedY = (price: number) => {
       const y = series.priceToCoordinate(price);
       if (y === null || isNaN(y)) {
-        return price > targetTrade!.entry_price ? 0 : containerHeight;
+        return price > targetTrade.entry_price ? 0 : containerHeight;
       }
       return Math.max(0, Math.min(containerHeight, y));
     };
@@ -475,11 +563,26 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const ySL = getBoundedY(targetTrade.stop_loss);
     const yTP = getBoundedY(targetTrade.take_profit);
 
-    const startX = x1Raw !== null ? x1Raw : 20;
-    const endX = x2Raw !== null ? x2Raw : startX + 120;
-    const leftX = Math.min(startX, endX);
-    const rightX = Math.max(startX, endX);
-    const width = Math.max(rightX - leftX, 30);
+    let x1Raw = chart.timeScale().timeToCoordinate(targetTrade.entry_time as Time);
+    let x2Raw: number | null = null;
+
+    if (isLiveTrade || !targetTrade.exit_time || targetTrade.exit_reason === 'ACTIVE_IN_POSITION') {
+      const lastCandleX = chart.timeScale().timeToCoordinate(candles[candles.length - 1].time as Time);
+      x2Raw = lastCandleX !== null ? lastCandleX + 80 : containerWidth - 65;
+    } else {
+      x2Raw = chart.timeScale().timeToCoordinate(targetTrade.exit_time as Time);
+    }
+
+    if (x1Raw === null && x2Raw === null) {
+      setPositionBoxes([]);
+      return;
+    }
+
+    const startX = x1Raw !== null ? x1Raw : (x2Raw! - 100);
+    const endX = x2Raw !== null ? x2Raw : (x1Raw! + 100);
+    const leftX = Math.max(0, Math.min(startX, endX));
+    const rightX = Math.min(containerWidth - 60, Math.max(startX, endX));
+    const width = Math.max(rightX - leftX, 32);
 
     const isLong = targetTrade.take_profit >= targetTrade.entry_price;
     let yProfitTop: number, profitHeight: number, yLossTop: number, lossHeight: number;
@@ -626,41 +729,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     hh15Series.applyOptions({ visible: showRanges });
     ll15Series.applyOptions({ visible: showRanges });
 
-    // 7. Active Open Position Target Price Lines
-    if (activeTradeLevels) {
-      if (activeTradeLevels.tp) {
-        candleSeries.createPriceLine({
-          price: activeTradeLevels.tp,
-          color: '#26a69a',
-          lineWidth: 2,
-          lineStyle: 0,
-          axisLabelVisible: true,
-          title: `TP: $${activeTradeLevels.tp.toFixed(0)}`,
-        });
-      }
-      if (activeTradeLevels.entry) {
-        candleSeries.createPriceLine({
-          price: activeTradeLevels.entry,
-          color: '#38bdf8',
-          lineWidth: 1,
-          lineStyle: 2,
-          axisLabelVisible: true,
-          title: `Entry: $${activeTradeLevels.entry.toFixed(0)}`,
-        });
-      }
-      if (activeTradeLevels.sl) {
-        candleSeries.createPriceLine({
-          price: activeTradeLevels.sl,
-          color: '#ef5350',
-          lineWidth: 2,
-          lineStyle: 0,
-          axisLabelVisible: true,
-          title: `SL: $${activeTradeLevels.sl.toFixed(0)}`,
-        });
-      }
-    }
-
-    // 8. Crosshair Hover Subscription for Dynamic Legend Readout
+    // 7. Crosshair Hover Subscription for Dynamic Legend Readout
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) {
         setHoverLegend(null);
@@ -751,38 +820,80 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     if (volumeSeriesRef.current) volumeSeriesRef.current.applyOptions({ visible: showVolume });
   }, [showVolume]);
 
+  // Sync Markers to Candlestick Series
+  useEffect(() => {
+    if (candleSeriesRef.current) {
+      candleSeriesRef.current.setMarkers(displayMarkers);
+    }
+  }, [displayMarkers]);
+
+  // Sync Dynamic Entry, SL, and TP Price Lines for Active / Inspected Trade
+  useEffect(() => {
+    if (!candleSeriesRef.current) return;
+
+    // Remove previous price lines
+    priceLinesRef.current.forEach((line) => {
+      try {
+        candleSeriesRef.current?.removePriceLine(line);
+      } catch (e) {}
+    });
+    priceLinesRef.current = [];
+
+    if (!activeTradeLevels) return;
+
+    const isGold = selectedSymbol.toLowerCase().includes('xau') || selectedSymbol.toLowerCase().includes('gold');
+    const formatPrice = (p: number) => (isGold ? `$${p.toFixed(2)}` : (p >= 1000 ? `$${p.toFixed(1)}` : `$${p.toFixed(4)}`));
+    const isBuy = activeTradeLevels.side === 'BUY' || activeTradeLevels.side === 'LONG';
+
+    const lines: any[] = [];
+
+    // TP Line (Emerald Green)
+    if (activeTradeLevels.tp) {
+      const tpLine = candleSeriesRef.current.createPriceLine({
+        price: activeTradeLevels.tp,
+        color: '#10b981',
+        lineWidth: 2,
+        lineStyle: 0,
+        axisLabelVisible: true,
+        title: `TP: ${formatPrice(activeTradeLevels.tp)}`,
+      });
+      lines.push(tpLine);
+    }
+
+    // Entry Line (Sky Blue Dashed)
+    if (activeTradeLevels.entry) {
+      const entryLine = candleSeriesRef.current.createPriceLine({
+        price: activeTradeLevels.entry,
+        color: '#38bdf8',
+        lineWidth: 2,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `Entry (${activeTradeLevels.side || (isBuy ? 'LONG' : 'SHORT')}): ${formatPrice(activeTradeLevels.entry)}`,
+      });
+      lines.push(entryLine);
+    }
+
+    // SL Line (Rose Red)
+    if (activeTradeLevels.sl) {
+      const slLine = candleSeriesRef.current.createPriceLine({
+        price: activeTradeLevels.sl,
+        color: '#ef4444',
+        lineWidth: 2,
+        lineStyle: 0,
+        axisLabelVisible: true,
+        title: `SL: ${formatPrice(activeTradeLevels.sl)}`,
+      });
+      lines.push(slLine);
+    }
+
+    priceLinesRef.current = lines;
+  }, [activeTradeLevels, selectedSymbol]);
+
   useEffect(() => {
     if (chartRef.current && candleSeriesRef.current) {
       setTimeout(updateBoxCoordinates, 50);
     }
-  }, [tradesDetail, activeTradeLevels, displayMarkers, showPositionBox]);
-
-  // 6. Live Signal Handling
-  useEffect(() => {
-    if (!latestSignal || !candleSeriesRef.current) return;
-
-    const isBuy = latestSignal.action === 'BUY';
-
-    if (latestSignal.status === 'ACTIVE_IN_POSITION' && latestSignal.entry_price && latestSignal.stop_loss && latestSignal.take_profit) {
-      const entry = latestSignal.entry_price;
-      const sl = latestSignal.stop_loss;
-      const tp = latestSignal.take_profit;
-      const risk = Math.abs(entry - sl);
-      const reward = Math.abs(tp - entry);
-      const rr = risk > 0 ? (reward / risk).toFixed(2) : '0.00';
-      setActiveTradeLevels({ entry, sl, tp, rr });
-    }
-
-    const newMarker: SeriesMarker<Time> = {
-      time: (latestSignal.timestamp ? Math.floor(latestSignal.timestamp / 1000) : candles[candles.length - 1]?.time) as Time,
-      position: isBuy ? 'belowBar' : 'aboveBar',
-      color: isBuy ? '#26a69a' : '#ef5350',
-      shape: isBuy ? 'arrowUp' : 'arrowDown',
-      text: `${latestSignal.action} @ $${latestSignal.entry_price?.toFixed(0) || lastLivePrice?.toFixed(0)}`,
-    };
-
-    setDisplayMarkers((prev) => [...prev, newMarker]);
-  }, [latestSignal]);
+  }, [tradesDetail, activeTradeLevels, displayMarkers, showPositionBox, selectedTradeIndex]);
 
   const cleanStrategyName = (activeStrategy || selectedStrategy || '').replace('.py', '');
 
@@ -812,6 +923,65 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             <span className="font-semibold text-indigo-300">{cleanStrategyName}</span>
           </div>
         </div>
+
+        {/* Middle: Signal / Historical Trade Stepper */}
+        {tradesDetail && tradesDetail.length > 0 && (
+          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/90 border border-slate-700/80 font-mono text-[11px] shadow-sm">
+            <span className="text-slate-400 font-semibold">Signal:</span>
+            {activeTradeLevels?.isLive ? (
+              <span className="flex items-center gap-1.5 text-emerald-400 font-bold animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                LIVE ({activeTradeLevels.side})
+              </span>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    const cur = selectedTradeIndex ?? tradesDetail.length - 1;
+                    if (cur <= 0) return;
+                    setSelectedTradeIndex(cur - 1);
+                    centerOnTrade(tradesDetail[cur - 1]);
+                  }}
+                  disabled={(selectedTradeIndex ?? tradesDetail.length - 1) <= 0}
+                  className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-25 disabled:cursor-not-allowed text-white text-[10px] transition-all"
+                  title="Previous Historical Trade"
+                >
+                  ◀
+                </button>
+                <span className="text-sky-300 font-bold">
+                  #{(selectedTradeIndex ?? tradesDetail.length - 1) + 1}/{tradesDetail.length}
+                </span>
+                <span className={`text-[10px] font-bold ${((activeTradeLevels?.pnlPct ?? 0) >= 0) ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {activeTradeLevels?.side} {((activeTradeLevels?.pnlPct ?? 0) >= 0 ? '+' : '')}{activeTradeLevels?.pnlPct?.toFixed(2)}%
+                </span>
+                <button
+                  onClick={() => {
+                    const cur = selectedTradeIndex ?? tradesDetail.length - 1;
+                    if (cur >= tradesDetail.length - 1) return;
+                    setSelectedTradeIndex(cur + 1);
+                    centerOnTrade(tradesDetail[cur + 1]);
+                  }}
+                  disabled={(selectedTradeIndex ?? tradesDetail.length - 1) >= tradesDetail.length - 1}
+                  className="px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-25 disabled:cursor-not-allowed text-white text-[10px] transition-all"
+                  title="Next Historical Trade"
+                >
+                  ▶
+                </button>
+                <button
+                  onClick={() => {
+                    const lastIdx = tradesDetail.length - 1;
+                    setSelectedTradeIndex(lastIdx);
+                    centerOnTrade(tradesDetail[lastIdx]);
+                  }}
+                  className="ml-1 px-1.5 py-0.5 rounded bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/50 text-[9px] uppercase font-bold transition-all"
+                  title="Reset to Latest Trade"
+                >
+                  Latest
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Right: Strategy Indicators Toggles */}
         <div className="flex items-center gap-1.5 font-mono text-[10px]">
@@ -978,6 +1148,24 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               Vol: <span>{activeLegend.volume?.toLocaleString() || '–'}</span>
             </span>
           )}
+
+          {activeTradeLevels && (
+            <>
+              <div className="h-3 w-[1px] bg-slate-700 hidden sm:block" />
+              <span className="text-sky-400 font-semibold">
+                Entry: <span className="font-bold text-slate-200">${isXauActive ? activeTradeLevels.entry.toFixed(2) : activeTradeLevels.entry.toFixed(1)}</span>
+              </span>
+              <span className="text-emerald-400 font-semibold">
+                TP: <span className="font-bold text-slate-200">${isXauActive ? activeTradeLevels.tp.toFixed(2) : activeTradeLevels.tp.toFixed(1)}</span>
+              </span>
+              <span className="text-rose-400 font-semibold">
+                SL: <span className="font-bold text-slate-200">${isXauActive ? activeTradeLevels.sl.toFixed(2) : activeTradeLevels.sl.toFixed(1)}</span>
+              </span>
+              <span className="text-amber-400 font-semibold">
+                R:R: <span className="font-bold text-slate-200">{activeTradeLevels.rr}</span>
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -1030,17 +1218,38 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   strokeWidth="1.5"
                   strokeDasharray="3 3"
                 />
-                {/* Labels on Right Side of Position Box */}
+                {/* Entry Price Label */}
                 <rect
-                  x={box.x + box.width - 64}
-                  y={box.yProfitTop + 2}
-                  width="60"
+                  x={box.x + box.width - 70}
+                  y={box.yEntry - 8}
+                  width="66"
                   height="16"
                   rx="3"
-                  fill="rgba(38, 166, 154, 0.9)"
+                  fill="rgba(56, 189, 248, 0.92)"
                 />
                 <text
-                  x={box.x + box.width - 34}
+                  x={box.x + box.width - 37}
+                  y={box.yEntry + 3}
+                  fill="#041829"
+                  fontSize="9"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                  textAnchor="middle"
+                >
+                  ENTRY: ${isXauActive ? box.entryPrice.toFixed(1) : box.entryPrice.toFixed(0)}
+                </text>
+
+                {/* TP Label */}
+                <rect
+                  x={box.x + box.width - 70}
+                  y={box.yProfitTop + 2}
+                  width="66"
+                  height="16"
+                  rx="3"
+                  fill="rgba(38, 166, 154, 0.92)"
+                />
+                <text
+                  x={box.x + box.width - 37}
                   y={box.yProfitTop + 13}
                   fill="#ffffff"
                   fontSize="9"
@@ -1048,19 +1257,20 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   fontFamily="monospace"
                   textAnchor="middle"
                 >
-                  TP: ${box.tpPrice.toFixed(0)}
+                  TP: ${isXauActive ? box.tpPrice.toFixed(1) : box.tpPrice.toFixed(0)}
                 </text>
 
+                {/* SL Label */}
                 <rect
-                  x={box.x + box.width - 64}
+                  x={box.x + box.width - 70}
                   y={box.yLossTop + box.lossHeight - 18}
-                  width="60"
+                  width="66"
                   height="16"
                   rx="3"
-                  fill="rgba(239, 83, 80, 0.9)"
+                  fill="rgba(239, 83, 80, 0.92)"
                 />
                 <text
-                  x={box.x + box.width - 34}
+                  x={box.x + box.width - 37}
                   y={box.yLossTop + box.lossHeight - 7}
                   fill="#ffffff"
                   fontSize="9"
@@ -1068,7 +1278,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   fontFamily="monospace"
                   textAnchor="middle"
                 >
-                  SL: ${box.slPrice.toFixed(0)}
+                  SL: ${isXauActive ? box.slPrice.toFixed(1) : box.slPrice.toFixed(0)}
                 </text>
               </g>
             ))}
