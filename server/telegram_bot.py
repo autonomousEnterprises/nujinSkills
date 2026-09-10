@@ -2,6 +2,16 @@ import os
 import logging
 import requests
 from typing import Dict, Any
+from pathlib import Path
+
+# Load .env from project root so credentials are always available
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    for _line in _env_path.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
 
 logger = logging.getLogger("TelegramGateway")
 
@@ -42,14 +52,18 @@ class TelegramGateway:
         reasoning = payload.get("reasoning_md", "")
 
         icon = "🟢" if action.upper() == "BUY" else "🔴"
+        # Numbers on their own line — tap once to select & paste into MetaTrader
         text = (
-            f"{icon} *SIGNAL TRIGGERED: {action} {pair}*\n"
+            f"{icon} *{action} {pair}* — EdgeMiner Signal\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
-            f"📈 *Entry Price:* ${price:,.2f}\n"
-            f"🛡️ *Stop Loss:* ${stop_loss:,.2f}\n"
-            f"🎯 *Take Profit:* ${take_profit:,.2f}\n"
-            f"💡 *Annotation:* {annotation}\n\n"
-            f"🧠 *Agent Rationale:*\n{reasoning}"
+            f"📈 *Entry*\n"
+            f"`{price:.2f}`\n\n"
+            f"🛡️ *Stop Loss*\n"
+            f"`{stop_loss:.2f}`\n\n"
+            f"🎯 *Take Profit*\n"
+            f"`{take_profit:.2f}`\n\n"
+            f"💡 _{annotation}_\n"
+            f"🧠 {reasoning}"
         )
         return self.send_message(text)
 

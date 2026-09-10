@@ -246,7 +246,7 @@ class SignalStore:
             "reasoning_md": signal.get("reasoning_md", ""),
             "strategy": signal.get("strategy", "PropFirmVsaWickRejectionStrategy"),
         }
-        updated = [entry] + real_signals
+        updated = [entry] + signals
         _write_json_locked(self._path, updated)
         # Also bump signals_count in state.json
         state_manager.patch({"signals_count": len(updated)})
