@@ -430,104 +430,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   return (
     <div className={`w-full h-full relative overflow-hidden flex flex-col ${isDark ? 'bg-[#0d1117]' : 'bg-white'}`}>
-      {/* Top Floating Control Toolbar */}
-      <div className={`absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-lg border backdrop-blur-md transition-colors ${
-        isDark ? 'bg-[#161b22]/90 border-[#30363d] text-white' : 'bg-white/90 border-slate-200 text-slate-800 shadow-md'
-      }`}>
-        <div className="flex items-center gap-3">
-          {/* Symbol Selector */}
-          <select
-            value={selectedSymbol}
-            onChange={(e) => setSelectedSymbol(e.target.value)}
-            className={`px-3 py-1.5 rounded-md text-xs font-bold font-mono border focus:outline-none focus:ring-1 ${
-              isDark
-                ? 'bg-[#0d1117] border-[#30363d] text-white focus:ring-emerald-500'
-                : 'bg-slate-50 border-slate-300 text-slate-900 focus:ring-emerald-600'
-            }`}
-          >
-            <option value="BTC/USDT">BTC/USDT (15m)</option>
-            <option value="ETH/USDT">ETH/USDT (15m)</option>
-            <option value="SOL/USDT">SOL/USDT (15m)</option>
-          </select>
-
-          {/* Mode Switcher Pills (LIVE vs BACKTEST) */}
-          <div className={`flex items-center p-0.5 rounded-md border text-[11px] font-bold font-mono ${
-            isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-100 border-slate-300'
-          }`}>
-            <button
-              onClick={() => setChartMode('LIVE')}
-              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
-                chartMode === 'LIVE'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${isWsConnected ? 'bg-white animate-pulse' : 'bg-rose-400'}`} />
-              LIVE CHART (Binance Stream)
-            </button>
-
-            <button
-              onClick={() => setChartMode('BACKTEST')}
-              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
-                chartMode === 'BACKTEST'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              📊 BACKTEST CHART
-            </button>
-
-            {/* Position Box Shaded Overlay Toggle */}
-            <button
-              onClick={() => setShowPositionBox(!showPositionBox)}
-              className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 ml-1 ${
-                showPositionBox
-                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-700 font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Toggle Shaded Position Box Overlay"
-            >
-              {showPositionBox ? '📦 Box Overlay: ON' : '📦 Box Overlay: OFF'}
-            </button>
-          </div>
-        </div>
-
-        {/* Active Open Signal Trade Levels Pill (ONLY WHEN AN OPEN POSITION EXISTS) */}
-        {activeTradeLevels ? (
-          <div className={`backdrop-blur border px-3.5 py-2 rounded-lg flex items-center gap-4 shadow-lg ${
-            isDark ? 'bg-[#161b22]/90 border-[#30363d]' : 'bg-white/90 border-slate-200 shadow'
-          }`}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 text-[10px] uppercase font-bold">Entry:</span>
-              <span className="text-sky-400 font-bold">${activeTradeLevels.entry.toFixed(0)}</span>
-            </div>
-            <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 text-[10px] uppercase font-bold">Stop Loss (SL):</span>
-              <span className="text-rose-400 font-bold">${activeTradeLevels.sl.toFixed(0)}</span>
-            </div>
-            <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 text-[10px] uppercase font-bold">Take Profit (TP):</span>
-              <span className="text-emerald-400 font-bold">${activeTradeLevels.tp.toFixed(0)}</span>
-            </div>
-            <div className={`h-3 w-[1px] ${isDark ? 'bg-[#30363d]' : 'bg-slate-300'}`} />
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 text-[10px] uppercase font-bold">R : R Ratio:</span>
-              <span className="text-indigo-400 font-bold">1 : {activeTradeLevels.rr}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-            NO OPEN POSITION (ALL TRADES CLOSED)
-          </div>
-        )}
-      </div>
 
       {/* SVG Container strictly relative to Chart Canvas */}
       <div ref={chartContainerRef} className="w-full h-full relative">
-        {showPositionBox && positionBoxes.length > 0 && (
+        {positionBoxes.length > 0 && (
           <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
             <defs>
               <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
