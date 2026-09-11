@@ -1,228 +1,35 @@
 <template>
   <div class="relative w-full h-full flex flex-col font-mono select-none overflow-hidden bg-base-100">
-    <!-- Top Bar: Strategy Selector (Left), Trades / Jumps Navigator (Center), Live Price (Right) -->
-    <div class="h-11 bg-base-200/95 backdrop-blur-md border-b border-base-content/10 px-3 flex items-center justify-between z-20 text-xs shrink-0 gap-2">
-      
-      <!-- ── Left: Strategy Selector Dropdown & Symbol ── -->
-      <div class="flex items-center gap-2 shrink-0">
-        <!-- Strategy Selector -->
-        <div class="dropdown dropdown-bottom" v-if="strategies && strategies.length > 0">
-          <label tabindex="0" class="btn btn-xs btn-outline btn-primary gap-1.5 font-bold font-mono tracking-tight shadow-sm hover:scale-[1.01] transition-transform">
-            <Sparkles class="w-3 h-3 text-primary shrink-0" />
-            <span class="truncate max-w-[150px] sm:max-w-[220px]">{{ cleanStrategyName }}</span>
-            <ChevronDown class="w-3 h-3 opacity-60 shrink-0" />
-          </label>
-          <ul tabindex="0" class="dropdown-content menu p-1.5 shadow-2xl bg-base-300 rounded-box w-72 max-h-80 overflow-y-auto z-50 border border-base-content/15 text-xs space-y-0.5">
-            <li class="menu-title text-[10px] uppercase font-bold text-base-content/50 px-2 py-1">Active Quant Strategies</li>
-            <li v-for="strat in strategies" :key="strat.name">
-              <button 
-                @click="emit('selectStrategy', strat.name)"
-                class="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-base-200"
-                :class="strat.name === selectedStrategy ? 'active font-bold bg-primary/10 text-primary' : ''"
-              >
-                <div class="flex items-center gap-2 truncate">
-                  <span class="w-1.5 h-1.5 rounded-full" :class="strat.name.toLowerCase().includes('xau') ? 'bg-warning' : 'bg-info'" />
-                  <span class="truncate font-mono">{{ strat.name.replace('.py', '') }}</span>
-                </div>
-                <div class="flex items-center gap-1 shrink-0">
-                  <span v-if="strat.name === activeStrategy" class="badge badge-xs badge-success text-[9px] font-bold">BOT</span>
-                  <span v-if="strat.name === selectedStrategy" class="text-primary font-bold ml-1">✓</span>
-                </div>
-              </button>
-            </li>
-          </ul>
-        </div>
+    <!-- Top Bar: Strategy Selector, Trades/Jumps Navigator, Live Price -->
+    <ChartTopBar
+      :strategies="strategies"
+      :cleanStrategyName="cleanStrategyName"
+      :selectedStrategy="selectedStrategy"
+      :activeStrategy="activeStrategy"
+      :isGoldStrategy="isGoldStrategy"
+      :allInspectableSignals="allInspectableSignals"
+      :selectedSignalIndex="selectedSignalIndex"
+      :inspectedSignal="inspectedSignal"
+      :hasActiveLiveTrade="hasActiveLiveTrade"
+      :lastLivePrice="lastLivePrice"
+      :priceFlash="priceFlash"
+      :isWsConnected="isWsConnected"
+      @selectStrategy="emit('selectStrategy', $event)"
+      @prevJump="prevJump"
+      @nextJump="nextJump"
+      @jumpToIndex="jumpToIndex"
+      @jumpToLatest="jumpToLatest"
+      @jumpToActive="jumpToActive"
+    />
 
-        <!-- Symbol / Asset Tag -->
-        <div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-base-300/80 border border-base-content/10 text-[11px] font-bold">
-          <span>{{ isGoldStrategy ? '🟡 XAU/USD' : '🔵 BTC/USDT' }}</span>
-          <span class="text-[9px] opacity-60 uppercase">{{ isGoldStrategy ? 'Spot' : 'Binance' }}</span>
-        </div>
-      </div>
-
-      <!-- ── Center: Trades & Jumps Navigator ── -->
-      <div class="flex items-center gap-1 shrink-0">
-        <template v-if="allInspectableSignals.length > 0">
-          <div class="join shadow-sm border border-base-content/15 bg-base-300/70 rounded-lg p-0.5 items-center">
-            <!-- Prev Jump Button -->
-            <button
-              @click="prevJump"
-              :disabled="selectedSignalIndex <= 0"
-              class="btn btn-xs btn-ghost join-item px-2 font-bold text-[11px] disabled:opacity-20 hover:bg-base-100"
-              title="Jump to Previous Trade [HotKey: Left Arrow or '[']"
-            >
-              ◀
-            </button>
-
-            <!-- Jump Index & Trade Dropdown Selector -->
-            <div class="dropdown dropdown-bottom dropdown-center join-item">
-              <label 
-                tabindex="0" 
-                class="btn btn-xs btn-ghost gap-1.5 px-2.5 font-mono text-[11px] hover:bg-base-100 normal-case cursor-pointer"
-                title="Click to select any trade to jump directly to it on chart"
-              >
-                <span class="text-primary font-bold">
-                  #{{ selectedSignalIndex + 1 }}<span class="opacity-50">/{{ allInspectableSignals.length }}</span>
-                </span>
-                
-                <!-- Trade badge preview -->
-                <span 
-                  v-if="inspectedSignal?.isLiveActive"
-                  class="badge badge-xs badge-success font-bold animate-pulse text-[9px]"
-                >
-                  LIVE {{ inspectedSignal.side }}
-                </span>
-                <span 
-                  v-else-if="inspectedSignal"
-                  class="badge badge-xs text-[9px] font-bold"
-                  :class="(inspectedSignal.pnl_pct || 0) >= 0 ? 'badge-success text-success-content' : 'badge-error text-error-content'"
-                >
-                  {{ inspectedSignal.side }} {{ (inspectedSignal.pnl_pct || 0) >= 0 ? '+' : '' }}{{ (inspectedSignal.pnl_pct || 0).toFixed(2) }}%
-                </span>
-
-                <ChevronDown class="w-2.5 h-2.5 opacity-50" />
-              </label>
-
-              <!-- Dropdown List of All Trades to Jump To -->
-              <ul tabindex="0" class="dropdown-content menu p-1 shadow-2xl bg-base-300 rounded-box w-72 max-h-72 overflow-y-auto z-50 border border-base-content/15 text-[11px] space-y-0.5 font-mono">
-                <li class="menu-title text-[9px] uppercase font-bold text-base-content/50 px-2 py-1 flex items-center justify-between">
-                  <span>Select Trade Jump</span>
-                  <span class="text-primary">{{ allInspectableSignals.length }} Trades</span>
-                </li>
-                <li v-for="(sig, idx) in allInspectableSignals" :key="sig.id">
-                  <button 
-                    @click="jumpToIndex(idx)"
-                    class="flex items-center justify-between py-1 px-2 rounded hover:bg-base-200"
-                    :class="idx === selectedSignalIndex ? 'active font-bold bg-primary/10 text-primary' : ''"
-                  >
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-base-content/50 text-[10px]">#{{ idx + 1 }}</span>
-                      <span class="badge badge-xs font-bold text-[9px]" :class="sig.side === 'BUY' || sig.side === 'LONG' ? 'badge-success' : 'badge-error'">
-                        {{ sig.side }}
-                      </span>
-                      <span class="text-[10px]">${{ formatPrice(sig.entry_price) }}</span>
-                    </div>
-                    <div class="flex items-center gap-1">
-                      <span 
-                        class="text-[10px] font-bold font-mono"
-                        :class="(sig.pnl_pct || 0) >= 0 ? 'text-success' : 'text-error'"
-                      >
-                        {{ (sig.pnl_pct || 0) >= 0 ? '+' : '' }}{{ (sig.pnl_pct || 0).toFixed(2) }}%
-                      </span>
-                      <span v-if="sig.isLiveActive" class="badge badge-xs badge-success text-[8px] font-bold">LIVE</span>
-                    </div>
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            <!-- Next Jump Button -->
-            <button
-              @click="nextJump"
-              :disabled="selectedSignalIndex >= allInspectableSignals.length - 1"
-              class="btn btn-xs btn-ghost join-item px-2 font-bold text-[11px] disabled:opacity-20 hover:bg-base-100"
-              title="Jump to Next Trade [HotKey: Right Arrow or ']']"
-            >
-              ▶
-            </button>
-          </div>
-
-          <!-- Quick Jump: Latest Trade -->
-          <button
-            @click="jumpToLatest"
-            class="btn btn-xs btn-ghost border border-base-content/15 text-[10px] uppercase font-bold tracking-wider hover:bg-base-200 hidden md:inline-flex"
-            title="Jump view to most recent trade"
-          >
-            Latest
-          </button>
-
-          <!-- Quick Jump: Active Live Trade (pulsing if active) -->
-          <button
-            v-if="hasActiveLiveTrade"
-            @click="jumpToActive"
-            class="btn btn-xs btn-success text-success-content font-bold text-[10px] uppercase gap-1 animate-pulse"
-            title="Jump view to open live position"
-          >
-            <span class="w-1.5 h-1.5 rounded-full bg-base-100" />
-            Active Live
-          </button>
-        </template>
-
-        <div v-else class="flex items-center gap-1.5 px-3 py-1 rounded bg-base-300/60 border border-base-content/10 text-base-content/60 text-[11px]">
-          <span class="w-2 h-2 rounded-full bg-info animate-ping" />
-          <span>Scanning historical trades...</span>
-        </div>
-      </div>
-
-      <!-- ── Right: Live Ticker & Connection ── -->
-      <div class="flex items-center gap-2 shrink-0">
-        <!-- Live Spot Price Readout -->
-        <div 
-          v-if="lastLivePrice" 
-          class="badge font-bold font-mono py-2.5 px-3 transition-all duration-300 text-xs shadow-sm"
-          :class="priceFlash === 'up' ? 'badge-success text-success-content' : priceFlash === 'down' ? 'badge-error text-error-content' : 'badge-neutral bg-base-300 text-base-content'"
-        >
-          <span>${{ lastLivePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
-        </div>
-
-        <div class="badge badge-xs gap-1 font-bold py-1.5 px-2" :class="isWsConnected ? 'badge-success text-success-content' : 'badge-warning text-warning-content'">
-          <span class="w-1.5 h-1.5 rounded-full" :class="isWsConnected ? 'bg-success-content animate-pulse' : 'bg-warning-content'" />
-          <span class="hidden md:inline">{{ isWsConnected ? 'LIVE' : 'SYNC' }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Indicator & Trade Coordinates HUD Bar ── -->
-    <div class="h-7 bg-base-200/50 backdrop-blur-xs border-b border-base-content/10 px-3 flex items-center gap-3 text-[11px] font-mono text-base-content/80 overflow-x-auto shrink-0 z-10 select-text">
-      
-      <!-- 1. Candlestick Coordinates (Crosshair or Latest) -->
-      <div v-if="legendData.open !== undefined" class="flex items-center gap-2 shrink-0">
-        <span class="text-base-content/40 font-bold uppercase text-[9px]">Candle:</span>
-        <span>O: <strong class="text-base-content">{{ formatPrice(legendData.open) }}</strong></span>
-        <span>H: <strong class="text-base-content">{{ formatPrice(legendData.high) }}</strong></span>
-        <span>L: <strong class="text-base-content">{{ formatPrice(legendData.low) }}</strong></span>
-        <span>C: <strong class="text-base-content">{{ formatPrice(legendData.close) }}</strong></span>
-        <span v-if="legendData.changePct !== undefined" :class="legendData.changePct >= 0 ? 'text-success font-bold' : 'text-error font-bold'">
-          {{ legendData.changePct >= 0 ? '+' : '' }}{{ legendData.changePct?.toFixed(2) }}%
-        </span>
-        <span class="text-base-content/60">Vol: <strong class="text-base-content">{{ legendData.volume?.toLocaleString() || '–' }}</strong></span>
-      </div>
-
-      <div class="h-3 w-[1px] bg-base-content/20 shrink-0" />
-
-      <!-- 2. Technical Indicator Coordinates -->
-      <div class="flex items-center gap-2.5 shrink-0">
-        <span class="text-base-content/40 font-bold uppercase text-[9px]">Indicators:</span>
-        <span v-if="legendData.ema9" class="text-sky-400">EMA9: <strong>{{ formatPrice(legendData.ema9) }}</strong></span>
-        <span v-if="legendData.ema21" class="text-indigo-400">EMA21: <strong>{{ formatPrice(legendData.ema21) }}</strong></span>
-        <span v-if="legendData.ema200" class="text-amber-400">EMA200: <strong>{{ formatPrice(legendData.ema200) }}</strong></span>
-        <span v-if="legendData.hh15" class="text-emerald-400">HH15: <strong>{{ formatPrice(legendData.hh15) }}</strong></span>
-        <span v-if="legendData.ll15" class="text-rose-400">LL15: <strong>{{ formatPrice(legendData.ll15) }}</strong></span>
-        <span v-if="legendData.bbUpper" class="text-purple-400">BB: <strong>[{{ formatPrice(legendData.bbUpper) }} - {{ formatPrice(legendData.bbLower) }}]</strong></span>
-        <span v-if="legendData.hurst" class="text-pink-400">Hurst: <strong>{{ legendData.hurst?.toFixed(3) }}</strong></span>
-      </div>
-
-      <!-- 3. Target Trade Coordinates (When inspecting a jump) -->
-      <template v-if="inspectedSignal">
-        <div class="h-3 w-[1px] bg-base-content/20 shrink-0" />
-        <div class="flex items-center gap-2.5 shrink-0 bg-base-300/60 px-2 py-0.5 rounded border border-base-content/10">
-          <span class="text-primary font-bold uppercase text-[9px]">Trade #{{ selectedSignalIndex + 1 }} Coordinates:</span>
-          <span class="text-info font-semibold">Entry: ${{ formatPrice(inspectedSignal.entry_price) }}</span>
-          <span class="text-error font-semibold">SL: ${{ formatPrice(inspectedSignal.stop_loss) }}</span>
-          <span class="text-success font-semibold">TP: ${{ formatPrice(inspectedSignal.take_profit) }}</span>
-          <span v-if="tradeRiskReward" class="text-warning font-semibold">R:R {{ tradeRiskReward }}</span>
-          <span 
-            class="font-bold font-mono"
-            :class="(inspectedSignal.pnl_pct || 0) >= 0 ? 'text-success' : 'text-error'"
-          >
-            Result: {{ (inspectedSignal.pnl_pct || 0) >= 0 ? '+' : '' }}{{ (inspectedSignal.pnl_pct || 0).toFixed(2) }}%
-          </span>
-          <span v-if="inspectedSignal.exit_reason" class="badge badge-xs badge-neutral text-[9px] opacity-75">
-            {{ inspectedSignal.exit_reason }}
-          </span>
-        </div>
-      </template>
-    </div>
+    <!-- Indicator & Trade Coordinates HUD Bar -->
+    <ChartHudBar
+      :legendData="legendData"
+      :inspectedSignal="inspectedSignal"
+      :selectedSignalIndex="selectedSignalIndex"
+      :tradeRiskReward="tradeRiskReward"
+      :isGoldStrategy="isGoldStrategy"
+    />
 
     <!-- ── Lightweight Charts Main Canvas Container ── -->
     <div class="relative flex-1 w-full h-full overflow-hidden" ref="chartContainerRef">
@@ -352,20 +159,11 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { createChart, ColorType, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
-import { ChevronDown, Sparkles } from 'lucide-vue-next';
-import type { SignalData } from '../composables/useWebSocket';
-
-interface TradeDetail {
-  id: number;
-  entry_time: number;
-  entry_price: number;
-  stop_loss: number;
-  take_profit: number;
-  exit_time?: number;
-  exit_price?: number;
-  exit_reason?: string;
-  pnl_pct?: number;
-}
+import ChartTopBar from './chart/ChartTopBar.vue';
+import ChartHudBar from './chart/ChartHudBar.vue';
+import { calculateEMA, calculateBollingerBands, calculateHHLL } from '../utils/indicators';
+import { formatPrice as formatPriceUtil } from '../utils/formatters';
+import type { SignalData, InspectableSignal, PositionBoxCoord, TradeDetail } from '../types';
 
 interface StrategyItem {
   name: string;
@@ -373,37 +171,6 @@ interface StrategyItem {
   size_bytes?: number;
   last_modified?: number;
   [key: string]: any;
-}
-
-export interface InspectableSignal {
-  id: string | number;
-  source: 'BACKTEST' | 'LIVE';
-  side: string;
-  entry_time: number;
-  entry_price: number;
-  exit_time?: number;
-  exit_price?: number;
-  exit_reason?: string;
-  pnl_pct?: number;
-  stop_loss: number;
-  take_profit: number;
-  isLiveActive?: boolean;
-}
-
-interface PositionBoxCoord {
-  id: number | string;
-  x: number;
-  width: number;
-  yEntry: number;
-  yProfitTop: number;
-  profitHeight: number;
-  yLossTop: number;
-  lossHeight: number;
-  tpPrice: number;
-  slPrice: number;
-  entryPrice: number;
-  pnlPct: number;
-  isLong: boolean;
 }
 
 const props = withDefaults(
@@ -444,80 +211,6 @@ function timeToLocal(originalTime: number): number {
       d.getMilliseconds()
     ) / 1000
   );
-}
-
-// Indicator Calculation Utilities
-function calculateEMA(data: { time: Time; close: number }[], period: number) {
-  if (!data || data.length === 0) return [];
-  const k = 2 / (period + 1);
-  const result: { time: Time; value: number }[] = [];
-  let ema = data[0].close;
-
-  for (let i = 0; i < data.length; i++) {
-    const close = data[i].close;
-    if (i === 0) {
-      ema = close;
-    } else {
-      ema = close * k + ema * (1 - k);
-    }
-    result.push({
-      time: data[i].time,
-      value: Number(ema.toFixed(2)),
-    });
-  }
-  return result;
-}
-
-function calculateBollingerBands(data: { time: Time; close: number }[], period: number = 20, mult: number = 2.0) {
-  if (!data || data.length === 0) return { upper: [], middle: [], lower: [] };
-  const upper: { time: Time; value: number }[] = [];
-  const middle: { time: Time; value: number }[] = [];
-  const lower: { time: Time; value: number }[] = [];
-
-  for (let i = 0; i < data.length; i++) {
-    const start = Math.max(0, i - period + 1);
-    let sum = 0;
-    const count = i - start + 1;
-    for (let j = start; j <= i; j++) {
-      sum += data[j].close;
-    }
-    const sma = sum / count;
-    let sumSq = 0;
-    for (let j = start; j <= i; j++) {
-      const diff = data[j].close - sma;
-      sumSq += diff * diff;
-    }
-    const std = Math.sqrt(sumSq / count);
-    const up = Number((sma + mult * std).toFixed(2));
-    const mid = Number(sma.toFixed(2));
-    const dn = Number((sma - mult * std).toFixed(2));
-    const time = data[i].time;
-    upper.push({ time, value: up });
-    middle.push({ time, value: mid });
-    lower.push({ time, value: dn });
-  }
-  return { upper, middle, lower };
-}
-
-function calculateHHLL(data: { time: Time; high: number; low: number }[], period: number = 15) {
-  if (!data || data.length === 0) return { hh: [], ll: [] };
-  const hh: { time: Time; value: number }[] = [];
-  const ll: { time: Time; value: number }[] = [];
-
-  for (let i = 0; i < data.length; i++) {
-    if (i < 1) continue;
-    const start = Math.max(0, i - period);
-    const end = i;
-    let maxH = -Infinity;
-    let minL = Infinity;
-    for (let j = start; j < end; j++) {
-      if (data[j].high > maxH) maxH = data[j].high;
-      if (data[j].low < minL) minL = data[j].low;
-    }
-    hh.push({ time: data[i].time, value: Number(maxH.toFixed(2)) });
-    ll.push({ time: data[i].time, value: Number(minL.toFixed(2)) });
-  }
-  return { hh, ll };
 }
 
 // ── State Variables ──
