@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -463,6 +464,16 @@ async def startup_event():
     logger.info("[NujinSkillsServer] Launching Periodic Strategy Cron Backtest Scheduler...")
     asyncio.create_task(cron_backtest_scheduler())
 
+    # Automatically resume existing managed active strategies without running backtests
+    try:
+        active_strats = [s["name"] for s in strategy_registry.get_all(sync=False) if s.get("status") == "ACTIVE_LIVE"]
+        for s_name in active_strats:
+            bot_supervisor.deploy_strategy(s_name, mode="dry-run")
+            logger.info(f"[NujinSkillsServer] Resumed managed active strategy: {s_name}")
+    except Exception as e:
+        logger.warning(f"[NujinSkillsServer] Error resuming active strategies on startup: {e}")
+
+
 
 @app.get("/api/xauusd/quote")
 async def get_xauusd_quote():
@@ -488,9 +499,18 @@ async def get_gft_rules(account_size: float = 100000.0):
         "consistency_15pct_daily_profit_cap": round(profit_target * 0.15, 2),
         "min_holding_seconds": 120,
         "max_holding_seconds": 900,
+        "local_timezone": datetime.now().astimezone().tzname() or "Local",
         "trading_sessions": [
-            {"session": "London", "window_utc": "07:30 - 10:30 UTC"},
-            {"session": "New York", "window_utc": "12:45 - 16:30 UTC"}
+            {
+                "session": "London",
+                "window_local": f"{datetime(2026, 1, 1, 7, 30, tzinfo=timezone.utc).astimezone().strftime('%H:%M')} - {datetime(2026, 1, 1, 10, 30, tzinfo=timezone.utc).astimezone().strftime('%H:%M')} ({datetime.now().astimezone().tzname() or 'Local'})",
+                "window_utc": "07:30 - 10:30 UTC"
+            },
+            {
+                "session": "New York",
+                "window_local": f"{datetime(2026, 1, 1, 12, 45, tzinfo=timezone.utc).astimezone().strftime('%H:%M')} - {datetime(2026, 1, 1, 16, 30, tzinfo=timezone.utc).astimezone().strftime('%H:%M')} ({datetime.now().astimezone().tzname() or 'Local'})",
+                "window_utc": "12:45 - 16:30 UTC"
+            }
         ]
     }
 

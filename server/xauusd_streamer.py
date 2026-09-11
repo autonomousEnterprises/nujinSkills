@@ -72,17 +72,18 @@ class XauusdScalpEngine:
         London Momentum: 07:30 - 10:30 UTC
         New York Momentum: 12:45 - 16:30 UTC
         """
-        now = datetime.now(timezone.utc)
-        current_minute = now.hour * 60 + now.minute
+        now_local = datetime.now().astimezone()
+        now_utc = datetime.now(timezone.utc)
+        current_minute_utc = now_utc.hour * 60 + now_utc.minute
 
         # London: 07:30 to 10:30 UTC -> 450 to 630 minutes
-        is_london = 450 <= current_minute <= 630
+        is_london = 450 <= current_minute_utc <= 630
         
         # New York: 12:45 to 16:30 UTC -> 765 to 990 minutes
-        is_ny = 765 <= current_minute <= 990
+        is_ny = 765 <= current_minute_utc <= 990
 
         # Overlap: 12:45 to 16:00 UTC
-        is_overlap = 765 <= current_minute <= 960
+        is_overlap = 765 <= current_minute_utc <= 960
 
         active = is_london or is_ny
         session_name = "NONE"
@@ -96,7 +97,9 @@ class XauusdScalpEngine:
         return {
             "is_active": active,
             "session_name": session_name,
-            "current_utc_time": now.strftime("%H:%M:%S UTC"),
+            "current_local_time": now_local.strftime("%H:%M:%S %Z"),
+            "current_utc_time": now_utc.strftime("%H:%M:%S UTC"),
+            "local_timezone": now_local.tzname() or "Local",
             "is_london": is_london,
             "is_ny": is_ny,
             "is_overlap": is_overlap,
@@ -226,7 +229,7 @@ class XauusdScalpEngine:
         signal = {
             "signal_id": f"GIT_{int(time.time())}",
             "timestamp": int(time.time()),
-            "time_str": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "time_str": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
             "asset": "XAUUSD (Gold Spot)",
             "strategy": "The Gold Momentum Train (GIT-15)",
             "action": side,

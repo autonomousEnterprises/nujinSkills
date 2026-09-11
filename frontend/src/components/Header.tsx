@@ -1,5 +1,5 @@
-import React from 'react';
-import { Terminal, BarChart2, ShieldCheck, Sun, Moon, Send, Layers, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Terminal, BarChart2, ShieldCheck, Sun, Moon, Send, Layers, Eye, Clock } from 'lucide-react';
 
 interface HeaderProps {
   activeScreen: 'CHART' | 'AGENT_DECK' | 'BACKTEST' | 'STRATEGY_MANAGER';
@@ -23,6 +23,20 @@ export const Header: React.FC<HeaderProps> = ({
   viewingStrategy,
 }) => {
   const isDark = theme === 'dark';
+
+  // Live Machine Local Time state
+  const [localTimeStr, setLocalTimeStr] = useState<string>('');
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const timePart = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      const tzPart = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value || '';
+      setLocalTimeStr(`${timePart} ${tzPart}`);
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Truly activated live strategies within the bot (status: ACTIVE_LIVE)
   const effectiveActiveStrategies = (activeBots && activeBots.length > 0)
@@ -154,6 +168,17 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-1" />
+
+        {/* Machine Local Time Indicator */}
+        <div
+          title={`Machine Local Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`}
+          className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded border text-[11px] ${
+            isDark ? 'bg-[#0d1117] border-[#30363d] text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+          }`}
+        >
+          <Clock className="w-3.5 h-3.5 text-sky-400" />
+          <span className="font-semibold text-emerald-400">{localTimeStr}</span>
+        </div>
 
         {/* System & Manual Theme Toggle Button */}
         <button

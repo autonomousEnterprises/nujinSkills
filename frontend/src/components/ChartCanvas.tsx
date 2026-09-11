@@ -86,6 +86,25 @@ interface ChartCanvasProps {
   onSelectStrategy?: (stratName: string) => void;
 }
 
+/**
+ * Converts a Unix epoch timestamp (seconds) to local machine time
+ * represented in pseudo-UTC format for TradingView Lightweight Charts.
+ * This guarantees the time scale, axis, and tooltips render in the user's exact local machine timezone.
+ */
+export function timeToLocal(originalTime: number): number {
+  if (!originalTime) return 0;
+  const d = new Date(originalTime * 1000);
+  return Date.UTC(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    d.getMilliseconds()
+  ) / 1000;
+}
+
 // ── Quantitative Indicator Calculation Utilities ──
 function calculateBollingerBands(data: { time: Time; close: number }[], period: number = 20, mult: number = 2.0) {
   if (!data || data.length === 0) return { upper: [], middle: [], lower: [] };
@@ -534,12 +553,16 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       .then((res) => res.json())
       .then((data) => {
         if (data.data && data.data.length > 0) {
-          candlesRef.current = [...data.data];
-          setCandles(data.data);
-          ema9DataRef.current = calculateEMA(data.data, 9);
-          ema21DataRef.current = calculateEMA(data.data, 21);
-          ema200DataRef.current = calculateEMA(data.data, Math.min(200, data.data.length || 200));
-          const lastC = data.data[data.data.length - 1];
+          const localCandles = data.data.map((c: any) => ({
+            ...c,
+            time: timeToLocal(Number(c.time)) as Time,
+          }));
+          candlesRef.current = [...localCandles];
+          setCandles(localCandles);
+          ema9DataRef.current = calculateEMA(localCandles, 9);
+          ema21DataRef.current = calculateEMA(localCandles, 21);
+          ema200DataRef.current = calculateEMA(localCandles, Math.min(200, localCandles.length || 200));
+          const lastC = localCandles[localCandles.length - 1];
           if (lastC) {
             setLastLivePrice(lastC.close);
             activeCandleRef.current = {
@@ -584,8 +607,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
             if (data.quote.candle && data.quote.candle.time) {
               const c = data.quote.candle;
+              const localT = timeToLocal(Number(c.time));
               const liveCandle = {
-                time: Number(c.time) as Time,
+                time: localT as Time,
                 open: Number(c.open),
                 high: Number(c.high),
                 low: Number(c.low),
@@ -593,7 +617,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 volume: Number(c.volume || 10.0),
               };
 
-              if (activeCandleRef.current && Number(c.time) - (activeCandleRef.current.time as number) > 120) {
+              if (activeCandleRef.current && (localT - (activeCandleRef.current.time as number)) > 120) {
                 fetchCandles();
                 return;
               }
@@ -604,7 +628,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             }
 
             const rawTs = data.quote.timestamp ? parseInt(data.quote.timestamp) : Math.floor(Date.now() / 1000);
-            const minuteTime = (Math.floor(rawTs / 60) * 60) as Time;
+            const minuteTime = timeToLocal(Math.floor(rawTs / 60) * 60) as Time;
 
             let cur = activeCandleRef.current;
             if (!cur || (cur.time as number) < (minuteTime as number)) {
@@ -657,7 +681,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           if (msg.e === 'kline') {
             const k = msg.k;
             const updatedCandle = {
-              time: Math.floor(k.t / 1000) as Time,
+              time: timeToLocal(Math.floor(k.t / 1000)) as Time,
               open: parseFloat(k.o),
               high: parseFloat(k.h),
               low: parseFloat(k.l),
@@ -882,7 +906,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const validMarkers: SeriesMarker<Time>[] = [];
     if (tradeMarkers && tradeMarkers.length > 0) {
       for (const m of tradeMarkers) {
-        const t = Number(m.time);
+        const t = timeToLocal(Number(m.time));
         if (candleTimeSet.has(t)) {
           validMarkers.push({
             time: t as Time,
@@ -973,22 +997,24 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     };
 
     // Robust X coordinates using logicalToCoordinate (supports off-screen coordinates)
-    const entryIdx = findCandleIndex(target.entry_time);
+    const localEntryTime = timeToLocal(target.entry_time);
+    const localExitTime = target.exit_time ? timeToLocal(target.exit_time) : null;
+    const entryIdx = findCandleIndex(localEntryTime);
     let x1Raw = chart.timeScale().logicalToCoordinate(entryIdx as any);
     if (x1Raw === null) {
-      x1Raw = chart.timeScale().timeToCoordinate(target.entry_time as Time);
+      x1Raw = chart.timeScale().timeToCoordinate(localEntryTime as Time);
     }
 
     let x2Raw: number | null = null;
-    if (target.isLiveActive || !target.exit_time) {
+    if (target.isLiveActive || !localExitTime) {
       const lastIdx = currentCandles.length - 1;
       const lastX = chart.timeScale().logicalToCoordinate(lastIdx as any);
       x2Raw = lastX !== null ? lastX + 80 : containerWidth - 65;
     } else {
-      const exitIdx = findCandleIndex(target.exit_time);
+      const exitIdx = findCandleIndex(localExitTime);
       x2Raw = chart.timeScale().logicalToCoordinate(exitIdx as any);
       if (x2Raw === null) {
-        x2Raw = chart.timeScale().timeToCoordinate(target.exit_time as Time);
+        x2Raw = chart.timeScale().timeToCoordinate(localExitTime as Time);
       }
     }
 
@@ -1068,6 +1094,20 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       crosshair: {
         vertLine: { color: isDark ? '#30363d' : '#cbd5e1' },
         horzLine: { color: isDark ? '#30363d' : '#cbd5e1' },
+      },
+      localization: {
+        timeFormatter: (time: Time) => {
+          if (typeof time === 'number') {
+            const d = new Date(time * 1000);
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            const month = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+            const year = d.getUTCFullYear();
+            const hours = String(d.getUTCHours()).padStart(2, '0');
+            const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+            return `${day} ${month} ${year} ${hours}:${minutes}`;
+          }
+          return String(time);
+        },
       },
       timeScale: {
         timeVisible: true,
@@ -1450,6 +1490,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             <span className="text-amber-400 font-mono text-sm font-bold">{selectedSymbol}</span>
             <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-mono">
               {isXauActive ? '1m' : '15m'}
+            </span>
+            <span
+              className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/80 text-emerald-400 text-[10px] font-mono font-bold"
+              title={`Local Machine Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`}
+            >
+              {new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || 'LOCAL'}
             </span>
           </div>
 
@@ -1842,6 +1888,18 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       >
         {/* OHLCV Readout */}
         <div className="flex items-center gap-2">
+          {activeLegend.time != null && (
+            <span className="text-emerald-400 font-bold mr-1">
+              {(() => {
+                const d = new Date(activeLegend.time * 1000);
+                const hrs = String(d.getUTCHours()).padStart(2, '0');
+                const mins = String(d.getUTCMinutes()).padStart(2, '0');
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+                return `${day} ${mon} ${hrs}:${mins}`;
+              })()}
+            </span>
+          )}
           <span>
             O: <span className="font-semibold text-slate-200">${activeLegend.open != null ? (isXauActive ? activeLegend.open.toFixed(2) : activeLegend.open.toFixed(1)) : '–'}</span>
           </span>

@@ -1,6 +1,7 @@
 import os
 import logging
 import requests
+from datetime import datetime
 from typing import Dict, Any
 from pathlib import Path
 
@@ -54,10 +55,12 @@ class TelegramGateway:
         strat_tag = f" • *{strategy}*" if strategy else ""
 
         icon = "🟢" if action.upper() == "BUY" else "🔴"
+        local_time_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
         # Numbers on their own line — tap once to select & paste into MetaTrader
         text = (
             f"{icon} *{action} {pair}*{strat_tag} — EdgeMiner Signal\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ *Time:* `{local_time_str}`\n\n"
             f"📈 *Entry*\n"
             f"`{price:.2f}`\n\n"
             f"🛡️ *Stop Loss*\n"
@@ -77,9 +80,11 @@ class TelegramGateway:
         subtitle = props.get("subtitle", "")
 
         icon = "✅" if status == "PASS" else "❌"
+        local_time_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
         text = (
             f"{icon} *AGENT AUDIT UPDATE: {title}*\n"
             f"━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ *Time:* `{local_time_str}`\n"
             f"📊 *DSR Value:* `{val}` (Status: *{status}*)\n"
             f"ℹ️ *Details:* {subtitle}"
         )

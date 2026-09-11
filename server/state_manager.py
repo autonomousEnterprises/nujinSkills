@@ -72,6 +72,11 @@ DEFAULT_STATE: Dict[str, Any] = {
 # Low-level file helpers (with POSIX exclusive locks)
 # ─────────────────────────────────────────────────────────────
 
+def _now_local_iso() -> str:
+    """Returns ISO 8601 string in the local machine's timezone."""
+    return datetime.now().astimezone().isoformat()
+
+
 def _ensure_dir(path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
@@ -175,7 +180,7 @@ class StateManager:
         Thread/process-safe via file lock.
         """
         current = self.get()
-        updates["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        updates["last_updated"] = _now_local_iso()
         merged = _deep_merge(current, updates)
         _write_json_locked(self._path, merged)
         logger.info(f"[StateManager] patch applied — keys: {list(updates.keys())}")
@@ -183,7 +188,7 @@ class StateManager:
 
     def set_full(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Replace state entirely (validates against schema by merging with DEFAULT)."""
-        state["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        state["last_updated"] = _now_local_iso()
         merged = _deep_merge(DEFAULT_STATE, state)
         _write_json_locked(self._path, merged)
         logger.info(f"[StateManager] full state written for strategy: {state.get('active_strategy')}")
@@ -192,7 +197,7 @@ class StateManager:
     def reset(self) -> Dict[str, Any]:
         """Reset state to DEFAULT_STATE."""
         state = deepcopy(DEFAULT_STATE)
-        state["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        state["last_updated"] = _now_local_iso()
         _write_json_locked(self._path, state)
         logger.info("[StateManager] state reset to DEFAULT")
         return state
@@ -542,7 +547,7 @@ class StrategyRegistry:
         os.makedirs(self._dir, exist_ok=True)
         py_files = sorted([f for f in os.listdir(self._dir) if f.endswith(".py")])
 
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = _now_local_iso()
         updated_list: List[Dict[str, Any]] = []
 
         for py_file in py_files:
@@ -659,7 +664,7 @@ class StrategyRegistry:
         target_file = f"{clean_name}.py"
         target_found = False
 
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = _now_local_iso()
 
         for s in strategies:
             if s.get("file") == target_file or s.get("name") == clean_name:
@@ -714,7 +719,7 @@ class StrategyRegistry:
         strategies = self.get_all(sync=False)
         clean_name = strategy_name.replace(".py", "")
         target_file = f"{clean_name}.py"
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = _now_local_iso()
 
         summary = bt_result.get("summary", {})
         gates = bt_result.get("falsification_gates", {})
@@ -1052,7 +1057,7 @@ class StrategyRegistry:
         py_file = strat_data.get("file") or f"{strat_data.get('name')}.py"
         clean_name = py_file.replace(".py", "")
 
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = _now_local_iso()
         record = {
             "id": py_file,
             "name": clean_name,
