@@ -75,3 +75,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Autoresearch & Nujin research artifacts
+.autoresearch/
+.nujin/
