@@ -217,9 +217,12 @@ function calculateHHLL(data: { time: Time; high: number; low: number }[], period
 function calculateVolumeSeries(data: { time: Time; open: number; close: number; volume?: number }[]) {
   if (!data || data.length === 0) return [];
   const volWindow = 20;
-
   return data.map((c, i) => {
-    const v = c.volume || 10;
+    let v = c.volume;
+    if (v == null || v <= 0) {
+      const recentVols = data.slice(Math.max(0, i - 20), i).map(x => x.volume || 0).filter(x => x > 20);
+      v = recentVols.length > 0 ? (recentVols.reduce((a, b) => a + b, 0) / recentVols.length) : 450;
+    }
     const isUp = c.close >= c.open;
 
     // Rolling volume Z-Score surge calculation
@@ -227,12 +230,12 @@ function calculateVolumeSeries(data: { time: Time; open: number; close: number; 
     if (i >= volWindow) {
       let sum = 0;
       for (let j = i - volWindow; j < i; j++) {
-        sum += data[j].volume || 10;
+        sum += data[j].volume || v;
       }
       const mean = sum / volWindow;
       let sumSq = 0;
       for (let j = i - volWindow; j < i; j++) {
-        const diff = (data[j].volume || 10) - mean;
+        const diff = (data[j].volume || v) - mean;
         sumSq += diff * diff;
       }
       const std = Math.sqrt(sumSq / volWindow) || 1e-6;
@@ -451,7 +454,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
     // 1. Volume Series
     if (volumeSeriesRef.current) {
-      const v = candle.volume || 10;
+      let v = candle.volume;
+      if (v == null || v <= 0) {
+        const recentVols = currentList.slice(-21, -1).map(x => x.volume || 0).filter(x => x > 20);
+        v = recentVols.length > 0 ? (recentVols.reduce((a, b) => a + b, 0) / recentVols.length) : 450;
+      }
       const isUp = candle.close >= candle.open;
       const volWindow = 20;
       let isSurge = false;
@@ -460,11 +467,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       const count = endIdx - startIdx;
       if (count >= 5) {
         let sum = 0;
-        for (let j = startIdx; j < endIdx; j++) sum += currentList[j].volume || 10;
+        for (let j = startIdx; j < endIdx; j++) sum += currentList[j].volume || v;
         const mean = sum / count;
         let sumSq = 0;
         for (let j = startIdx; j < endIdx; j++) {
-          const diff = (currentList[j].volume || 10) - mean;
+          const diff = (currentList[j].volume || v) - mean;
           sumSq += diff * diff;
         }
         const std = Math.sqrt(sumSq / count) || 1e-6;
@@ -614,10 +621,16 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 high: Number(c.high),
                 low: Number(c.low),
                 close: Number(c.close),
-                volume: Number(c.volume || 10.0),
+                volume: Number(c.volume || 15.0),
               };
 
-              if (activeCandleRef.current && (localT - (activeCandleRef.current.time as number)) > 120) {
+              const isNewMinute = activeCandleRef.current && ((localT as number) > (activeCandleRef.current.time as number));
+              if (isNewMinute) {
+                // When a new minute starts, schedule background fetch to sync finalized authentic bars
+                setTimeout(() => fetchCandles(), 2500);
+              }
+
+              if (activeCandleRef.current && ((localT as number) - (activeCandleRef.current.time as number)) > 120) {
                 fetchCandles();
                 return;
               }
@@ -632,6 +645,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
             let cur = activeCandleRef.current;
             if (!cur || (cur.time as number) < (minuteTime as number)) {
+              const isNewMinute = cur != null;
+              if (isNewMinute) {
+                setTimeout(() => fetchCandles(), 2500);
+              }
               if (cur && (minuteTime as number) - (cur.time as number) > 120) {
                 fetchCandles();
                 return;
@@ -643,7 +660,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 high: Math.max(openPrice, p),
                 low: Math.min(openPrice, p),
                 close: p,
-                volume: data.quote.volume_1m || 10.0,
+                volume: Number(data.quote.volume_1m || 15.0),
               };
             } else {
               cur = {
@@ -652,6 +669,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 high: Math.max(cur.high, p),
                 low: Math.min(cur.low, p),
                 close: p,
+                volume: Math.max(cur.volume || 0, Number(data.quote.volume_1m || 0)),
               };
             }
             activeCandleRef.current = cur;

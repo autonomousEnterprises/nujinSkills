@@ -121,23 +121,23 @@ async def _async_fetch_oanda_bars(resolution: str = "15", n_bars: int = 3000) ->
     return []
 
 
-def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880) -> List[Dict[str, Any]]:
+def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Fetches real OANDA:XAUUSD spot candles.
-    Checks cache freshness (within 120s). If stale, pulls authentic live bars directly
-    from TradingView WebSocket and refreshes the cache.
+    Checks cache freshness (within 60s). If stale or force_refresh is True,
+    pulls authentic live bars directly from TradingView WebSocket and refreshes the cache.
     """
-    logger.info(f"[DataManager] Fetching real OANDA:XAUUSD spot candles (interval={interval}, count={count})...")
+    logger.info(f"[DataManager] Fetching real OANDA:XAUUSD spot candles (interval={interval}, count={count}, force={force_refresh})...")
     csv_path = "data/xauusd_candles_1m.csv"
     now_ts = int(time.time())
 
-    # 1. Check if cached CSV exists and is currently fresh (latest bar <= 120s old)
-    if interval == "1m" and os.path.exists(csv_path):
+    # 1. Check if cached CSV exists and is currently fresh (latest bar <= 60s old)
+    if not force_refresh and interval == "1m" and os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
             if len(df) >= 100:
                 last_ts = int(df.iloc[-1].get("timestamp", df.iloc[-1].get("time", 0)))
-                if (now_ts - last_ts) <= 120:
+                if (now_ts - last_ts) <= 60:
                     candles = [
                         {
                             "time": int(r.get("timestamp", r.get("time", 0))),

@@ -756,7 +756,7 @@ class StrategyRegistry:
                 snapshot = {
                     "timestamp": now_iso,
                     "sharpe": summary.get("sharpe", 0.0),
-                    "dsr": gates.get("deflated_sharpe", {}).get("value", 0.0),
+                    "dsr": summary.get("dsr") if summary.get("dsr") is not None else gates.get("gate_1_dsr", {}).get("dsr", 0.0),
                     "win_rate": summary.get("win_rate", 0.0),
                     "max_drawdown": summary.get("max_drawdown", 0.0),
                     "trades": summary.get("trades", 0),
