@@ -560,6 +560,23 @@ class StrategyRegistry:
                 # If system active strategy matches, sync status
                 if is_active_sys and item.get("status") != "ACTIVE_LIVE":
                     item["status"] = "ACTIVE_LIVE"
+                cron_cfg = item.setdefault("cron_config", {
+                    "enabled": (item.get("status") == "CRON_BACKTEST"),
+                    "interval": "24h",
+                    "last_run": "",
+                    "drift_history": [],
+                })
+                if not cron_cfg.get("drift_history") and item.get("latest_backtest", {}).get("sharpe", 0) > 0:
+                    bt = item["latest_backtest"]
+                    cron_cfg["drift_history"] = [{
+                        "timestamp": bt.get("last_run") or now_iso,
+                        "sharpe": bt.get("sharpe", 0.0),
+                        "dsr": bt.get("dsr", 0.0),
+                        "win_rate": bt.get("win_rate", 0.0),
+                        "max_drawdown": bt.get("max_drawdown", 0.0),
+                        "trades": bt.get("trades", 0),
+                        "profit_factor": bt.get("profit_factor", 0.0),
+                    }]
                 updated_list.append(item)
             else:
                 # Initialize new strategy record
@@ -762,8 +779,12 @@ class StrategyRegistry:
                     "trades": summary.get("trades", 0),
                     "profit_factor": summary.get("profit_factor", 0.0),
                 }
-                today_str = (now_iso or "")[:10]
-                history = [h for h in history if (h.get("timestamp") or "")[:10] != today_str]
+                if is_cron:
+                    today_str = (now_iso or "")[:10]
+                    history = [h for h in history if (h.get("timestamp") or "")[:10] != today_str]
+                else:
+                    # Avoid exact duplicate timestamp writes
+                    history = [h for h in history if (h.get("timestamp") or "") != now_iso]
                 history.append(snapshot)
                 cron_cfg["drift_history"] = history[-30:]
                 target_strat = s

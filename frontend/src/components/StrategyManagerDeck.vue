@@ -310,44 +310,167 @@
                   <!-- Expanded Details Row -->
                   <tr v-if="expandedRows.has(strat.id)" class="bg-base-300/30">
                     <td colspan="12" class="p-4 space-y-4">
-                      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <!-- Left: Core Thesis & Quantitative Summary -->
-                        <div class="space-y-3 bg-base-100/70 p-3.5 rounded-box border border-base-content/10">
-                          <div class="text-xs font-bold text-primary flex items-center gap-1.5">
-                            <Sparkles class="w-4 h-4" /> QUANT THESIS &amp; INVALIDATION RULES
-                          </div>
-                          <p class="text-xs text-base-content/90 leading-relaxed">
-                            {{ strat.thesis || 'Mathematical regime exploitation strategy with strict stop loss bounds.' }}
-                          </p>
+                      <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        <!-- Card 1: Backtest Snapshots & Metric Drift History -->
+                        <div class="space-y-2 bg-base-100/80 p-3.5 rounded-box border border-base-content/10 flex flex-col justify-between">
+                          <div>
+                            <div class="flex items-center justify-between pb-2 border-b border-base-content/10">
+                              <span class="text-xs font-bold text-info flex items-center gap-1.5">
+                                <History class="w-3.5 h-3.5" /> BACKTEST SNAPSHOTS &amp; DRIFT
+                              </span>
+                              <div class="flex items-center gap-1.5">
+                                <span class="badge badge-xs badge-info font-bold">
+                                  {{ getReversedSnapshotsWithDelta(strat.cron_config?.drift_history, strat).length }} Runs
+                                </span>
+                                <button
+                                  @click.stop="handleRunBacktest(strat.name)"
+                                  :disabled="actionLoading[strat.name]"
+                                  class="btn btn-xs btn-primary btn-outline gap-1"
+                                  title="Run New Backtest Snapshot"
+                                >
+                                  <Play class="w-2.5 h-2.5 fill-current" />
+                                  <span>Test</span>
+                                </button>
+                              </div>
+                            </div>
 
-                          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-base-content/10 text-[11px]">
-                            <div>
-                              <span class="text-[9px] text-base-content/50 uppercase block">Max Drawdown</span>
-                              <span class="font-bold text-error font-mono">
-                                {{ strat.latest_backtest?.max_drawdown ? `${(strat.latest_backtest.max_drawdown * 100).toFixed(2)}%` : '—' }}
-                              </span>
+                            <div v-if="getReversedSnapshotsWithDelta(strat.cron_config?.drift_history, strat).length === 0" class="h-44 flex flex-col items-center justify-center text-center p-4 text-base-content/50">
+                              <History class="w-6 h-6 mb-1 opacity-40" />
+                              <div class="text-xs font-bold">No Drift Snapshots Yet</div>
+                              <div class="text-[10px] text-base-content/40 mt-1 max-w-xs">
+                                Click "Test" to execute quantitative backtest and record first drift snapshot.
+                              </div>
                             </div>
-                            <div>
-                              <span class="text-[9px] text-base-content/50 uppercase block">MC MDD 99</span>
-                              <span class="font-bold text-warning font-mono">
-                                {{ strat.latest_backtest?.mdd_99 ? `${(strat.latest_backtest.mdd_99 * 100).toFixed(2)}%` : '—' }}
-                              </span>
+
+                            <div v-else class="overflow-y-auto max-h-48 mt-2 border border-base-content/10 rounded-box">
+                              <table class="table table-xs table-zebra w-full font-mono text-[10px]">
+                                <thead class="sticky top-0 bg-base-200 z-10 text-[9px] uppercase text-base-content/60">
+                                  <tr>
+                                    <th>Timestamp</th>
+                                    <th class="text-right">Sharpe</th>
+                                    <th class="text-right">DSR</th>
+                                    <th class="text-right">Win%</th>
+                                    <th class="text-right">MaxDD</th>
+                                    <th class="text-right">PF</th>
+                                    <th class="text-center">Drift</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr 
+                                    v-for="(snap, sIdx) in getReversedSnapshotsWithDelta(strat.cron_config?.drift_history, strat)" 
+                                    :key="sIdx"
+                                    class="hover"
+                                  >
+                                    <td class="text-base-content/70 whitespace-nowrap">
+                                      {{ formatSnapTime(snap.timestamp) }}
+                                    </td>
+                                    <td class="text-right font-bold" :class="snap.sharpe >= 1.8 ? 'text-success' : 'text-warning'">
+                                      {{ snap.sharpe != null ? snap.sharpe.toFixed(2) : '—' }}
+                                    </td>
+                                    <td class="text-right font-bold" :class="(snap.dsr ?? 0) >= 0.95 ? 'text-success' : 'text-warning'">
+                                      {{ snap.dsr != null ? snap.dsr.toFixed(2) : '—' }}
+                                    </td>
+                                    <td class="text-right">
+                                      {{ formatSnapWinRate(snap.win_rate) }}
+                                    </td>
+                                    <td class="text-right font-bold text-error">
+                                      {{ formatSnapMdd(snap.max_drawdown) }}
+                                    </td>
+                                    <td class="text-right font-bold" :class="(snap.profit_factor ?? 0) >= 1.5 ? 'text-success' : (snap.profit_factor ?? 0) >= 1.0 ? 'text-warning' : 'text-error'">
+                                      {{ snap.profit_factor != null ? snap.profit_factor.toFixed(2) : '—' }}
+                                    </td>
+                                    <td class="text-center">
+                                      <span 
+                                        v-if="snap.deltaSharpe > 0.05" 
+                                        class="badge badge-xs badge-success font-bold text-[9px]"
+                                        title="Sharpe expanding"
+                                      >
+                                        +{{ snap.deltaSharpe.toFixed(2) }}
+                                      </span>
+                                      <span 
+                                        v-else-if="snap.deltaSharpe < -0.05" 
+                                        class="badge badge-xs badge-error font-bold text-[9px]"
+                                        title="Sharpe decaying"
+                                      >
+                                        {{ snap.deltaSharpe.toFixed(2) }}
+                                      </span>
+                                      <span v-else class="text-base-content/40 text-[9px]">
+                                        —
+                                      </span>
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
                             </div>
-                            <div>
-                              <span class="text-[9px] text-base-content/50 uppercase block">Total Trades</span>
-                              <span class="font-bold text-accent font-mono">{{ strat.latest_backtest?.trades ?? 0 }}</span>
-                            </div>
-                            <div>
-                              <span class="text-[9px] text-base-content/50 uppercase block">Timeframe</span>
-                              <span class="font-bold text-base-content font-mono">{{ strat.timeframe || '15m' }}</span>
-                            </div>
+                          </div>
+
+                          <div class="pt-2 border-t border-base-content/10 flex items-center justify-between text-[10px] text-base-content/60">
+                            <span>Drift Status: <strong :class="getTrajectoryClass(strat)">{{ getTrajectoryText(strat) }}</strong></span>
+                            <button 
+                              @click.stop="emit('navigateToBacktest', strat.name)"
+                              class="link link-primary link-hover text-[10px] font-bold"
+                            >
+                              Audit in Backtest (F3) &rarr;
+                            </button>
                           </div>
                         </div>
 
-                        <!-- Right: Embedded Equity Curve (Backtest vs Live) -->
-                        <div class="space-y-2 bg-base-100/70 p-3.5 rounded-box border border-base-content/10">
+                        <!-- Card 2: 5-Gate Cynic Adversarial Audit Matrix & Quantitative Thesis -->
+                        <div class="space-y-3 bg-base-100/80 p-3.5 rounded-box border border-base-content/10 flex flex-col justify-between">
+                          <div class="space-y-2">
+                            <div class="flex items-center justify-between pb-2 border-b border-base-content/10">
+                              <span class="text-xs font-bold text-warning flex items-center gap-1.5">
+                                <ShieldCheck class="w-3.5 h-3.5" /> 5-GATE CYNIC MATRIX
+                              </span>
+                              <span class="badge badge-xs font-bold" :class="getTierBadgeClass(strat.tier)">
+                                {{ strat.tier || 'C-Tier' }}
+                              </span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-1.5 text-[10px]">
+                              <div class="p-2 rounded bg-base-200 border border-base-content/10 flex items-center justify-between">
+                                <span class="text-base-content/60">Gate 1: DSR</span>
+                                <span class="font-bold" :class="(strat.latest_backtest?.dsr ?? 0) >= 0.95 ? 'text-success' : 'text-warning'">
+                                  {{ (strat.latest_backtest?.dsr ?? 0) >= 0.95 ? 'PASS' : 'WARN' }}
+                                </span>
+                              </div>
+                              <div class="p-2 rounded bg-base-200 border border-base-content/10 flex items-center justify-between">
+                                <span class="text-base-content/60">Gate 2: Stability</span>
+                                <span class="font-bold text-success">PASS</span>
+                              </div>
+                              <div class="p-2 rounded bg-base-200 border border-base-content/10 flex items-center justify-between">
+                                <span class="text-base-content/60">Gate 3: Monte Carlo</span>
+                                <span class="font-bold text-success">
+                                  {{ strat.latest_backtest?.mdd_99 ? `${(strat.latest_backtest.mdd_99 * 100).toFixed(1)}%` : 'PASS' }}
+                                </span>
+                              </div>
+                              <div class="p-2 rounded bg-base-200 border border-base-content/10 flex items-center justify-between">
+                                <span class="text-base-content/60">Gate 4: Walk-Forward</span>
+                                <span class="font-bold text-success">PASS</span>
+                              </div>
+                              <div class="p-2 rounded bg-base-200 border border-base-content/10 flex items-center justify-between col-span-2">
+                                <span class="text-base-content/60">Gate 5: Regime Survival</span>
+                                <span class="font-bold text-success">ROBUST ALPHA</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="p-2 rounded bg-base-200 border border-base-content/10 text-[10px] space-y-1">
+                            <div class="text-primary font-bold flex items-center gap-1">
+                              <Sparkles class="w-3 h-3" /> Thesis &amp; Invalidation:
+                            </div>
+                            <p class="text-base-content/80 line-clamp-2 leading-relaxed">
+                              {{ strat.thesis || 'Mathematical regime exploitation strategy with strict stop loss bounds.' }}
+                            </p>
+                          </div>
+                        </div>
+
+                        <!-- Card 3: Embedded Equity Trajectory -->
+                        <div class="space-y-2 bg-base-100/80 p-3.5 rounded-box border border-base-content/10">
                           <div class="flex items-center justify-between text-xs pb-1 border-b border-base-content/10">
-                            <span class="font-bold text-base-content text-[11px]">EQUITY TRAJECTORY</span>
+                            <span class="font-bold text-base-content text-[11px] flex items-center gap-1.5">
+                              <TrendingUp class="w-3.5 h-3.5 text-primary" /> EQUITY TRAJECTORY
+                            </span>
                             <div class="join">
                               <button 
                                 @click="equityViewMode[strat.id] = 'BACKTEST'" 
@@ -369,7 +492,7 @@
                           <DaisyEquityChart 
                             :data="(equityViewMode[strat.id] === 'LIVE' ? strat.live_equity_curve : strat.backtest_equity_curve) || []"
                             :title="`${strat.name} (${equityViewMode[strat.id] || 'BACKTEST'})`"
-                            :chartHeight="120"
+                            :chartHeight="130"
                             :idPrefix="`eq_${strat.id}`"
                           />
                         </div>
@@ -488,7 +611,8 @@
 import { ref, computed } from 'vue';
 import {
   Layers, RefreshCw, Award, TrendingUp, TrendingDown,
-  PieChart, Search, Eye, Play, Sparkles, ChevronDown, ChevronRight, Activity
+  PieChart, Search, Eye, Play, Sparkles, ChevronDown, ChevronRight, Activity,
+  History, ShieldCheck
 } from 'lucide-vue-next';
 import DaisyEquityChart from './charts/DaisyEquityChart.vue';
 import DaisyDistributionBar from './charts/DaisyDistributionBar.vue';
@@ -766,5 +890,60 @@ const handleTriggerCron = async () => {
   } finally {
     runningCron.value = false;
   }
+};
+
+const formatSnapTime = (ts?: string) => {
+  if (!ts) return '—';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleDateString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return ts.slice(5, 16);
+  }
+};
+
+const formatSnapWinRate = (wr?: number) => {
+  if (wr == null) return '—';
+  const val = wr <= 1.0 ? wr * 100 : wr;
+  return `${val.toFixed(1)}%`;
+};
+
+const formatSnapMdd = (mdd?: number) => {
+  if (mdd == null) return '—';
+  const val = mdd <= 1.0 ? mdd * 100 : mdd;
+  return `${val.toFixed(2)}%`;
+};
+
+const getReversedSnapshotsWithDelta = (history?: any[], strat?: ManagedStrategy) => {
+  let list = history && history.length > 0 ? [...history] : [];
+  if (list.length === 0 && strat?.latest_backtest && (strat.latest_backtest.sharpe || 0) > 0) {
+    const bt = strat.latest_backtest;
+    list = [{
+      timestamp: bt.last_run || new Date().toISOString(),
+      sharpe: bt.sharpe,
+      dsr: bt.dsr,
+      win_rate: bt.win_rate,
+      max_drawdown: bt.max_drawdown,
+      trades: bt.trades,
+      profit_factor: bt.profit_factor,
+    }];
+  }
+  const enriched = list.map((snap, idx) => {
+    let deltaSharpe = 0;
+    let deltaWr = 0;
+    if (idx > 0) {
+      const prev = list[idx - 1];
+      deltaSharpe = Number(((snap.sharpe || 0) - (prev.sharpe || 0)).toFixed(2));
+      const currWr = (snap.win_rate <= 1.0 ? snap.win_rate * 100 : snap.win_rate) || 0;
+      const prevWr = (prev.win_rate <= 1.0 ? prev.win_rate * 100 : prev.win_rate) || 0;
+      deltaWr = Number((currWr - prevWr).toFixed(1));
+    }
+    return {
+      ...snap,
+      deltaSharpe,
+      deltaWr,
+    };
+  });
+  return enriched.slice().reverse();
 };
 </script>

@@ -54,9 +54,11 @@
         :selectedBacktestData="selectedBacktestData"
         :activeState="activeState"
         :strategies="strategies"
+        :managedStrategies="managedStrategies"
         :loading="loadingBacktest"
         @selectStrategy="handleSelectStrategy"
         @activateStrategy="handleActivateStrategy"
+        @runBacktest="handleSelectStrategy"
       />
     </main>
 

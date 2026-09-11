@@ -517,7 +517,10 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     }
 
     try:
-        strategy_registry.record_backtest(clean_name, result, is_cron=False)
+        strat_record = strategy_registry.record_backtest(clean_name, result, is_cron=False)
+        if strat_record:
+            result["drift_history"] = strat_record.get("cron_config", {}).get("drift_history", [])
+            result["strategy_record"] = strat_record
     except Exception as e_reg:
         logger.warning(f"[BacktestEngine] Could not record backtest in strategy_registry: {e_reg}")
 
