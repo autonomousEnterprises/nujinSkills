@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, BarChart2, ShieldCheck, Sun, Moon, Send, Layers, Eye, Clock } from 'lucide-react';
+import { Terminal, BarChart2, ShieldCheck, Sun, Moon, Send, Layers, Eye, Clock, Volume2, VolumeX } from 'lucide-react';
+import { isAudioEnabled, toggleAudioEnabled, testSignalTone } from '../utils/audio';
 
 interface HeaderProps {
   activeScreen: 'CHART' | 'AGENT_DECK' | 'BACKTEST' | 'STRATEGY_MANAGER';
@@ -37,6 +38,28 @@ export const Header: React.FC<HeaderProps> = ({
     const timer = setInterval(updateTime, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Audio tone notification state
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(isAudioEnabled());
+  useEffect(() => {
+    const handleToggle = (e: any) => {
+      if (e?.detail?.enabled !== undefined) {
+        setSoundEnabled(e.detail.enabled);
+      }
+    };
+    window.addEventListener('edgeminer-sound-toggled', handleToggle);
+    return () => window.removeEventListener('edgeminer-sound-toggled', handleToggle);
+  }, []);
+
+  const handleToggleSound = () => {
+    const next = toggleAudioEnabled();
+    setSoundEnabled(next);
+  };
+
+  const handleTestSound = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    testSignalTone('BUY');
+  };
 
   // Truly activated live strategies within the bot (status: ACTIVE_LIVE)
   const effectiveActiveStrategies = (activeBots && activeBots.length > 0)
@@ -178,6 +201,37 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Clock className="w-3.5 h-3.5 text-sky-400" />
           <span className="font-semibold text-emerald-400">{localTimeStr}</span>
+        </div>
+
+        {/* Signal Audio Tone Alert Controls */}
+        <div className={`flex items-center rounded border transition-all ${
+          isDark ? 'bg-[#0d1117] border-[#30363d]' : 'bg-slate-50 border-slate-200'
+        }`}>
+          <button
+            onClick={handleToggleSound}
+            title={soundEnabled ? "Signal Tone: ON (Click to mute)" : "Signal Tone: MUTED (Click to unmute)"}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-l transition-all ${
+              soundEnabled
+                ? (isDark ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700')
+                : 'text-slate-400 hover:text-slate-300'
+            }`}
+          >
+            {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+            <span className="text-[10px] font-bold uppercase hidden xl:inline">
+              {soundEnabled ? 'Tone On' : 'Muted'}
+            </span>
+          </button>
+          <button
+            onClick={handleTestSound}
+            title="Preview Signal Tone (BUY chime)"
+            className={`px-1.5 py-1 text-[9px] uppercase font-bold border-l transition-all rounded-r ${
+              isDark
+                ? 'border-[#30363d] text-slate-400 hover:text-white hover:bg-[#21262d]'
+                : 'border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200'
+            }`}
+          >
+            Test
+          </button>
         </div>
 
         {/* System & Manual Theme Toggle Button */}

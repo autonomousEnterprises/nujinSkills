@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { playSignalTone } from '../utils/audio';
 
 export interface WidgetData {
   id: string;
@@ -192,6 +193,7 @@ export function useWebSocket() {
             break;
           }
           case 'CHART_MARKER':
+          case 'TELEGRAM_ALERT':
           case 'SIGNAL_TRIGGERED': {
             setLatestSignal(payload);
             setSignals((prev) => {
@@ -199,6 +201,10 @@ export function useWebSocket() {
               const exists = prev.some((s) => s.id === payload.id || (s.time === payload.time && s.action === payload.action));
               return exists ? prev : [payload, ...prev];
             });
+            // Play audible tone alert when a signal appears
+            if (event_type === 'SIGNAL_TRIGGERED' || event_type === 'TELEGRAM_ALERT' || (event_type === 'CHART_MARKER' && (payload.action === 'BUY' || payload.action === 'SELL' || payload.action === 'LONG' || payload.action === 'SHORT'))) {
+              playSignalTone(payload.action || payload.side);
+            }
             break;
           }
           case 'STATE_UPDATED': {

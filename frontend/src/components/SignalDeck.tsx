@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { SignalData, WidgetData } from '../hooks/useWebSocket';
+import { playSignalTone } from '../utils/audio';
 import {
   Send, Zap, Cpu, CheckCircle2, ShieldCheck, ArrowUpRight, ArrowDownRight,
   Clock, Target, AlertTriangle, RefreshCw, Activity, MessageSquare,
@@ -82,6 +83,15 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
   const [btcPriceFlash, setBtcPriceFlash] = useState<'up' | 'down' | null>(null);
   const prevGoldPrice = useRef<number | null>(null);
   const prevBtcPrice = useRef<number | null>(null);
+  const initialFetchDone = useRef<boolean>(false);
+  const knownSignalKeys = useRef<Set<string>>(new Set());
+
+  // Keep known keys in sync with wsSignals to avoid double-tone
+  useEffect(() => {
+    wsSignals.forEach((s) => {
+      knownSignalKeys.current.add(`${s.id || s.time}-${s.action}-${s.price}`);
+    });
+  }, [wsSignals]);
 
   // 1. Fetch live signals, stats, and status
   const fetchSignals = async () => {
@@ -97,8 +107,27 @@ export const SignalDeck: React.FC<SignalDeckProps> = ({
       const statsData = await statsRes.json();
       const sysData = await sysRes.json();
 
+      const incomingSignals: any[] = sigData.signals || [];
+
+      // If this is a background poll and a new signal arrived, trigger tone
+      if (initialFetchDone.current) {
+        for (const s of incomingSignals) {
+          const key = `${s.id || s.time}-${s.action}-${s.price}`;
+          if (!knownSignalKeys.current.has(key)) {
+            playSignalTone(s.action || s.side);
+            break;
+          }
+        }
+      }
+
+      // Record known keys
+      incomingSignals.forEach((s) => {
+        knownSignalKeys.current.add(`${s.id || s.time}-${s.action}-${s.price}`);
+      });
+      initialFetchDone.current = true;
+
       setSignalState({
-        signals: sigData.signals || [],
+        signals: incomingSignals,
         active_signal: sigData.active_signal || null,
         active_signals: sigData.active_signals || (sigData.active_signal ? [sigData.active_signal] : [])
       });

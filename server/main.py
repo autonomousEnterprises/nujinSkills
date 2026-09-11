@@ -1,6 +1,10 @@
 import logging
 import os
+import sys
 import json
+import shutil
+import subprocess
+import threading
 from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -192,12 +196,61 @@ async def close_signal_position(req: CloseSignalRequest):
     })
     return {"status": "SUCCESS", "closed_signal": closed}
 
+def play_system_alert(action: str = "SIGNAL"):
+    """
+    Plays an audible system chime on Linux in a non-blocking background thread.
+    Tries paplay, canberra-gtk-play, pw-play, aplay, and terminal bell fallback.
+    """
+    def _play():
+        try:
+            is_buy = "BUY" in action.upper() or "LONG" in action.upper()
+            sound_theme = "complete" if is_buy else "bell"
+            sound_path = f"/usr/share/sounds/freedesktop/stereo/{sound_theme}.oga"
+
+            played = False
+            # 1. Prefer paplay (direct PulseAudio/PipeWire, ultra-low latency)
+            if shutil.which("paplay") and os.path.exists(sound_path):
+                subprocess.Popen(
+                    ["paplay", sound_path],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                played = True
+
+            # 2. Canberra GTK play
+            if not played and shutil.which("canberra-gtk-play"):
+                subprocess.Popen(
+                    ["canberra-gtk-play", "-i", sound_theme],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                played = True
+
+            # 3. pw-play (PipeWire)
+            if not played and shutil.which("pw-play") and os.path.exists(sound_path):
+                subprocess.Popen(
+                    ["pw-play", sound_path],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                played = True
+
+            # Terminal bell fallback
+            sys.stdout.write("\a")
+            sys.stdout.flush()
+            logger.info(f"[SystemAlert] Played desktop audio chime for action: {action} (played={played})")
+        except Exception as e:
+            logger.warning(f"[SystemAlert] Audio playback error: {e}")
+
+    threading.Thread(target=_play, daemon=True).start()
+
+
 @app.post("/api/broadcast")
 async def broadcast_event(envelope: EventEnvelope):
     logger.info(f"Broadcast event received: {envelope.event_type}")
     await manager.broadcast(envelope.model_dump())
 
     if envelope.event_type == "SIGNAL_TRIGGERED":
+        # Play local system tone in background
+        play_system_alert(envelope.payload.get("action", ""))
+
         # Resolve strategy name if missing in payload
         if not envelope.payload.get("strategy"):
             envelope.payload["strategy"] = state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
@@ -217,6 +270,7 @@ async def broadcast_event(envelope: EventEnvelope):
             }
         })
     elif envelope.event_type == "TELEGRAM_ALERT":
+        play_system_alert(envelope.payload.get("action", ""))
         telegram_gateway.format_and_send_signal(envelope.payload)
     elif envelope.event_type == "UPSERT_WIDGET" and envelope.payload.get("component") == "MetricCard":
         telegram_gateway.format_and_send_dsr_alert(envelope.payload)
