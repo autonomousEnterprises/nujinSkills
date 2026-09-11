@@ -193,13 +193,17 @@ class XauusdScalpEngine:
         vol_z = ind["vol_z"]
         trend = ind["trend_macro"]
 
-        # Long Trigger:
-        # Price above 200 EMA, 9 EMA > 21 EMA, Price recently expanding off 9 EMA, Volume surge
-        is_long = (price > ema200) and (ema9 > ema21) and (price >= ema9) and (vol_z > 0.8)
+        # 15m High & Low extremes
+        hh15 = max([c["high"] for c in self.candles_1m[-15:]]) if len(self.candles_1m) >= 15 else price
+        ll15 = min([c["low"] for c in self.candles_1m[-15:]]) if len(self.candles_1m) >= 15 else price
+
+        # Long Trigger (GoatFundedTraderXauusdScalper rules):
+        # Session active (London/NY) + Break 15m High + Momentum Ribbon (9 > 21 EMA) + Vol Z > 0.4
+        is_long = session_info["is_active"] and (price > hh15) and (ema9 > ema21) and (vol_z > 0.4)
         
         # Short Trigger:
-        # Price below 200 EMA, 9 EMA < 21 EMA, Price expanding under 9 EMA, Volume surge
-        is_short = (price < ema200) and (ema9 < ema21) and (price <= ema9) and (vol_z > 0.8)
+        # Session active (London/NY) + Break 15m Low + Momentum Ribbon (9 < 21 EMA) + Vol Z > 0.4
+        is_short = session_info["is_active"] and (price < ll15) and (ema9 < ema21) and (vol_z > 0.4)
 
         if not is_long and not is_short:
             return None

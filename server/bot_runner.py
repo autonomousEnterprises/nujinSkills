@@ -2,10 +2,9 @@ import subprocess
 import os
 import signal
 import logging
-from typing import Dict, Any, Optional
-
+import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 
 logger = logging.getLogger("BotRunner")
 
@@ -13,10 +12,19 @@ class BotSupervisor:
     """
     Supervises background strategy runners, supporting concurrent execution
     of multiple strategies in parallel (e.g. XAUUSD Scalper + BTC VSA Wick Rejection).
+    Seamlessly falls back to native Python Strategy Runners when freqtrade is not on PATH.
     """
     def __init__(self):
-        # Maps strategy_name -> {process, mode, started_at, config_path}
+        # Maps strategy_name -> {process, mode, started_at, config_path, native_runner}
         self.runners: Dict[str, Dict[str, Any]] = {}
+        self.broadcast_callback: Optional[Callable] = None
+
+    def set_broadcast_callback(self, callback: Callable) -> None:
+        self.broadcast_callback = callback
+        # Propagate to any existing native runners
+        for r in self.runners.values():
+            if r.get("native_runner"):
+                r["native_runner"].broadcast_callback = callback
 
     @property
     def active_strategy(self) -> str:
@@ -37,7 +45,7 @@ class BotSupervisor:
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Stop existing runner for this specific strategy if running
-        if clean_name in self.runners and self.runners[clean_name].get("process"):
+        if clean_name in self.runners:
             self.stop_strategy(clean_name)
 
         cmd = [
@@ -61,7 +69,8 @@ class BotSupervisor:
                 "process": proc,
                 "mode": mode,
                 "started_at": now_iso,
-                "config_path": config_path
+                "config_path": config_path,
+                "native_runner": None
             }
             return {
                 "status": "SUCCESS",
@@ -70,16 +79,35 @@ class BotSupervisor:
                 "active_strategies": list(self.runners.keys())
             }
         except FileNotFoundError:
-            logger.info(f"[BotRunner] freqtrade binary not found on PATH. Activated native Python telemetry runner for '{clean_name}'.")
+            logger.info(f"[BotRunner] freqtrade binary not found on PATH. Activating native Python telemetry runner for '{clean_name}'.")
+            from server.strategy_executor import NativeStrategyRunner
+
+            runner = NativeStrategyRunner(strategy_name=clean_name, broadcast_callback=self.broadcast_callback)
+
+            # Start runner task in active asyncio event loop if running
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(runner.start())
+            except RuntimeError:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(runner.start())
+                    else:
+                        asyncio.run(runner.start())
+                except Exception as e_start:
+                    logger.warning(f"[BotRunner] Could not start native runner immediately: {e_start}")
+
             self.runners[clean_name] = {
                 "process": None,
                 "mode": "python-telemetry",
                 "started_at": now_iso,
-                "config_path": config_path
+                "config_path": config_path,
+                "native_runner": runner
             }
             return {
                 "status": "SUCCESS",
-                "message": f"Strategy '{clean_name}' deployed in Native Telemetry mode (freqtrade not on PATH).",
+                "message": f"Strategy '{clean_name}' deployed in Native Autonomous Trading Bot mode.",
                 "mode": "python-telemetry",
                 "pid": None,
                 "active_strategies": list(self.runners.keys())
@@ -90,8 +118,8 @@ class BotSupervisor:
         if clean_name not in self.runners:
             return {"status": "SUCCESS", "message": f"Strategy '{clean_name}' is not currently running"}
 
-        runner = self.runners.pop(clean_name)
-        proc: Optional[subprocess.Popen] = runner.get("process")
+        runner_info = self.runners.pop(clean_name)
+        proc: Optional[subprocess.Popen] = runner_info.get("process")
         if proc and proc.poll() is None:
             try:
                 proc.send_signal(signal.SIGTERM)
@@ -99,6 +127,21 @@ class BotSupervisor:
             except Exception as e:
                 logger.warning(f"Error terminating runner for {clean_name}: {e}")
                 proc.kill()
+
+        native_runner = runner_info.get("native_runner")
+        if native_runner and native_runner.is_running:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(native_runner.stop())
+            except RuntimeError:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(native_runner.stop())
+                    else:
+                        asyncio.run(native_runner.stop())
+                except Exception as e_stop:
+                    logger.warning(f"[BotRunner] Error stopping native runner: {e_stop}")
 
         logger.info(f"[BotRunner] Stopped strategy '{clean_name}'. Remaining active: {list(self.runners.keys())}")
         return {"status": "SUCCESS", "message": f"Strategy '{clean_name}' terminated", "remaining_active": list(self.runners.keys())}
@@ -117,7 +160,7 @@ class BotSupervisor:
         return self.stop_all()
 
     def get_status(self) -> Dict[str, Any]:
-        # Filter dead processes
+        # Filter dead OS processes
         dead = []
         for name, runner in self.runners.items():
             p = runner.get("process")
@@ -140,7 +183,8 @@ class BotSupervisor:
                 name: {
                     "mode": r["mode"],
                     "pid": r["process"].pid if r.get("process") else None,
-                    "started_at": r["started_at"]
+                    "started_at": r["started_at"],
+                    "native_active": bool(r.get("native_runner") and r["native_runner"].is_running)
                 }
                 for name, r in self.runners.items()
             }

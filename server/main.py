@@ -281,6 +281,7 @@ async def broadcast_event(envelope: EventEnvelope):
 async def deploy_bot(req: DeployBotRequest):
     logger.info(f"Activating & deploying strategy for system: {req.strategy}")
     bt_result = run_real_backtest(req.strategy, save_as_active=True)
+    bot_supervisor.set_broadcast_callback(manager.broadcast)
     res = bot_supervisor.deploy_strategy(req.strategy, req.mode)
     await manager.broadcast({"event_type": "STATE_UPDATED", "payload": bt_result["state"]})
     return {**res, "state": bt_result["state"]}
@@ -513,6 +514,7 @@ async def cron_backtest_scheduler():
 @app.on_event("startup")
 async def startup_event():
     import asyncio
+    bot_supervisor.set_broadcast_callback(manager.broadcast)
     logger.info("[NujinSkillsServer] Launching XAUUSD Live Keyless Streamer & Signal Monitor...")
     asyncio.create_task(xauusd_engine.run_live_feed(manager.broadcast))
     logger.info("[NujinSkillsServer] Launching Periodic Strategy Cron Backtest Scheduler...")
