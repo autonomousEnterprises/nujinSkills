@@ -350,6 +350,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const showPositionBoxRef = useRef<boolean>(true);
   const updateBoxCoordinatesRef = useRef<() => void>(() => {});
   const initialCenteredRef = useRef<boolean>(false);
+  const savedLogicalRangeRef = useRef<any>(null);
   const priceLinesRef = useRef<any[]>([]);
   const ema9DataRef = useRef<{ time: Time; value: number }[]>([]);
   const ema21DataRef = useRef<{ time: Time; value: number }[]>([]);
@@ -624,12 +625,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 volume: Number(c.volume || 15.0),
               };
 
-              const isNewMinute = activeCandleRef.current && ((localT as number) > (activeCandleRef.current.time as number));
-              if (isNewMinute) {
-                // When a new minute starts, schedule background fetch to sync finalized authentic bars
-                setTimeout(() => fetchCandles(), 2500);
-              }
-
               if (activeCandleRef.current && ((localT as number) - (activeCandleRef.current.time as number)) > 120) {
                 fetchCandles();
                 return;
@@ -645,10 +640,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
             let cur = activeCandleRef.current;
             if (!cur || (cur.time as number) < (minuteTime as number)) {
-              const isNewMinute = cur != null;
-              if (isNewMinute) {
-                setTimeout(() => fetchCandles(), 2500);
-              }
               if (cur && (minuteTime as number) - (cur.time as number) > 120) {
                 fetchCandles();
                 return;
@@ -1299,7 +1290,15 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       }
     });
 
-    chart.timeScale().fitContent();
+    if (savedLogicalRangeRef.current) {
+      try {
+        chart.timeScale().setVisibleLogicalRange(savedLogicalRangeRef.current);
+      } catch (e) {
+        chart.timeScale().fitContent();
+      }
+    } else {
+      chart.timeScale().fitContent();
+    }
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
@@ -1319,6 +1318,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     ema200DataRef.current = [...ema200Data];
 
     const handleRangeChange = () => {
+      try {
+        const range = chart.timeScale().getVisibleLogicalRange();
+        if (range && typeof range.from === 'number' && typeof range.to === 'number') {
+          savedLogicalRangeRef.current = range;
+        }
+      } catch (e) {}
       requestAnimationFrame(() => {
         if (updateBoxCoordinatesRef.current) {
           updateBoxCoordinatesRef.current();
