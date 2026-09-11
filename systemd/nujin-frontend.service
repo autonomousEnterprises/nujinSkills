@@ -1,7 +1,7 @@
 [Unit]
-Description=EdgeMiner Telemetry Dashboard Frontend
-After=network.target edgeminer-server.service
-Wants=edgeminer-server.service
+Description=NujinAI Telemetry Dashboard Frontend (Cockpit)
+After=network.target nujin-backend.service
+Wants=nujin-backend.service
 
 [Service]
 Type=simple

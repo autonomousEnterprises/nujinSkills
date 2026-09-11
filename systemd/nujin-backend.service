@@ -1,5 +1,5 @@
 [Unit]
-Description=EdgeMiner Quantitative Alpha & Telegram Signal Gateway Backend
+Description=NujinAI Quantitative Alpha & Telegram Signal Gateway Backend
 After=network-online.target
 Wants=network-online.target
 
