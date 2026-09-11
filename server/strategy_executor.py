@@ -23,9 +23,12 @@ class StrategyEvaluator:
     Supports GFT XAUUSD Momentum Train, Prop Firm VSA Wick Rejection, TrapFade, and generic strategies.
     """
     @staticmethod
-    def is_session_active(strategy_name: str) -> Dict[str, Any]:
+    def is_session_active(strategy_name: str, timestamp: Optional[int] = None) -> Dict[str, Any]:
         """London Momentum: 07:30 - 10:30 UTC | New York Momentum: 12:45 - 16:30 UTC."""
-        now_utc = datetime.now(timezone.utc)
+        if timestamp and timestamp > 0:
+            now_utc = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        else:
+            now_utc = datetime.now(timezone.utc)
         current_minute_utc = now_utc.hour * 60 + now_utc.minute
 
         is_london = 450 <= current_minute_utc <= 630
@@ -84,6 +87,7 @@ class StrategyEvaluator:
         ll_15 = low.shift(1).rolling(15).min()
 
         curr_i = len(df) - 1
+        curr_bar = df.iloc[curr_i]
         curr_p = float(close.iloc[curr_i])
         curr_e9 = float(ema_9.iloc[curr_i])
         curr_e21 = float(ema_21.iloc[curr_i])
@@ -95,11 +99,12 @@ class StrategyEvaluator:
         curr_lw = float(lower_wick.iloc[curr_i]) if not np.isnan(lower_wick.iloc[curr_i]) else 0.0
         curr_uw = float(upper_wick.iloc[curr_i]) if not np.isnan(upper_wick.iloc[curr_i]) else 0.0
 
+        bar_ts = int(curr_bar.get("time", curr_bar.get("timestamp", 0)))
         is_xau = "XAU" in symbol.upper() or "GOLD" in symbol.upper() or "GOAT" in clean_name.upper()
 
         if is_xau:
             # --- Goat Funded Trader XAUUSD Momentum Scalper Rules ---
-            session = StrategyEvaluator.is_session_active(clean_name)
+            session = StrategyEvaluator.is_session_active(clean_name, timestamp=bar_ts if bar_ts > 0 else None)
             # Entry condition: Session active, Breakout 15m extreme, EMA momentum expansion, Volume surge
             is_long = session["is_active"] and (curr_p > curr_hh15) and (curr_e9 > curr_e21) and (curr_vz > 0.4)
             is_short = session["is_active"] and (curr_p < curr_ll15) and (curr_e9 < curr_e21) and (curr_vz > 0.4)
@@ -108,9 +113,9 @@ class StrategyEvaluator:
                 return None
 
             side = "BUY" if is_long else "SELL"
-            sl_dist = max(1.50, min(3.80, round(1.5 * curr_atr, 2)))
-            sl = round(curr_p - sl_dist, 2) if is_long else round(curr_p + sl_dist, 2)
-            tp = round(curr_p + (sl_dist * 1.8), 2) if is_long else round(curr_p - (sl_dist * 1.8), 2)
+            # Hard risk bounds aligned with BacktestEngine: 0.25% stop loss, 0.30% take profit
+            sl = round(curr_p * (1.0 - 0.0025), 2) if is_long else round(curr_p * (1.0 + 0.0025), 2)
+            tp = round(curr_p * (1.0 + 0.0030), 2) if is_long else round(curr_p * (1.0 - 0.0030), 2)
 
             annotation = f"GFT Momentum Breakout ({session['session_name']})"
             reasoning = f"Price ({curr_p}) broke {'15m High' if is_long else '15m Low'} with EMA ribbon expansion (9 > 21) and Volume Z-Score {curr_vz:.2f}."
@@ -120,6 +125,7 @@ class StrategyEvaluator:
                 "pair": symbol,
                 "action": side,
                 "price": curr_p,
+                "time": bar_ts if bar_ts > 0 else int(time.time()),
                 "stop_loss": sl,
                 "take_profit": tp,
                 "min_hold_seconds": 120, # 2-min anti-arbitrage lock
@@ -249,7 +255,7 @@ class NativeStrategyRunner:
         if not self.is_running:
             return
 
-        bar_time = int(bar.get("time") or 0)
+        bar_time = int(bar.get("time") or bar.get("timestamp") or 0)
         if bar_time <= self._last_evaluated_bar_time:
             return
         self._last_evaluated_bar_time = bar_time
@@ -260,9 +266,20 @@ class NativeStrategyRunner:
             # Already in position — enforce 1 concurrent trade per strategy
             return
 
-        # Evaluate strategy entry
-        candles = self.provider.get_candles(count=200)
-        sig = StrategyEvaluator.evaluate(self.strategy_name, self.symbol, candles)
+        # For XAU/USD, yield briefly so background authentic volume sync finishes
+        if "XAU" in self.symbol or "GOLD" in self.symbol:
+            await asyncio.sleep(1.2)
+
+        # Evaluate strategy entry strictly on completed bars up to bar_time
+        candles = self.provider.get_candles(count=250)
+        completed_candles = [
+            c for c in candles 
+            if int(c.get("time", c.get("timestamp", 0))) <= bar_time
+        ]
+        if not completed_candles or len(completed_candles) < 25:
+            completed_candles = candles
+
+        sig = StrategyEvaluator.evaluate(self.strategy_name, self.symbol, completed_candles)
         if sig:
             await self._trigger_new_signal(sig)
 

@@ -193,9 +193,10 @@ class XauusdScalpEngine:
         vol_z = ind["vol_z"]
         trend = ind["trend_macro"]
 
-        # 15m High & Low extremes
-        hh15 = max([c["high"] for c in self.candles_1m[-15:]]) if len(self.candles_1m) >= 15 else price
-        ll15 = min([c["low"] for c in self.candles_1m[-15:]]) if len(self.candles_1m) >= 15 else price
+        # 15m High & Low extremes (strictly prior 15 completed bars, excluding active forming candle)
+        prior_15 = self.candles_1m[-16:-1] if len(self.candles_1m) >= 16 else (self.candles_1m[:-1] if len(self.candles_1m) > 1 else self.candles_1m)
+        hh15 = max([c["high"] for c in prior_15]) if prior_15 else price
+        ll15 = min([c["low"] for c in prior_15]) if prior_15 else price
 
         # Long Trigger (GoatFundedTraderXauusdScalper rules):
         # Session active (London/NY) + Break 15m High + Momentum Ribbon (9 > 21 EMA) + Vol Z > 0.4
@@ -209,17 +210,16 @@ class XauusdScalpEngine:
             return None
 
         side = "BUY / LONG" if is_long else "SELL / SHORT"
-        sl_distance = round(1.5 * atr, 2)
-        sl_distance = max(1.50, min(3.80, sl_distance)) # Bound between $1.50 and $3.80 Gold move
+        sl_distance = round(price * 0.0025, 2) # Aligned with BacktestEngine 0.25% stop loss
 
         if is_long:
-            sl = round(price - sl_distance, 2)
-            tp1 = round(price + (sl_distance * 1.5), 2)
-            tp2 = round(price + (sl_distance * 2.5), 2)
+            sl = round(price * (1.0 - 0.0025), 2)
+            tp1 = round(price * (1.0 + 0.0030), 2)
+            tp2 = round(price * (1.0 + 0.0050), 2)
         else:
-            sl = round(price + sl_distance, 2)
-            tp1 = round(price - (sl_distance * 1.5), 2)
-            tp2 = round(price - (sl_distance * 2.5), 2)
+            sl = round(price * (1.0 + 0.0025), 2)
+            tp1 = round(price * (1.0 - 0.0030), 2)
+            tp2 = round(price * (1.0 - 0.0050), 2)
 
         # Goat Funded Trader Risk Sizing (0.50% account risk)
         # Gold: 1 Standard Lot = 100 oz. $1.00 move per lot = $100.
