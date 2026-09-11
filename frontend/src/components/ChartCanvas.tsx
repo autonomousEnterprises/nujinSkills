@@ -908,12 +908,16 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       for (const m of tradeMarkers) {
         const t = timeToLocal(Number(m.time));
         if (candleTimeSet.has(t)) {
+          let text = m.text || '';
+          if (text && !text.startsWith('[BT]') && !text.startsWith('LIVE:')) {
+            text = `[BT] ${text}`;
+          }
           validMarkers.push({
             time: t as Time,
             position: m.position || 'aboveBar',
             color: m.color || '#38bdf8',
             shape: m.shape || 'arrowUp',
-            text: m.text || '',
+            text,
           });
         }
       }

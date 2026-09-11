@@ -210,26 +210,26 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                         pnl_pct = round(((entry_price - exit_price) / entry_price) * 100.0, 2)
                     
                     price_fmt = f"${entry_price:.1f}" if is_xauusd else f"${entry_price/1000:.1f}k"
-                    # Entry Marker
+                    # Entry Marker (Backtest Simulation)
                     trade_markers.append({
                         "time": entry_time,
                         "position": "belowBar" if side == "LONG" else "aboveBar",
                         "color": "#26a69a" if side == "LONG" else "#ef5350",
                         "shape": "arrowUp" if side == "LONG" else "arrowDown",
-                        "text": f"{side} {price_fmt}",
+                        "text": f"[BT] {side} {price_fmt}",
                         "entry_price": entry_price,
                         "stop_loss": stop_loss,
                         "take_profit": take_profit,
                         "side": side
                     })
                     
-                    # Exit Marker
+                    # Exit Marker (Backtest Simulation)
                     trade_markers.append({
                         "time": exit_time,
                         "position": "aboveBar" if side == "LONG" else "belowBar",
                         "color": "#26a69a" if pnl_pct >= 0 else "#ef5350",
                         "shape": "arrowDown" if side == "LONG" else "arrowUp",
-                        "text": f"EXIT {pnl_pct:+.1f}%"
+                        "text": f"[BT] EXIT {pnl_pct:+.1f}%"
                     })
                     
                     trades_detail.append({
