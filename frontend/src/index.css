@@ -11,6 +11,70 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --color-base-100: oklch(12% 0.042 264.695);
+    --color-base-200: oklch(20% 0.042 265.755);
+    --color-base-300: oklch(27% 0.041 260.031);
+    --color-base-content: oklch(96% 0.007 247.896);
+    --color-primary: oklch(85% 0.199 91.936);
+    --color-primary-content: oklch(28% 0.066 53.813);
+    --color-secondary: oklch(76% 0.177 163.223);
+    --color-secondary-content: oklch(26% 0.051 172.552);
+    --color-accent: oklch(77% 0.152 181.912);
+    --color-accent-content: oklch(27% 0.046 192.524);
+    --color-neutral: oklch(44% 0.043 257.281);
+    --color-neutral-content: oklch(98% 0.003 247.858);
+    --color-info: oklch(74% 0.16 232.661);
+    --color-info-content: oklch(29% 0.066 243.157);
+    --color-success: oklch(76% 0.177 163.223);
+    --color-success-content: oklch(26% 0.051 172.552);
+    --color-warning: oklch(85% 0.199 91.936);
+    --color-warning-content: oklch(28% 0.066 53.813);
+    --color-error: oklch(71% 0.194 13.428);
+    --color-error-content: oklch(27% 0.105 12.094);
+    --radius-selector: 0.25rem;
+    --radius-field: 1rem;
+    --radius-box: 2rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.3125rem;
+    --border: 1px;
+    --depth: 0;
+    --noise: 0;
+  }
+
+  [data-theme="light"] {
+    color-scheme: light;
+    --color-base-100: oklch(100% 0 0);
+    --color-base-200: oklch(97% 0 0);
+    --color-base-300: oklch(94% 0 0);
+    --color-base-content: oklch(0% 0 0);
+    --color-primary: oklch(15.906% 0 0);
+    --color-primary-content: oklch(100% 0 0);
+    --color-secondary: oklch(21.455% 0.001 17.278);
+    --color-secondary-content: oklch(100% 0 0);
+    --color-accent: oklch(26.861% 0 0);
+    --color-accent-content: oklch(100% 0 0);
+    --color-neutral: oklch(0% 0 0);
+    --color-neutral-content: oklch(100% 0 0);
+    --color-info: oklch(79.54% 0.103 205.9);
+    --color-info-content: oklch(15.908% 0.02 205.9);
+    --color-success: oklch(90.13% 0.153 164.14);
+    --color-success-content: oklch(18.026% 0.03 164.14);
+    --color-warning: oklch(88.37% 0.135 79.94);
+    --color-warning-content: oklch(17.674% 0.027 79.94);
+    --color-error: oklch(78.66% 0.15 28.47);
+    --color-error-content: oklch(15.732% 0.03 28.47);
+    --radius-selector: 2rem;
+    --radius-field: 2rem;
+    --radius-box: 2rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 1px;
+    --depth: 0;
+    --noise: 0;
+  }
 }
 
 /* Custom terminal scrollbars styled for DaisyUI */

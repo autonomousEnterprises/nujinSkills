@@ -880,7 +880,7 @@ const initChart = () => {
   const isDark = props.theme === 'dark';
   chart = createChart(chartContainerRef.value, {
     layout: {
-      background: { type: ColorType.Solid, color: isDark ? '#0d1117' : '#f8fafc' },
+      background: { type: ColorType.Solid, color: isDark ? '#0d1322' : '#ffffff' },
       textColor: isDark ? '#c9d1d9' : '#334155',
       fontSize: 11,
       fontFamily: '"JetBrains Mono", monospace',
@@ -1165,7 +1165,7 @@ watch(() => props.theme, (newTheme) => {
   const isDark = newTheme === 'dark';
   chart.applyOptions({
     layout: {
-      background: { type: ColorType.Solid, color: isDark ? '#0d1117' : '#f8fafc' },
+      background: { type: ColorType.Solid, color: isDark ? '#0d1322' : '#ffffff' },
       textColor: isDark ? '#c9d1d9' : '#334155',
     },
     grid: {
