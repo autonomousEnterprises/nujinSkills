@@ -751,18 +751,21 @@ class StrategyRegistry:
                 if is_cron:
                     cron_cfg["last_run"] = now_iso
 
-                # Append snapshot to drift_history (keep last 25 entries)
+                # Enforce daily drift history: 1 snapshot per calendar day
                 history = cron_cfg.setdefault("drift_history", [])
-                history.append({
+                snapshot = {
                     "timestamp": now_iso,
                     "sharpe": summary.get("sharpe", 0.0),
-                    "dsr": summary.get("dsr", 0.0),
+                    "dsr": gates.get("deflated_sharpe", {}).get("value", 0.0),
                     "win_rate": summary.get("win_rate", 0.0),
                     "max_drawdown": summary.get("max_drawdown", 0.0),
                     "trades": summary.get("trades", 0),
                     "profit_factor": summary.get("profit_factor", 0.0),
-                })
-                cron_cfg["drift_history"] = history[-25:]
+                }
+                today_str = (now_iso or "")[:10]
+                history = [h for h in history if (h.get("timestamp") or "")[:10] != today_str]
+                history.append(snapshot)
+                cron_cfg["drift_history"] = history[-30:]
                 target_strat = s
                 break
 
