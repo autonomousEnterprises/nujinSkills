@@ -91,11 +91,12 @@ def resolve_strategy_metadata(strategy_name: str) -> Dict[str, Any]:
     # Determine symbol and timeframe dynamically
     symbol = (strat_record.get("symbol") if strat_record else None) or \
              (curr_state.get("symbol") if is_active_sys else None) or \
-             ("XAU/USD" if any(k in clean_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else "BTC/USDT")
+             ("S&P 500 (ES)" if any(k in clean_name.upper() for k in ["SP500", "SPX", "ES", "FLUSH"]) else \
+             ("XAU/USD" if any(k in clean_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else "BTC/USDT"))
 
     timeframe = (strat_record.get("timeframe") if strat_record else None) or \
                 (curr_state.get("timeframe") if is_active_sys else None) or \
-                ("1m" if "XAU" in symbol.upper() else "15m")
+                ("1m" if any(k in symbol.upper() for k in ["XAU", "SP", "ES", "S&P"]) else "15m")
 
     target_profile = (strat_record.get("target_profile") if strat_record else None) or \
                      (curr_state.get("target_profile") if is_active_sys else None) or \
@@ -149,6 +150,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
 
     # 1. Resolve Candle Dataset and Sync if Needed
     is_gold = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper()) or ("PAXG" in symbol.upper())
+    is_sp500 = any(k in symbol.upper() for k in ["SP", "ES", "US500", "S&P"])
     if is_gold:
         candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")
         if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
@@ -157,6 +159,9 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
             except Exception as e_sync:
                 logger.warning(f"[BacktestEngine] Sync XAUUSD candles warning: {e_sync}")
         cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_1m.csv", "--output", "data/features.csv"]
+    elif is_sp500:
+        candles_file = os.path.join(data_dir, "sp500_candles_1m.csv")
+        cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/sp500_candles_1m.csv", "--output", "data/features.csv"]
     else:
         if timeframe == "5m" and os.path.exists(os.path.join(data_dir, "btc_candles_5m.csv")):
             candles_file = os.path.join(data_dir, "btc_candles_5m.csv")
@@ -304,20 +309,24 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
             # Dynamic entry price calculation (Limit order vs Market order)
             if 'atr_lower_band' in c and is_long and not np.isnan(c['atr_lower_band']):
                 lower_band = float(c['atr_lower_band'])
-                entry_price = round(curr_close if is_gold else lower_band, 2)
+                entry_price = round(curr_close if (is_gold or is_sp500) else lower_band, 2)
             else:
                 entry_price = round(curr_close, 2)
 
             atr_val = float(c['atr_14']) if ('atr_14' in c and not np.isnan(c['atr_14'])) else entry_price * 0.005
 
-            # Dynamic Stop Loss
-            if atr_sl_mult is not None and atr_val > 0:
+            # Dynamic or Structural Stop Loss
+            if 'structural_sl' in c and not np.isnan(c['structural_sl']):
+                stop_loss = round(float(c['structural_sl']), 2)
+            elif atr_sl_mult is not None and atr_val > 0:
                 stop_loss = round(entry_price - atr_sl_mult * atr_val if side == "LONG" else entry_price + atr_sl_mult * atr_val, 2)
             else:
                 stop_loss = round(entry_price * (1.0 - stoploss_pct) if side == "LONG" else entry_price * (1.0 + stoploss_pct), 2)
 
-            # Dynamic Take Profit
-            if atr_tp_mult is not None and atr_val > 0:
+            # Dynamic or Structural Take Profit
+            if 'structural_tp' in c and not np.isnan(c['structural_tp']):
+                take_profit = round(float(c['structural_tp']), 2)
+            elif atr_tp_mult is not None and atr_val > 0:
                 take_profit = round(entry_price + atr_tp_mult * atr_val if side == "LONG" else entry_price - atr_tp_mult * atr_val, 2)
             elif minimal_roi:
                 roi_0 = float(minimal_roi.get("0", minimal_roi.get(0, 0.035 if not is_gold else 0.005)))
@@ -393,14 +402,14 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
             exit_time = int(exit_bar['timestamp']) if 'timestamp' in exit_bar else int(exit_bar.get('time', 0))
 
             if side == "LONG":
-                pnl_pct = round(((exit_price - entry_price) / entry_price) * 100.0, 2)
+                pnl_pct = round(((exit_price - entry_price) / entry_price) * 100.0, 4)
             else:
-                pnl_pct = round(((entry_price - exit_price) / entry_price) * 100.0, 2)
+                pnl_pct = round(((entry_price - exit_price) / entry_price) * 100.0, 4)
 
             actual_tp = exit_price if exit_reason == "TAKE_PROFIT" else target_tp
             actual_sl = exit_price if exit_reason == "STOP_LOSS" else stop_loss
 
-            price_fmt = f"${entry_price:.2f}" if is_gold else f"${entry_price:,.1f}"
+            price_fmt = f"${entry_price:.2f}" if (is_gold or is_sp500) else f"${entry_price:,.1f}"
             trade_markers.append({
                 "time": entry_time,
                 "position": "belowBar" if side == "LONG" else "aboveBar",
@@ -434,8 +443,8 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
                 "pnl_pct": pnl_pct
             })
 
-            # Advance index past exit candle to prevent overlapping trades
-            i = final_exit_idx + 1
+            # Advance index past exit candle or apply cooldown to prevent overlapping trades/rapid churn
+            i = max(final_exit_idx + 1, i + (25 if is_sp500 else 1))
         else:
             i += 1
 
@@ -598,6 +607,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
         "timeframe": timeframe,
         "status": "ACTIVE_DEPLOYED" if save_as_active else curr_sys_state.get("status", "PREVIEW"),
         "backtest_summary": backtest_summary,
+        "summary": backtest_summary,
         "signals_count": len(trades_detail),
         "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "trade_markers": trade_markers,

@@ -17,9 +17,11 @@ import websockets
 
 def resolve_market_symbol(symbol: str) -> str:
     """Maps user symbol to institutional exchange symbol."""
-    upper = symbol.replace("/", "").replace("-", "").replace(":", "").upper()
+    upper = symbol.replace("/", "").replace("-", "").replace(":", "").replace(" ", "").replace("&", "").upper()
     if upper in ("XAUUSD", "GOLD", "XAU", "OANDA", "XAU_USD", "OANDAXAUUSD", "GC=F", "GC", "PAXG", "PAXGUSD"):
         return "OANDA:XAUUSD"
+    if any(k in upper for k in ["SP500", "SPX", "ES", "US500", "SPY"]):
+        return "CME_MINI:ES1!"
     return upper
 
 
@@ -142,6 +144,9 @@ def bridge_candles_to_now(df: pd.DataFrame, interval: str = "1m", symbol: str = 
         last_close = float(last_row["close"])
         last_vol = float(last_row.get("volume", 10.0))
         is_gold = "XAU" in symbol.upper() or "GOLD" in symbol.upper()
+        is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500"])
+        noise_std = 0.08 if is_gold else (0.40 if is_sp else curr_price * 0.0002)
+        vol_std = 0.00012 if is_sp else (0.00015 if is_gold else 0.0004)
         
         new_rows = []
         curr_price = last_close
@@ -149,12 +154,12 @@ def bridge_candles_to_now(df: pd.DataFrame, interval: str = "1m", symbol: str = 
         np.random.seed(int(last_ts) % 100000)
 
         while curr_ts <= now_ts:
-            # Micro random walk (~0.01% - 0.02% per bar)
-            pct_change = float(np.random.normal(0.0, 0.00015 if is_gold else 0.0004))
+            # Micro random walk (~0.01% per bar)
+            pct_change = float(np.random.normal(0.0, vol_std))
             open_p = curr_price
             close_p = round(curr_price * (1.0 + pct_change), 2)
-            high_p = round(max(open_p, close_p) + abs(float(np.random.normal(0, 0.08 if is_gold else curr_price * 0.0002))), 2)
-            low_p = round(min(open_p, close_p) - abs(float(np.random.normal(0, 0.08 if is_gold else curr_price * 0.0002))), 2)
+            high_p = round(max(open_p, close_p) + abs(float(np.random.normal(0, noise_std))), 2)
+            low_p = round(min(open_p, close_p) - abs(float(np.random.normal(0, noise_std))), 2)
             vol = round(max(1.0, float(np.random.normal(last_vol, last_vol * 0.2))), 4)
 
             new_rows.append({
@@ -327,6 +332,22 @@ def fetch_real_binance_klines(symbol: str = "BTC/USDT", interval: str = "15m", c
         return fetch_real_oanda_candles(interval=interval, count=count)
     elif clean_sym == "GC=F":
         return fetch_real_comex_gold_candles(interval=interval, count=count)
+    elif clean_sym == "CME_MINI:ES1!":
+        csv_path = "data/sp500_candles_1m.csv"
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
+            return [
+                {
+                    "time": int(r.get("timestamp", r.get("time", 0))),
+                    "open": round(float(r["open"]), 2),
+                    "high": round(float(r["high"]), 2),
+                    "low": round(float(r["low"]), 2),
+                    "close": round(float(r["close"]), 2),
+                    "volume": round(float(r.get("volume", 10.0)), 4)
+                }
+                for r in records
+            ]
 
     logger.info(f"[DataManager] Fetching {count} real candles for {clean_sym} ({symbol}) {interval} from Binance REST API")
 

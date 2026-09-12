@@ -7,6 +7,7 @@
       :selectedStrategy="selectedStrategy"
       :activeStrategy="activeStrategy"
       :isGoldStrategy="isGoldStrategy"
+      :isSpStrategy="isSpStrategy"
       :allInspectableSignals="allInspectableSignals"
       :selectedSignalIndex="selectedSignalIndex"
       :inspectedSignal="inspectedSignal"
@@ -29,6 +30,7 @@
       :selectedSignalIndex="selectedSignalIndex"
       :tradeRiskReward="tradeRiskReward"
       :isGoldStrategy="isGoldStrategy"
+      :isSpStrategy="isSpStrategy"
     />
 
     <!-- ── Lightweight Charts Main Canvas Container ── -->
@@ -226,15 +228,22 @@ let bbLowerSeries: ISeriesApi<'Line'> | null = null;
 let hhSeries: ISeriesApi<'Line'> | null = null;
 let llSeries: ISeriesApi<'Line'> | null = null;
 
-const cleanStrategyName = computed(() => (props.selectedStrategy || props.activeStrategy || 'GoatFundedTraderXauusdScalper').replace('.py', ''));
-const isGoldStrategy = computed(() => cleanStrategyName.value.toLowerCase().includes('xau') || cleanStrategyName.value.toLowerCase().includes('gold'));
+const cleanStrategyName = computed(() => (props.selectedStrategy || props.activeStrategy || 'OpeningFlushReversalScalper').replace('.py', ''));
+const isGoldStrategy = computed(() => {
+  const s = cleanStrategyName.value.toLowerCase();
+  return s.includes('xau') || s.includes('gold') || s.includes('goat');
+});
+const isSpStrategy = computed(() => {
+  const s = cleanStrategyName.value.toLowerCase();
+  return s.includes('sp500') || s.includes('openingflush') || s.includes('es') || s.includes('reversal');
+});
 
 const formatPrice = (p: number | undefined | null) => {
   if (p == null || isNaN(p)) return '–';
-  return isGoldStrategy.value ? p.toFixed(2) : p.toFixed(1);
+  return (isGoldStrategy.value || isSpStrategy.value) ? p.toFixed(2) : p.toFixed(1);
 };
 
-const selectedSymbol = ref(isGoldStrategy.value ? 'XAU/USD' : 'BTC/USDT');
+const selectedSymbol = ref(isSpStrategy.value ? 'S&P 500 (ES)' : (isGoldStrategy.value ? 'XAU/USD' : 'BTC/USDT'));
 const isWsConnected = ref(false);
 const lastLivePrice = ref<number | null>(null);
 const priceFlash = ref<'up' | 'down' | null>(null);
@@ -705,8 +714,9 @@ const loadCandles = async () => {
   loadingCandles.value = true;
 
   try {
-    const isGold = selectedSymbol.value.toLowerCase().includes('xau');
-    const apiSym = isGold ? 'XAUUSD' : selectedSymbol.value;
+    const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
+    const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
+    const apiSym = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAUUSD' : selectedSymbol.value);
     const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=20000&mode=live`);
     const data = await res.json();
 
@@ -828,9 +838,30 @@ const applyMarkers = (markers: any[]) => {
 
 // Live price streams
 const startLiveFeeds = () => {
-  const isGold = selectedSymbol.value.toLowerCase().includes('xau');
+  const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
+  const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
 
-  if (isGold) {
+  if (isSp) {
+    isWsConnected.value = true;
+    const pollSp500 = async () => {
+      try {
+        const res = await fetch('/api/sp500/quote');
+        const data = await res.json();
+        if (data?.quote?.price) {
+          const p = parseFloat(data.quote.price);
+          if (!isNaN(p) && p > 0) {
+            if (lastLivePrice.value !== null) {
+              priceFlash.value = p >= lastLivePrice.value ? 'up' : 'down';
+              setTimeout(() => { priceFlash.value = null; }, 500);
+            }
+            lastLivePrice.value = p;
+          }
+        }
+      } catch {}
+    };
+    pollSp500();
+    oandaTimer = setInterval(pollSp500, 2000);
+  } else if (isGold) {
     isWsConnected.value = true;
     const pollOanda = async () => {
       try {
@@ -893,8 +924,10 @@ watch(selectedSymbol, () => {
 
 watch(() => props.selectedStrategy, (newStrat) => {
   if (newStrat) {
-    const isGold = newStrat.toLowerCase().includes('xau') || newStrat.toLowerCase().includes('gold');
-    selectedSymbol.value = isGold ? 'XAU/USD' : 'BTC/USDT';
+    const s = newStrat.toLowerCase();
+    const isSp = s.includes('sp') || s.includes('es') || s.includes('opening');
+    const isGold = s.includes('xau') || s.includes('gold') || s.includes('goat');
+    selectedSymbol.value = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAU/USD' : 'BTC/USDT');
   }
 });
 
@@ -939,13 +972,6 @@ watch(inspectedSignal, () => {
   nextTick(() => {
     updateBoxCoordinates();
   });
-});
-
-watch(() => props.selectedStrategy, (newStrat) => {
-  if (!newStrat) return;
-  const isGold = newStrat.toLowerCase().includes('xau') || newStrat.toLowerCase().includes('gold');
-  selectedSymbol.value = isGold ? 'XAU/USD' : 'BTC/USDT';
-  loadCandles();
 });
 
 onMounted(() => {

@@ -1,0 +1,103 @@
+//@version=5
+strategy("S&P 500 Opening Flush Reversal Scalper [NujinAI]", overlay=true, initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=0.5, commission_type=strategy.commission.percent, commission_value=0.0001)
+
+// ==============================================================================
+// 1. INPUTS & HYPERPARAMETERS (Calibrated for S&P 500 / ES 1-Minute)
+// Reference: https://www.youtube.com/shorts/dnOPOEYq6fM
+// ==============================================================================
+grp_model   = "=== 4-FACTOR S&P 500 OPENING FLUSH MODEL ==="
+lookback_pm = input.int(120, "Pre-Market / Overnight Lookback (1m Bars)", minval=30, maxval=360, group=grp_model)
+atr_len     = input.int(14, "ATR Length", minval=1, group=grp_model)
+atr_mult    = input.float(1.6, "ATR Dynamic Volatility Envelope Multiplier", step=0.1, group=grp_model)
+
+grp_timing  = "=== REVERSAL TIMING WINDOWS ==="
+use_timing  = input.bool(true, "Enable Session Opening Bell Filter", group=grp_timing)
+ny_session  = input.session("1345-1420", "US RTH Session Reversal Window (UTC / 9:45-10:20 EST)", group=grp_timing)
+lon_session = input.session("0715-0750", "London Session Reversal Window (UTC / 08:15-08:50 BST)", group=grp_timing)
+
+grp_risk    = "=== STRUCTURAL BRACKET EXITS ==="
+rr_ratio    = input.float(2.0, "Risk-Reward Ratio (Target Multiple)", step=0.1, group=grp_risk)
+max_bars    = input.int(44, "Max Holding Bars (Time-Decay Exit)", minval=10, maxval=60, group=grp_risk)
+
+// ==============================================================================
+// 2. INDICATORS & MARKET GEOMETRY
+// ==============================================================================
+atr_val       = ta.atr(atr_len)
+atr_lower     = close[1] - (atr_mult * atr_val[1])
+atr_upper     = close[1] + (atr_mult * atr_val[1])
+
+// Factor 1: Pre-Market Support & Resistance Zones
+pm_support    = ta.lowest(low, lookback_pm)[20]
+pm_resistance = ta.highest(high, lookback_pm)[20]
+
+// Factor 2: Opening Reversal Window
+in_session    = not use_timing or not na(time(timeframe.period, ny_session, "UTC")) or not na(time(timeframe.period, lon_session, "UTC"))
+
+// Factor 3: Strong Flush Piercing Support or Resistance
+flush_down    = ta.lowest(low, 15) <= (pm_support * 1.0005)
+flush_up      = ta.highest(high, 15) >= (pm_resistance * 0.9995)
+
+// Factor 4: Market Structure Shift & Head & Shoulders Neckline Breakouts
+// LONG: Inverted H&S (Head lowest in 12 bars, Right Shoulder higher low, Breakout > neckline)
+head_low      = ta.lowest(low[3], 12)
+shoulder_low  = ta.lowest(low, 3)
+right_shldr_l = (shoulder_low > head_low) and (shoulder_low <= head_low + (2.0 * atr_val))
+neckline_long = ta.highest(high[1], 5)
+long_trigger  = in_session and flush_down and right_shldr_l and (close > neckline_long) and (close > open)
+
+// SHORT: Regular H&S (Head highest in 12 bars, Right Shoulder lower high, Breakdown < neckline)
+head_high     = ta.highest(high[3], 12)
+shoulder_high = ta.highest(high, 3)
+right_shldr_s = (shoulder_high < head_high) and (shoulder_high >= head_high - (2.0 * atr_val))
+neckline_shrt = ta.lowest(low[1], 5)
+short_trigger = in_session and flush_up and right_shldr_s and (close < neckline_shrt) and (close < open)
+
+// ==============================================================================
+// 3. EXECUTION SIGNALS & STRUCTURAL BRACKETS
+// ==============================================================================
+var float entry_price = na
+var float current_sl  = na
+var float current_tp  = na
+var int   bars_in_pos = 0
+
+// Cooldown between trades
+var int   last_exit_bar = -100
+can_trade = (bar_index - last_exit_bar) >= 25
+
+if (long_trigger and strategy.position_size == 0 and can_trade)
+    entry_price := close
+    float risk   = math.max(close - math.min(head_low - 0.5, close - 1.8 * atr_val), 2.0)
+    current_sl  := close - risk
+    current_tp  := close + (rr_ratio * risk)
+    bars_in_pos := 0
+    strategy.entry("ES_Open_Long", strategy.long)
+    strategy.exit("Exit_Long", "ES_Open_Long", stop=current_sl, limit=current_tp)
+
+if (short_trigger and strategy.position_size == 0 and can_trade)
+    entry_price := close
+    float risk   = math.max(math.max(head_high + 0.5, close + 1.8 * atr_val) - close, 2.0)
+    current_sl  := close + risk
+    current_tp  := close - (rr_ratio * risk)
+    bars_in_pos := 0
+    strategy.entry("ES_Open_Short", strategy.short)
+    strategy.exit("Exit_Short", "ES_Open_Short", stop=current_sl, limit=current_tp)
+
+if (strategy.position_size != 0)
+    bars_in_pos += 1
+    if (bars_in_pos >= max_bars)
+        strategy.close_all(comment="MaxBars_Timeout")
+        last_exit_bar := bar_index
+else if (strategy.position_size[1] != 0 and strategy.position_size == 0)
+    last_exit_bar := bar_index
+
+// ==============================================================================
+// 4. VISUAL TELEMETRY & PLOTTING
+// ==============================================================================
+plot(pm_support, "Pre-Market Support Zone", color=color.new(color.green, 20), linewidth=2, style=plot.style_line)
+plot(pm_resistance, "Pre-Market Resistance Zone", color=color.new(color.red, 20), linewidth=2, style=plot.style_line)
+
+bgcolor(in_session ? color.new(color.blue, 96) : na, title="Opening Reversal Window")
+
+plotshape(long_trigger and strategy.position_size == 0 and can_trade, title="Opening Flush Long Entry", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small, text="BUY ES")
+plotshape(short_trigger and strategy.position_size == 0 and can_trade, title="Opening Flush Short Entry", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.small, text="SELL ES")
+

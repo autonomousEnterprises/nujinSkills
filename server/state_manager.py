@@ -499,6 +499,7 @@ class StrategyRegistry:
                 logger.debug(f"[StrategyRegistry] Metadata extract error for {filename}: {e}")
 
         is_xau = ("XAU" in clean.upper()) or ("GOAT" in clean.upper()) or ("GOLD" in clean.upper())
+        is_sp500 = any(k in clean.upper() for k in ["SP500", "SPX", "ES", "FLUSH"])
         is_trap = "TRAP" in clean.upper()
         is_atr = ("ATR" in clean.upper()) or ("MNQ" in clean.upper()) or ("HYBRID" in clean.upper())
 
@@ -507,11 +508,20 @@ class StrategyRegistry:
         humanized_name = re.sub(r'\s+', ' ', humanized_name)
 
         if not symbol:
-            symbol = "XAU/USD" if is_xau else "BTC/USDT"
+            if is_sp500:
+                symbol = "S&P 500 (ES)"
+            elif is_xau:
+                symbol = "XAU/USD"
+            else:
+                symbol = "BTC/USDT"
         if not timeframe:
-            timeframe = "1m" if is_xau else "15m"
+            timeframe = "1m" if (is_xau or is_sp500) else "15m"
 
-        if is_xau:
+        if is_sp500:
+            display_name = display_name or "S&P 500 Opening Flush Reversal Scalper"
+            target_profile = target_profile or "S&P 500 Futures Intraday Reversal (1m)"
+            thesis = thesis or "4-Factor Opening Liquidity Flush & Inverted Head-and-Shoulders Reversal on S&P 500 Futures"
+        elif is_xau:
             display_name = display_name or "Goat Funded Trader XAUUSD Scalper"
             target_profile = target_profile or "Goat Funded Trader Prop Scalper (2m-15m)"
             thesis = thesis or "Dynamic Range Expansion Momentum Train on 1m-15m London/NY sessions"

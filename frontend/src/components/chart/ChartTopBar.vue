@@ -18,7 +18,7 @@
               :class="strat.name === selectedStrategy ? 'active font-bold bg-primary/10 text-primary' : ''"
             >
               <div class="flex items-center gap-2 truncate">
-                <span class="w-1.5 h-1.5 rounded-full" :class="strat.name.toLowerCase().includes('xau') ? 'bg-warning' : 'bg-info'" />
+                <span class="w-1.5 h-1.5 rounded-full" :class="strat.name.toLowerCase().includes('sp') || strat.name.toLowerCase().includes('opening') ? 'bg-success' : (strat.name.toLowerCase().includes('xau') ? 'bg-warning' : 'bg-info')" />
                 <span class="truncate font-mono">{{ strat.name.replace('.py', '') }}</span>
               </div>
               <div class="flex items-center gap-1 shrink-0">
@@ -32,8 +32,8 @@
 
       <!-- Symbol / Asset Tag -->
       <div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-base-300/80 border border-base-content/10 text-[11px] font-bold">
-        <span>{{ isGoldStrategy ? '🟡 XAU/USD' : '🔵 BTC/USDT' }}</span>
-        <span class="text-[9px] opacity-60 uppercase">{{ isGoldStrategy ? 'Spot' : 'Binance' }}</span>
+        <span>{{ isSpStrategy ? '🟢 S&P 500' : (isGoldStrategy ? '🟡 XAU/USD' : '🔵 BTC/USDT') }}</span>
+        <span class="text-[9px] opacity-60 uppercase">{{ isSpStrategy ? 'CME ES 1m' : (isGoldStrategy ? 'Spot 1m' : 'Binance 15m') }}</span>
       </div>
     </div>
 
@@ -202,7 +202,7 @@
 
                     <!-- Middle row: Entry Price + PnL -->
                     <div class="flex items-center justify-between gap-1 w-full font-mono text-[11px]">
-                      <span class="text-base-content/90 font-bold">${{ formatPrice(item.sig.entry_price, isGoldStrategy) }}</span>
+                      <span class="text-base-content/90 font-bold">${{ formatPrice(item.sig.entry_price, isGoldStrategy || isSpStrategy) }}</span>
                       <span 
                         class="font-bold text-xs"
                         :class="(item.sig.pnl_pct || 0) >= 0 ? 'text-success' : 'text-error'"
@@ -214,7 +214,7 @@
                     <!-- Bottom row: Exit Details -->
                     <div v-if="item.sig.exit_reason" class="flex items-center justify-between text-[9px] opacity-40">
                       <span>{{ item.sig.exit_reason }}</span>
-                      <span v-if="item.sig.exit_price">${{ formatPrice(item.sig.exit_price, isGoldStrategy) }}</span>
+                      <span v-if="item.sig.exit_price">${{ formatPrice(item.sig.exit_price, isGoldStrategy || isSpStrategy) }}</span>
                     </div>
                   </button>
                 </div>
@@ -321,6 +321,7 @@ const props = defineProps<{
   selectedStrategy: string;
   activeStrategy: string;
   isGoldStrategy: boolean;
+  isSpStrategy?: boolean;
   allInspectableSignals: InspectableSignal[];
   selectedSignalIndex: number;
   inspectedSignal?: InspectableSignal | null;
