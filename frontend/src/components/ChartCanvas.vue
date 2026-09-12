@@ -374,7 +374,11 @@ const getYForPrice = (price: number): number => {
 };
 
 const findCandleIndex = (timeSec: number): number => {
-  if (!rawCandles.value || rawCandles.value.length === 0) return 0;
+  if (!rawCandles.value || rawCandles.value.length === 0) return -1;
+  const firstT = Number(rawCandles.value[0].time);
+  const lastT = Number(rawCandles.value[rawCandles.value.length - 1].time);
+  if (timeSec < firstT || timeSec > lastT) return -1;
+
   let low = 0, high = rawCandles.value.length - 1;
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
@@ -409,6 +413,10 @@ const updateBoxCoordinates = () => {
   const localExitTime = rawExit ? timeToLocal(rawExit) : null;
 
   const entryIdx = findCandleIndex(rawEntry);
+  if (entryIdx < 0) {
+    positionBoxes.value = [];
+    return;
+  }
   let x1Raw = chart.timeScale().logicalToCoordinate(entryIdx as any);
   if (x1Raw === null) {
     x1Raw = chart.timeScale().timeToCoordinate(localEntryTime as Time);
@@ -498,8 +506,15 @@ const getClampedY = (y: number) => {
 // Center and zoom chart onto a specific trade jump
 const centerOnTrade = (trade: InspectableSignal) => {
   if (!chart || !candleSeries || !trade || !trade.entry_time) return;
+  if (!rawCandles.value || rawCandles.value.length === 0) return;
   try {
     const rawEntry = trade.entry_time > 2000000000 ? trade.entry_time / 1000 : trade.entry_time;
+    const firstT = Number(rawCandles.value[0].time);
+    const lastT = Number(rawCandles.value[rawCandles.value.length - 1].time);
+    if (rawEntry < firstT || rawEntry > lastT) {
+      console.warn(`[ChartCanvas] Trade entry time ${rawEntry} is outside candle range [${firstT}, ${lastT}]`);
+      return;
+    }
     const rawExit = trade.exit_time 
       ? (trade.exit_time > 2000000000 ? trade.exit_time / 1000 : trade.exit_time)
       : rawEntry + 15 * 60;
@@ -681,7 +696,7 @@ const loadCandles = async () => {
   try {
     const isGold = selectedSymbol.value.toLowerCase().includes('xau');
     const apiSym = isGold ? 'XAUUSD' : selectedSymbol.value;
-    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=4000&mode=live`);
+    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=20000&mode=live`);
     const data = await res.json();
 
     if (data.data && data.data.length > 0) {
@@ -766,15 +781,34 @@ const loadCandles = async () => {
 };
 
 const applyMarkers = (markers: any[]) => {
-  if (!candleSeries) return;
+  if (!candleSeries || !rawCandles.value || rawCandles.value.length === 0) return;
   try {
-    const formatted = markers.map((m) => ({
-      time: (typeof m.time === 'number' && m.time > 2000000000 ? timeToLocal(m.time / 1000) : timeToLocal(m.time)) as Time,
-      position: m.position || (m.action === 'BUY' ? 'belowBar' : 'aboveBar'),
-      color: m.color || (m.action === 'BUY' ? '#26a69a' : '#ef5350'),
-      shape: m.shape || (m.action === 'BUY' ? 'arrowUp' : 'arrowDown'),
-      text: m.text || m.action || 'SIGNAL',
-    }));
+    const firstTime = Number(rawCandles.value[0].time);
+    const lastTime = Number(rawCandles.value[rawCandles.value.length - 1].time);
+
+    // Filter markers that fall strictly within the loaded candle timeline.
+    // Lightweight Charts clamps out-of-bounds timestamps to the first or last bar,
+    // which previously caused all earlier backtest trades to pile into an erroneous vertical stack on the first candle.
+    const validMarkers = markers.filter((m) => {
+      if (!m || m.time === undefined || m.time === null) return false;
+      const rawT = typeof m.time === 'number' && m.time > 2000000000 ? m.time / 1000 : Number(m.time);
+      return rawT >= firstTime && rawT <= lastTime;
+    });
+
+    const formatted = validMarkers.map((m) => {
+      const rawT = typeof m.time === 'number' && m.time > 2000000000 ? m.time / 1000 : Number(m.time);
+      return {
+        time: timeToLocal(rawT) as Time,
+        position: m.position || (m.action === 'BUY' ? 'belowBar' : 'aboveBar'),
+        color: m.color || (m.action === 'BUY' ? '#26a69a' : '#ef5350'),
+        shape: m.shape || (m.action === 'BUY' ? 'arrowUp' : 'arrowDown'),
+        text: m.text || m.action || 'SIGNAL',
+      };
+    });
+
+    // Lightweight charts strictly requires markers to be sorted by time ascending
+    formatted.sort((a, b) => Number(a.time) - Number(b.time));
+
     candleSeries.setMarkers(formatted);
   } catch (e) {
     console.warn('[ChartCanvas] Error applying markers:', e);
@@ -869,7 +903,7 @@ watch(() => props.theme, (newTheme) => {
 });
 
 watch(() => props.tradeMarkers, (newMarkers) => {
-  if (newMarkers) applyMarkers(newMarkers);
+  if (newMarkers && !loadingCandles.value) applyMarkers(newMarkers);
 }, { deep: true });
 
 watch(() => props.tradesDetail, () => {

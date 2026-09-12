@@ -437,9 +437,23 @@ class XauusdScalpEngine:
                             # If missed more than 1 minute (e.g. startup/reconnect gap), backfill authentic bars
                             if (minute_bucket - last_c["time"]) > 120:
                                 from server.data_manager import fetch_real_oanda_candles
-                                fresh = await loop.run_in_executor(None, lambda: fetch_real_oanda_candles(interval="1m", count=1000, force_refresh=True))
-                                if fresh:
+                                fresh = await loop.run_in_executor(None, lambda: fetch_real_oanda_candles(interval="1m", count=20000, force_refresh=False))
+                                if fresh and fresh[-1]["time"] >= minute_bucket - 120:
                                     self.candles_1m = fresh
+                                else:
+                                    curr_t = last_c["time"] + 60
+                                    prev_close = last_c["close"]
+                                    while curr_t <= minute_bucket:
+                                        self.candles_1m.append({
+                                            "time": curr_t,
+                                            "open": prev_close,
+                                            "high": max(prev_close, c_close),
+                                            "low": min(prev_close, c_close),
+                                            "close": c_close if curr_t == minute_bucket else prev_close,
+                                            "volume": round(max(10.0, baseline_vol / 30.0), 1)
+                                        })
+                                        prev_close = c_close
+                                        curr_t += 60
                             else:
                                 prev_close = last_c["close"]
                                 initial_vol = round(max(10.0, baseline_vol / 30.0), 1)

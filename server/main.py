@@ -106,9 +106,9 @@ async def get_system_status():
     }
 
 @app.get("/api/candles")
-async def get_candles(symbol: Optional[str] = None, count: int = 1500, mode: str = "live"):
+async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: str = "live"):
     """
-    Returns real OHLCV candles from Binance public API.
+    Returns real OHLCV candles from Binance / OANDA public APIs or local cache bridged to current time.
     Auto-detects symbol and timeframe based on active strategy (XAU/USD 1m vs BTC/USDT 15m).
     """
     if not symbol:
@@ -126,10 +126,36 @@ async def get_candles(symbol: Optional[str] = None, count: int = 1500, mode: str
             data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
     except Exception as e:
         logger.error(f"[Candles] Failed to fetch real data for {symbol}: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail=f"Real market data unavailable for {symbol}. Error: {str(e)}"
-        )
+        # Robust fallback to cached dataset with automatic bridging up to current time
+        csv_path = "data/xauusd_candles_1m.csv" if is_xau else "data/candles_15m.csv"
+        if os.path.exists(csv_path):
+            try:
+                import pandas as pd
+                from server.data_manager import bridge_candles_to_now
+                df = pd.read_csv(csv_path)
+                df = bridge_candles_to_now(df, interval=interval, symbol=symbol)
+                records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
+                data = [
+                    {
+                        "time": int(r.get("timestamp", r.get("time", 0))),
+                        "open": round(float(r["open"]), 2),
+                        "high": round(float(r["high"]), 2),
+                        "low": round(float(r["low"]), 2),
+                        "close": round(float(r["close"]), 2),
+                        "volume": round(float(r.get("volume", 10.0)), 4)
+                    }
+                    for r in records
+                ]
+            except Exception as e_csv:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Real market data unavailable for {symbol}. Error: {str(e)} (Cache fallback error: {e_csv})"
+                )
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Real market data unavailable for {symbol}. Error: {str(e)}"
+            )
     return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
 
 

@@ -80,37 +80,176 @@
               <ChevronDown class="w-2.5 h-2.5 opacity-50" />
             </label>
 
-            <!-- Dropdown List of All Trades to Jump To -->
-            <ul tabindex="0" class="dropdown-content menu p-1 shadow-2xl bg-base-300 rounded-box w-72 max-h-72 overflow-y-auto z-50 border border-base-content/15 text-[11px] space-y-0.5 font-mono">
-              <li class="menu-title text-[9px] uppercase font-bold text-base-content/50 px-2 py-1 flex items-center justify-between">
-                <span>Select Trade Jump</span>
-                <span class="text-primary">{{ allInspectableSignals.length }} Trades</span>
-              </li>
-              <li v-for="(sig, idx) in allInspectableSignals" :key="sig.id">
-                <button 
-                  @click="emit('jumpToIndex', idx)"
-                  class="flex items-center justify-between py-1 px-2 rounded hover:bg-base-200"
-                  :class="idx === selectedSignalIndex ? 'active font-bold bg-primary/10 text-primary' : ''"
-                >
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-base-content/50 text-[10px]">#{{ idx + 1 }}</span>
-                    <span class="badge badge-xs font-bold text-[9px]" :class="sig.side === 'BUY' || sig.side === 'LONG' ? 'badge-success' : 'badge-error'">
-                      {{ sig.side }}
-                    </span>
-                    <span class="text-[10px]">${{ formatPrice(sig.entry_price, isGoldStrategy) }}</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <span 
-                      class="text-[10px] font-bold font-mono"
-                      :class="(sig.pnl_pct || 0) >= 0 ? 'text-success' : 'text-error'"
-                    >
-                      {{ (sig.pnl_pct || 0) >= 0 ? '+' : '' }}{{ (sig.pnl_pct || 0).toFixed(2) }}%
-                    </span>
-                    <span v-if="sig.isLiveActive" class="badge badge-xs badge-success text-[8px] font-bold">LIVE</span>
-                  </div>
-                </button>
-              </li>
-            </ul>
+            <!-- Extended Mega-Menu: Trade Jump Explorer -->
+            <div 
+              tabindex="0" 
+              class="dropdown-content shadow-2xl bg-base-300/95 backdrop-blur-xl rounded-2xl w-[740px] max-w-[92vw] max-h-[580px] z-50 border border-base-content/20 text-xs font-mono flex flex-col mt-2 p-0 overflow-hidden shadow-primary/5"
+            >
+              <!-- 1. Mega-Menu Header with Aggregate KPIs -->
+              <div class="px-4 py-2.5 bg-base-200/90 border-b border-base-content/10 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-bold text-xs uppercase tracking-wider text-base-content flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-primary animate-ping" />
+                    Trade Jump Mega-Menu
+                  </span>
+                  <span class="badge badge-primary badge-sm font-bold text-[10px]">
+                    {{ allInspectableSignals.length }} TRADES
+                  </span>
+                </div>
+
+                <!-- Quick Stats Chips -->
+                <div class="flex items-center gap-1.5 text-[10px]">
+                  <span class="px-2 py-0.5 rounded bg-base-100/80 border border-base-content/10 text-base-content/70">
+                    Win Rate: <strong class="text-success">{{ winRatePct }}%</strong>
+                  </span>
+                  <span class="px-2 py-0.5 rounded bg-base-100/80 border border-base-content/10 text-base-content/70">
+                    Longs: <strong class="text-success">{{ longCount }}</strong> | Shorts: <strong class="text-error">{{ shortCount }}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <!-- 2. Search and Filter Bar -->
+              <div class="p-2.5 bg-base-200/50 border-b border-base-content/10 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <!-- Search Input -->
+                <div class="relative flex-1 min-w-[200px]">
+                  <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 opacity-40 text-base-content" />
+                  <input 
+                    type="text"
+                    v-model="searchQuery"
+                    placeholder="Search by #, price, direction, reason..."
+                    class="input input-xs input-bordered w-full pl-8 font-mono text-[11px] bg-base-100 focus:border-primary"
+                  />
+                  <button 
+                    v-if="searchQuery"
+                    @click="searchQuery = ''"
+                    class="btn btn-ghost btn-xs absolute right-1 top-1/2 -translate-y-1/2 h-5 min-h-0 w-5 p-0 text-[10px] opacity-60"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <!-- Filter Pills -->
+                <div class="join bg-base-100 border border-base-content/10 rounded-lg p-0.5 text-[10px]">
+                  <button 
+                    @click="activeFilter = 'ALL'"
+                    class="btn btn-xs join-item font-mono h-6 min-h-0 px-2.5"
+                    :class="activeFilter === 'ALL' ? 'btn-primary font-bold' : 'btn-ghost'"
+                  >
+                    All ({{ allInspectableSignals.length }})
+                  </button>
+                  <button 
+                    @click="activeFilter = 'WIN'"
+                    class="btn btn-xs join-item font-mono h-6 min-h-0 px-2.5"
+                    :class="activeFilter === 'WIN' ? 'btn-success text-success-content font-bold' : 'btn-ghost text-success'"
+                  >
+                    Wins ({{ winCount }})
+                  </button>
+                  <button 
+                    @click="activeFilter = 'LOSS'"
+                    class="btn btn-xs join-item font-mono h-6 min-h-0 px-2.5"
+                    :class="activeFilter === 'LOSS' ? 'btn-error text-error-content font-bold' : 'btn-ghost text-error'"
+                  >
+                    Losses ({{ lossCount }})
+                  </button>
+                  <button 
+                    @click="activeFilter = 'LONG'"
+                    class="btn btn-xs join-item font-mono h-6 min-h-0 px-2"
+                    :class="activeFilter === 'LONG' ? 'btn-primary font-bold' : 'btn-ghost'"
+                  >
+                    Longs ({{ longCount }})
+                  </button>
+                  <button 
+                    @click="activeFilter = 'SHORT'"
+                    class="btn btn-xs join-item font-mono h-6 min-h-0 px-2"
+                    :class="activeFilter === 'SHORT' ? 'btn-primary font-bold' : 'btn-ghost'"
+                  >
+                    Shorts ({{ shortCount }})
+                  </button>
+                </div>
+              </div>
+
+              <!-- 3. Multi-Column Trades Grid -->
+              <div class="flex-1 overflow-y-auto p-2.5 max-h-[380px]">
+                <div v-if="filteredSignals.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5">
+                  <button 
+                    v-for="item in filteredSignals" 
+                    :key="item.sig.id"
+                    @click="selectTrade(item.idx)"
+                    class="group flex flex-col gap-1 p-2 rounded-lg border transition-all text-left relative overflow-hidden"
+                    :class="item.idx === selectedSignalIndex 
+                      ? 'bg-primary/20 border-primary shadow-sm ring-1 ring-primary' 
+                      : 'bg-base-200/70 border-base-content/10 hover:bg-base-100 hover:border-primary/50 hover:shadow'"
+                  >
+                    <!-- Top row: ID + Direction + Indicator -->
+                    <div class="flex items-center justify-between gap-1 w-full text-[11px]">
+                      <div class="flex items-center gap-1.5">
+                        <span class="font-bold opacity-60 text-[10px]">#{{ item.idx + 1 }}</span>
+                        <span 
+                          class="badge badge-xs font-bold text-[9px] px-1.5 py-0.5" 
+                          :class="item.sig.side === 'BUY' || item.sig.side === 'LONG' ? 'badge-success text-success-content' : 'badge-error text-error-content'"
+                        >
+                          {{ item.sig.side }}
+                        </span>
+                      </div>
+
+                      <span v-if="item.sig.isLiveActive" class="badge badge-xs badge-success text-[8px] font-bold animate-pulse">
+                        LIVE
+                      </span>
+                      <span v-else-if="item.idx === selectedSignalIndex" class="text-primary font-bold text-[9px]">
+                        ● ACTIVE
+                      </span>
+                    </div>
+
+                    <!-- Middle row: Entry Price + PnL -->
+                    <div class="flex items-center justify-between gap-1 w-full font-mono text-[11px]">
+                      <span class="text-base-content/90 font-bold">${{ formatPrice(item.sig.entry_price, isGoldStrategy) }}</span>
+                      <span 
+                        class="font-bold text-xs"
+                        :class="(item.sig.pnl_pct || 0) >= 0 ? 'text-success' : 'text-error'"
+                      >
+                        {{ (item.sig.pnl_pct || 0) >= 0 ? '+' : '' }}{{ (item.sig.pnl_pct || 0).toFixed(2) }}%
+                      </span>
+                    </div>
+
+                    <!-- Bottom row: Exit Details -->
+                    <div v-if="item.sig.exit_reason" class="flex items-center justify-between text-[9px] opacity-40">
+                      <span>{{ item.sig.exit_reason }}</span>
+                      <span v-if="item.sig.exit_price">${{ formatPrice(item.sig.exit_price, isGoldStrategy) }}</span>
+                    </div>
+                  </button>
+                </div>
+
+                <!-- Empty Search State -->
+                <div v-else class="py-12 text-center text-base-content/40 space-y-1">
+                  <p class="font-bold text-xs">No trades match criteria</p>
+                  <p class="text-[10px]">Try clearing your search query or selecting "All"</p>
+                </div>
+              </div>
+
+              <!-- 4. Footer Bar with Quick Jump buttons -->
+              <div class="px-3 py-2 bg-base-200/90 border-t border-base-content/10 flex items-center justify-between shrink-0 text-[10px] text-base-content/70">
+                <div class="flex items-center gap-1.5">
+                  <button 
+                    @click="selectTrade(0)"
+                    :disabled="selectedSignalIndex === 0"
+                    class="btn btn-ghost btn-xs h-6 min-h-0 text-[10px] disabled:opacity-30"
+                  >
+                    ⏮ First (#1)
+                  </button>
+                  <button 
+                    @click="selectTrade(allInspectableSignals.length - 1)"
+                    :disabled="selectedSignalIndex === allInspectableSignals.length - 1"
+                    class="btn btn-ghost btn-xs h-6 min-h-0 text-[10px] disabled:opacity-30"
+                  >
+                    ⏭ Latest (#{{ allInspectableSignals.length }})
+                  </button>
+                </div>
+
+                <div class="flex items-center gap-2 font-mono">
+                  <span>Hotkeys: <kbd class="kbd kbd-xs">[</kbd> Prev <kbd class="kbd kbd-xs">]</kbd> Next</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Next Jump Button -->
@@ -171,11 +310,12 @@
 </template>
 
 <script setup lang="ts">
-import { Sparkles, ChevronDown } from 'lucide-vue-next';
+import { ref, computed } from 'vue';
+import { Sparkles, ChevronDown, Search } from 'lucide-vue-next';
 import type { InspectableSignal } from '../../types';
 import { formatPrice } from '../../utils/formatters';
 
-defineProps<{
+const props = defineProps<{
   strategies: any[];
   cleanStrategyName: string;
   selectedStrategy: string;
@@ -198,4 +338,51 @@ const emit = defineEmits<{
   (e: 'jumpToLatest'): void;
   (e: 'jumpToActive'): void;
 }>();
+
+// ── Mega-Menu Search & Filter State ──
+const searchQuery = ref('');
+const activeFilter = ref<'ALL' | 'WIN' | 'LOSS' | 'LONG' | 'SHORT'>('ALL');
+
+const winCount = computed(() => (props.allInspectableSignals || []).filter(s => (s.pnl_pct || 0) >= 0).length);
+const lossCount = computed(() => (props.allInspectableSignals || []).filter(s => (s.pnl_pct || 0) < 0).length);
+const longCount = computed(() => (props.allInspectableSignals || []).filter(s => s.side === 'BUY' || s.side === 'LONG').length);
+const shortCount = computed(() => (props.allInspectableSignals || []).filter(s => s.side === 'SELL' || s.side === 'SHORT').length);
+const winRatePct = computed(() => {
+  const total = (props.allInspectableSignals || []).length;
+  if (total === 0) return '0.0';
+  return ((winCount.value / total) * 100).toFixed(1);
+});
+
+const filteredSignals = computed(() => {
+  const list = props.allInspectableSignals || [];
+  const query = searchQuery.value.trim().toLowerCase();
+
+  return list
+    .map((sig, idx) => ({ sig, idx }))
+    .filter(({ sig, idx }) => {
+      // Filter by classification
+      if (activeFilter.value === 'WIN' && (sig.pnl_pct || 0) < 0) return false;
+      if (activeFilter.value === 'LOSS' && (sig.pnl_pct || 0) >= 0) return false;
+      if (activeFilter.value === 'LONG' && sig.side !== 'BUY' && sig.side !== 'LONG') return false;
+      if (activeFilter.value === 'SHORT' && sig.side !== 'SELL' && sig.side !== 'SHORT') return false;
+
+      // Filter by search query
+      if (query) {
+        const idMatch = `#${idx + 1}`.includes(query) || `${idx + 1}` === query;
+        const sideMatch = (sig.side || '').toLowerCase().includes(query);
+        const priceMatch = (sig.entry_price || 0).toString().includes(query);
+        const pnlMatch = `${sig.pnl_pct || 0}%`.includes(query);
+        const reasonMatch = (sig.exit_reason || '').toLowerCase().includes(query);
+        return idMatch || sideMatch || priceMatch || pnlMatch || reasonMatch;
+      }
+      return true;
+    });
+});
+
+const selectTrade = (idx: number) => {
+  emit('jumpToIndex', idx);
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+};
 </script>
