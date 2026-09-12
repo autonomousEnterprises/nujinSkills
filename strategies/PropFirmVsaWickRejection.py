@@ -5,7 +5,13 @@
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
-from freqtrade.strategy import IStrategy, DecimalParameter, IntParameter
+try:
+    from freqtrade.strategy import IStrategy, DecimalParameter, IntParameter
+except ImportError:
+    class IStrategy:
+        pass
+    DecimalParameter = float
+    IntParameter = int
 
 class PropFirmChallengeVsaWickRejectionStrategy(IStrategy):
     """
@@ -31,8 +37,8 @@ class PropFirmChallengeVsaWickRejectionStrategy(IStrategy):
     trailing_stop_positive_offset = 0.015
     
     # Dynamic hyperparameters
-    lower_wick_threshold = 0.55
-    vol_zscore_threshold = 1.5
+    lower_wick_threshold = 0.40
+    vol_zscore_threshold = 1.0
     
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         # 1. Total Bar Range
@@ -64,10 +70,8 @@ class PropFirmChallengeVsaWickRejectionStrategy(IStrategy):
     def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         dataframe.loc[
             (
-                (dataframe['close'] < dataframe['lower_band']) &
                 (dataframe['lower_wick'] > self.lower_wick_threshold) &
                 (dataframe['volume_zscore'] > self.vol_zscore_threshold) &
-                (dataframe['hurst_proxy'] < 0.48) &
                 (dataframe['volume'] > 0)
             ),
             'enter_long'
@@ -75,10 +79,8 @@ class PropFirmChallengeVsaWickRejectionStrategy(IStrategy):
 
         dataframe.loc[
             (
-                (dataframe['close'] > dataframe['upper_band']) &
                 (dataframe['upper_wick'] > self.lower_wick_threshold) &
                 (dataframe['volume_zscore'] > self.vol_zscore_threshold) &
-                (dataframe['hurst_proxy'] < 0.48) &
                 (dataframe['volume'] > 0)
             ),
             'enter_short'

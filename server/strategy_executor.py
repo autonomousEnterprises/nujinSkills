@@ -102,6 +102,44 @@ class StrategyEvaluator:
         bar_ts = int(curr_bar.get("time", curr_bar.get("timestamp", 0)))
         is_xau = "XAU" in symbol.upper() or "GOLD" in symbol.upper() or "GOAT" in clean_name.upper()
 
+        # 1. Attempt dynamic evaluation via strategy class
+        try:
+            from server.backtest_engine import load_strategy_instance
+            strat_inst = load_strategy_instance(clean_name)
+            if strat_inst:
+                df_dyn = strat_inst.populate_indicators(df.copy(), {})
+                df_dyn = strat_inst.populate_entry_trend(df_dyn, {})
+                last_row = df_dyn.iloc[-1]
+                is_l = bool(last_row.get("enter_long", 0) == 1)
+                is_s = bool(last_row.get("enter_short", 0) == 1) if getattr(strat_inst, "can_short", True) else False
+                if is_l or is_s:
+                    side = "BUY" if is_l else "SELL"
+                    stoploss_pct = abs(float(getattr(strat_inst, "stoploss", -0.02)))
+                    minimal_roi = getattr(strat_inst, "minimal_roi", {})
+                    roi_0 = float(minimal_roi.get("0", minimal_roi.get(0, 0.035))) if minimal_roi else (stoploss_pct * 1.5)
+                    atr_sl = getattr(strat_inst, "atr_sl_mult", None)
+                    atr_tp = getattr(strat_inst, "atr_tp_mult", None)
+                    atr_v = float(df_dyn['atr_14'].iloc[-1]) if ('atr_14' in df_dyn.columns and not np.isnan(df_dyn['atr_14'].iloc[-1])) else curr_p * 0.005
+                    sl = round(curr_p - atr_sl * atr_v if is_l else curr_p + atr_sl * atr_v, 2) if atr_sl else round(curr_p * (1.0 - stoploss_pct) if is_l else curr_p * (1.0 + stoploss_pct), 2)
+                    tp = round(curr_p + atr_tp * atr_v if is_l else curr_p - atr_tp * atr_v, 2) if atr_tp else round(curr_p * (1.0 + roi_0) if is_l else curr_p * (1.0 - roi_0), 2)
+                    return {
+                        "strategy": clean_name,
+                        "pair": symbol,
+                        "action": side,
+                        "price": curr_p,
+                        "time": bar_ts if bar_ts > 0 else int(time.time()),
+                        "stop_loss": sl,
+                        "take_profit": tp,
+                        "min_hold_seconds": 120 if is_xau else 60,
+                        "max_hold_seconds": 900 if is_xau else 5400,
+                        "annotation": f"{clean_name} Signal",
+                        "reasoning_md": f"Dynamic signal triggered by {clean_name} at price ${curr_p:,.2f}."
+                    }
+                elif not is_l and not is_s:
+                    return None
+        except Exception as e_dyn:
+            logger.debug(f"[StrategyEvaluator] Dynamic evaluation fallback for {clean_name}: {e_dyn}")
+
         if is_xau:
             # --- Goat Funded Trader XAUUSD Momentum Scalper Rules ---
             session = StrategyEvaluator.is_session_active(clean_name, timestamp=bar_ts if bar_ts > 0 else None)
@@ -201,17 +239,26 @@ class NativeStrategyRunner:
         self.broadcast_callback = broadcast_callback
         self.is_running = False
 
-        # Infer symbol and timeframe
-        lower = self.strategy_name.lower()
-        if "xau" in lower or "gold" in lower or "goat" in lower:
-            self.symbol = "XAU/USD"
-            self.timeframe = "1m"
-        elif "eth" in lower:
-            self.symbol = "ETH/USDT"
-            self.timeframe = "15m"
+        # Dynamically retrieve symbol and timeframe from Single Source of Truth
+        strat_record = strategy_registry.get(self.strategy_name)
+        curr_state = state_manager.get()
+        if strat_record and strat_record.get("symbol"):
+            self.symbol = strat_record["symbol"]
+            self.timeframe = strat_record.get("timeframe", "15m")
+        elif curr_state.get("active_strategy") == self.strategy_name and curr_state.get("symbol"):
+            self.symbol = curr_state["symbol"]
+            self.timeframe = curr_state.get("timeframe", "15m")
         else:
-            self.symbol = "BTC/USDT"
-            self.timeframe = "15m"
+            lower = self.strategy_name.lower()
+            if "xau" in lower or "gold" in lower or "goat" in lower:
+                self.symbol = "XAU/USD"
+                self.timeframe = "1m"
+            elif "eth" in lower:
+                self.symbol = "ETH/USDT"
+                self.timeframe = "15m"
+            else:
+                self.symbol = "BTC/USDT"
+                self.timeframe = "15m"
 
         self.provider: BaseMarketDataProvider = ProviderRegistry.get_provider(self.symbol, self.timeframe)
         self._last_evaluated_bar_time: int = 0
