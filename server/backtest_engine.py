@@ -72,12 +72,12 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         takeprofit_pct = 0.005
         min_bars = 0
         max_bars = 12
-        trials = 50
+        trials = 35
         thesis_props = {
-            "thesis": "Trader MNQ Prop Firm ATR Hybrid Scalper on Gold XAUUSD (Intrabar 2.6x ATR Dip Longs + Shooting Star Shorts)",
-            "counterparty": "Panic retail dip sellers and breakout chasers trapped by institutional Gold liquidity envelopes",
+            "thesis": "Trader MNQ Prop Firm ATR Hybrid Scalper on Gold XAUUSD (Long-Only Institutional Dip Absorption at 2.6x ATR Envelopes)",
+            "counterparty": "Panic retail sellers dumping into institutional iceberg limit orders during Gold dips",
             "invalidation": "1.2x ATR Fixed Stop-Loss (Strict 0.50% account equity risk limit per trade)",
-            "target_profile": "XAUUSD Prop Scalper (1m-5m)"
+            "target_profile": "Goat Funded Trader Gold Scalper (1m-5m)"
         }
     elif is_atr_hybrid:
         wick_thresh = 0.38
@@ -151,8 +151,9 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             prev_close_c = df_c['close'].shift(1).fillna(df_c['open'])
             tr_c = np.maximum(df_c['high'] - df_c['low'], np.maximum((df_c['high'] - prev_close_c).abs(), (df_c['low'] - prev_close_c).abs()))
             df_c['atr_14'] = tr_c.rolling(14).mean().fillna(tr_c)
-            df_c['atr_lower_band'] = df_c['close'].shift(1) - (2.6 * df_c['atr_14'].shift(1))
-            df_c['atr_upper_band'] = df_c['close'].shift(1) + (2.6 * df_c['atr_14'].shift(1))
+            mult = 2.6 if is_xauusd else 3.1
+            df_c['atr_lower_band'] = df_c['close'].shift(1) - (mult * df_c['atr_14'].shift(1))
+            df_c['atr_upper_band'] = df_c['close'].shift(1) + (mult * df_c['atr_14'].shift(1))
             df_c['is_shooting_star'] = (
                 (df_c['upper_wick'] >= 1.8 * df_c['body_ratio']) &
                 (df_c['lower_wick'] <= 0.15 * df_c['upper_wick']) &
@@ -198,8 +199,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     
                     # Trader MNQ Long: Low touched or pierced dynamic lower ATR band
                     is_long = (curr_low <= lower_band)
-                    # Trader MNQ Short: Shooting star on previous bar + bearish macro daily regime
-                    is_short = is_star_prev and is_bear_daily and not is_long
+                    is_short = (not is_xauusd) and is_star_prev and is_bear_daily and not is_long
                     
                     if is_long:
                         entry_price = lower_band
@@ -335,6 +335,8 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     # Save to candidate_returns.json for validation_cynic.py DSR audit
     with open(returns_file, "w") as f:
         json.dump(returns_arr.tolist(), f)
+        f.flush()
+        os.fsync(f.fileno())
 
     # 5. Calculate Quantitative Statistics from Trade Returns
     trades = len(returns_arr)

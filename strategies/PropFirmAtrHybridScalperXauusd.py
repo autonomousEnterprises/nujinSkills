@@ -34,7 +34,7 @@ class PropFirmAtrHybridScalperXauusd(IStrategy):
     """
     INTERFACE_VERSION = 3
     timeframe = '1m'
-    can_short = True
+    can_short = False
 
     atr_multiplier = 2.6
     atr_tp_mult = 1.8
@@ -86,16 +86,13 @@ class PropFirmAtrHybridScalperXauusd(IStrategy):
 
     def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         dataframe.loc[
-            (dataframe['low'] <= dataframe['atr_lower_band']) &
+            (dataframe['low'] <= dataframe['atr_lower_band']) & 
             (dataframe['atr_14'] > 0),
             'enter_long'
         ] = 1
 
-        dataframe.loc[
-            (dataframe['is_shooting_star'].shift(1) == True) &
-            (dataframe['macro_bearish_regime'] == True),
-            'enter_short'
-        ] = 1
+        # Shorts disabled on Gold spot to prevent negative alpha from parabolic macro bull trend
+        dataframe['enter_short'] = 0
 
         return dataframe
 
