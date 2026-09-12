@@ -436,21 +436,32 @@ const updateBoxCoordinates = () => {
     positionBoxes.value = [];
     return;
   }
-  let x1Raw = chart.timeScale().logicalToCoordinate(entryIdx as any);
+  const entryCandleLocalTime = timeToLocal(Number(rawCandles.value[entryIdx].time));
+  let x1Raw = chart.timeScale().timeToCoordinate(entryCandleLocalTime as Time);
   if (x1Raw === null) {
-    x1Raw = chart.timeScale().timeToCoordinate(localEntryTime as Time);
+    x1Raw = chart.timeScale().logicalToCoordinate(entryIdx as any);
   }
 
   let x2Raw: number | null = null;
-  if (target.isLiveActive || !localExitTime) {
+  if (target.isLiveActive || !rawExit) {
     const lastIdx = rawCandles.value.length - 1;
-    const lastX = chart.timeScale().logicalToCoordinate(lastIdx as any);
+    const lastCandleLocalTime = timeToLocal(Number(rawCandles.value[lastIdx].time));
+    const lastX = chart.timeScale().timeToCoordinate(lastCandleLocalTime as Time) 
+      ?? chart.timeScale().logicalToCoordinate(lastIdx as any);
     x2Raw = lastX !== null ? lastX + 80 : containerW - 65;
   } else {
-    const exitIdx = findCandleIndex(rawExit);
-    x2Raw = chart.timeScale().logicalToCoordinate(exitIdx as any);
+    let exitIdx = findCandleIndex(rawExit);
+    if (exitIdx < 0) {
+      if (rawExit >= Number(rawCandles.value[rawCandles.value.length - 1].time)) {
+        exitIdx = rawCandles.value.length - 1;
+      } else {
+        exitIdx = Math.min(entryIdx + 5, rawCandles.value.length - 1);
+      }
+    }
+    const exitCandleLocalTime = timeToLocal(Number(rawCandles.value[exitIdx].time));
+    x2Raw = chart.timeScale().timeToCoordinate(exitCandleLocalTime as Time);
     if (x2Raw === null) {
-      x2Raw = chart.timeScale().timeToCoordinate(localExitTime as Time);
+      x2Raw = chart.timeScale().logicalToCoordinate(exitIdx as any);
     }
   }
 
@@ -479,7 +490,7 @@ const updateBoxCoordinates = () => {
   const ySL = getYForPrice(target.stop_loss);
   const yTP = getYForPrice(target.take_profit);
 
-  const isLong = target.take_profit >= target.entry_price;
+  const isLong = target.side === 'LONG' || target.side === 'BUY' || (target.take_profit >= target.entry_price);
   let yProfitTop: number, profitHeight: number, yLossTop: number, lossHeight: number;
 
   if (isLong) {
@@ -547,17 +558,24 @@ const centerOnTrade = (trade: InspectableSignal) => {
     const tExit = timeToLocal(rawExit);
     const span = Math.max(tExit - t, 600);
 
+    chart.priceScale('right').applyOptions({ autoScale: true });
     chart.timeScale().setVisibleRange({
       from: (t - span * 1.8) as Time,
       to: (tExit + span * 1.8) as Time,
     });
 
+    requestAnimationFrame(() => {
+      updateBoxCoordinates();
+    });
     setTimeout(() => {
       updateBoxCoordinates();
-    }, 40);
+    }, 50);
     setTimeout(() => {
       updateBoxCoordinates();
-    }, 150);
+    }, 180);
+    setTimeout(() => {
+      updateBoxCoordinates();
+    }, 350);
   } catch (err) {
     console.warn('[ChartCanvas] centerOnTrade error:', err);
   }
@@ -969,6 +987,11 @@ watch(() => props.selectedStrategy, (newStrat) => {
     } else {
       // Same symbol: immediately update dedicated visual indicators on existing candles
       applyStrategyIndicators();
+      nextTick(() => {
+        if (allInspectableSignals.value.length > 0) {
+          jumpToLatest();
+        }
+      });
     }
   }
 });

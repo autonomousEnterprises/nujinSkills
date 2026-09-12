@@ -23,10 +23,11 @@ setup_node_path()
 PID_FILE = ".frontend.pid"
 
 def check_status(port: int = 3000):
-    url = f"http://localhost:{port}"
+    url = f"http://127.0.0.1:{port}"
     try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with opener.open(req, timeout=3) as resp:
             print(f"[FrontendControl] ONLINE (Port {port}, Status {resp.status})")
             return True
     except Exception:

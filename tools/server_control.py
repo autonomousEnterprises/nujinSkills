@@ -19,9 +19,10 @@ def get_pid() -> int:
     return 0
 
 def check_status(port: int = 8000):
-    url = f"http://localhost:{port}/api/health"
+    url = f"http://127.0.0.1:{port}/api/health"
     try:
-        with urllib.request.urlopen(url, timeout=2) as resp:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(url, timeout=2) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             print(f"[ServerControl] ONLINE (Port {port})")
             print(json.dumps(data, indent=2))

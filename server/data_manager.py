@@ -135,6 +135,10 @@ def bridge_candles_to_now(df: pd.DataFrame, interval: str = "1m", symbol: str = 
         return df
 
     time_col = "timestamp" if "timestamp" in df.columns else "time"
+    df = df.dropna(subset=[time_col, "close"]).reset_index(drop=True)
+    if df.empty:
+        return df
+
     last_ts = int(df.iloc[-1][time_col])
     step_sec = 60 if interval == "1m" else (300 if interval == "5m" else 900)
     now_ts = int(time.time() // step_sec) * step_sec
@@ -142,6 +146,7 @@ def bridge_candles_to_now(df: pd.DataFrame, interval: str = "1m", symbol: str = 
     if now_ts - last_ts >= step_sec:
         last_row = df.iloc[-1]
         last_close = float(last_row["close"])
+        curr_price = last_close
         last_vol = float(last_row.get("volume", 10.0))
         is_gold = "XAU" in symbol.upper() or "GOLD" in symbol.upper()
         is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500"])
@@ -149,7 +154,6 @@ def bridge_candles_to_now(df: pd.DataFrame, interval: str = "1m", symbol: str = 
         vol_std = 0.00012 if is_sp else (0.00015 if is_gold else 0.0004)
         
         new_rows = []
-        curr_price = last_close
         curr_ts = last_ts + step_sec
         np.random.seed(int(last_ts) % 100000)
 
@@ -195,8 +199,10 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
     if not force_refresh and interval == "1m" and os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
+            time_col = "timestamp" if "timestamp" in df.columns else "time"
+            df = df.dropna(subset=[time_col, "close"]).reset_index(drop=True)
             if len(df) >= 100:
-                last_ts = int(df.iloc[-1].get("timestamp", df.iloc[-1].get("time", 0)))
+                last_ts = int(df.iloc[-1][time_col])
                 if (now_ts - last_ts) <= 60:
                     records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
                     candles = [
@@ -254,6 +260,8 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
     if interval == "1m" and os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
+            time_col = "timestamp" if "timestamp" in df.columns else "time"
+            df = df.dropna(subset=[time_col, "close"]).reset_index(drop=True)
             if len(df) > 0:
                 df = bridge_candles_to_now(df, interval="1m", symbol="XAUUSD")
                 try:
@@ -521,10 +529,13 @@ def sync_xauusd_scalp_candles(output_path: str = "data/xauusd_candles_1m.csv") -
                 "volume": vol_per_min
             })
 
-    df_1m = pd.DataFrame(records_1m)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    df_1m.to_csv(output_path, index=False)
-    logger.info(f"[DataManager] Updated {output_path} with {len(df_1m)} real 30-day OANDA Spot Gold (XAUUSD) 1m scalping candles")
+    if records_1m and len(records_1m) > 0:
+        df_1m = pd.DataFrame(records_1m)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        df_1m.to_csv(output_path, index=False)
+        logger.info(f"[DataManager] Updated {output_path} with {len(df_1m)} real 30-day OANDA Spot Gold (XAUUSD) 1m scalping candles")
+    else:
+        logger.warning(f"[DataManager] No new bars available; preserving existing {output_path}")
     return output_path
 
 
