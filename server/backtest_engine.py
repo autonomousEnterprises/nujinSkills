@@ -190,6 +190,10 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
         raise FileNotFoundError(f"[BacktestEngine] Candle dataset file not found: {candles_file}")
 
     df_c = pd.read_csv(candles_file)
+    df_c = df_c.dropna(subset=['open', 'high', 'low', 'close'])
+    if 'timestamp' in df_c.columns:
+        df_c['timestamp'] = df_c['timestamp'].ffill().bfill().fillna(0).astype(np.int64)
+    df_c = df_c.reset_index(drop=True)
     n = len(df_c)
     if n < 50:
         raise ValueError(f"[BacktestEngine] Candle dataset contains insufficient rows: {n}")
