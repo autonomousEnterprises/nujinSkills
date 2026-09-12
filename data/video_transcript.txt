@@ -1,0 +1,629 @@
+[0.4s] I reverse engineered and back tested the
+[2.7s] strategy of a prop trader that is
+[4.6s] straight making a living off my prop
+[7.1s] firm. Now hold on. He isn't making
+[9.0s] millions [music] of dollars and buying
+[10.2s] Ferraris. He's just making a steady
+[12.2s] full-time income, which is the step you
+[14.3s] have to meet before you start buying
+[16.0s] Ferraris. Here are his numbers. Four
+[18.5s] payouts over 2 months, 17,439
+[22.2s] total P&L, 1.25 profit factor, 703
+[27.0s] trades. And today I'm going to break
+[29.0s] down his exact strategy in three stages.
+[32.0s] The entry model, the exit model, and the
+[34.4s] riskmanagement process, both for the
+[36.6s] long strategy and the short strategy.
+[39.0s] And weirdly, they're completely
+[41.4s] different strategies. I tested what
+[43.9s] happens when you simply invert the long
+[46.0s] strategy for [music] shorts, and you'll
+[48.1s] see why he doesn't do that. starting on
+[51.0s] the whiteboard, then on the chart, and
+[53.1s] I'm even going to show you live back
+[55.0s] [music] test data so you can see exactly
+[58.0s] what the historical test [music]
+[59.9s] produced. And later, I'm going to share
+[62.2s] the single most important upgrade to
+[64.7s] this strategy that I found that could
+[67.2s] make it work even better. It's
+[69.7s] important, so be sure to get there. And
+[72.2s] for the sake of anonymity, we'll call
+[74.5s] this guy trader MNQ. And obviously,
+[77.5s] nothing in this video is financial
+[79.0s] advice. First things first, micro NASDAQ
+[82.0s] or traditional US futures and explicitly
+[87.1s] fiveinut
+[88.7s] time frame and you will see why soon.
+[90.8s] Now the philosophy of this strategy is
+[93.5s] hybrid scalping. I know hybrid scalping
+[96.6s] isn't really a thing but it's the best
+[98.2s] way for me to describe it. I'll explain
+[100.2s] why in the exit strategy section. On the
+[103.1s] long side, trader MNQ uses an intraar
+[106.3s] ATR signal. And there is one rule to
+[109.0s] this that makes or breaks this strategy.
+[112.3s] But first, we need to understand what
+[114.3s] ATR actually is. Even if you already
+[118.2s] know, don't skip this part because it
+[120.0s] lays the foundation for everything. Now,
+[122.0s] ATR is basically a measure of
+[124.7s] volatility.
+[126.3s] This is ATR. This is usually what it
+[128.9s] looks like on a chart. And when ATR is
+[131.0s] low, as it is right here, candles are
+[133.4s] generally a much smaller range. The
+[135.9s] open, high, low, close are more
+[138.0s] compressed. But when ATR is high like
+[141.0s] this, candles are generally much larger.
+[144.0s] The open, high, low, close are usually
+[146.3s] more spread [music] out. That's not a
+[148.2s] perfect technically accurate description
+[150.6s] of what ATR [music] measured, but it is
+[153.0s] a good heristic. So, if the NASDAQ is
+[155.5s] moving, let's say, 20 points per candle,
+[158.1s] ATR is going to [music] be relatively
+[160.0s] low. But if it suddenly starts moving
+[162.2s] 100 points per candle, ATR rises. But
+[166.4s] the most important thing, ATR does not
+[169.4s] care about price direction. Big moves up
+[172.7s] and big moves down both increase [music]
+[175.4s] ATR. We're just focused on the magnitude
+[178.3s] of movement. So this traditional ATR
+[181.3s] indicator is essentially asking how much
+[183.8s] has price typically been moving per
+[186.5s] candle recently. [music]
+[187.9s] Because a 50point move in a compressed
+[191.7s] market that looks like this could be
+[194.1s] absolutely enormous, but this same
+[196.6s] 50point [music] move in a highly
+[198.3s] volatile market might be completely
+[201.1s] normal. ATR gives us the context to know
+[204.2s] the difference. And you can find this
+[206.1s] indicator on any charting platform. It's
+[208.2s] not some big whoopity secret. Quick
+[210.3s] interruption for an important [music]
+[211.6s] announcement. This Thursday, September
+[213.8s] 17th, is the biggest live event in IQ
+[216.6s] Capitals [music]
+[217.4s] history, and you're invited 100% for
+[220.8s] free. We interviewed 100 traders and
+[223.4s] collected feedback [music] from
+[224.9s] thousands more. Now, the best of what we
+[228.1s] learned is going [music] live. Join me
+[230.7s] and multiple time trading champion
+[232.3s] Kristoff Radiker as we unveil new
+[234.6s] updates, new features, [music] and our
+[236.6s] boldest prop trading offer yet. live at
+[239.9s] 6:00 p.m. C EST in German and 8:00 p.m.
+[243.1s] C EST [music] in English. Registration
+[245.4s] link below. See you there. Now, the way
+[247.7s] this ties into the entry model is using
+[250.6s] ATR bands. This is an upper ATR band.
+[255.0s] This is a lower one. There's tons of
+[257.1s] indicators that do this. They're just
+[259.6s] price envelopes based on what the
+[262.5s] current measurement of ATR actually is.
+[264.8s] Obviously, this is ATR. Now, let's say
+[267.3s] this specific data point of ATR
+[271.0s] is $50. For this ATR measurement, the
+[274.2s] upper band piece right here and lower
+[276.4s] band piece will both be $50 [music]
+[280.1s] away, whatever the current ATR
+[282.1s] measurement actually is. But, and this
+[284.4s] is extremely [music] important, you
+[286.8s] always calculate the distance of the ATR
+[289.8s] bands based on the [music] previous
+[292.1s] candle's closing price. This is
+[294.7s] important because you must [music] use a
+[297.3s] static reference point or else the bands
+[300.1s] will just go up and go down infinitely
+[302.0s] [music] and never get touched and they
+[303.7s] become completely useless. Now, and this
+[306.1s] is very important, look at ATR. It is
+[310.2s] increasing. It started at $50 over here,
+[313.8s] but let's say it's increased all the way
+[316.4s] up to $100 at [music] this very top
+[319.9s] point. Final example for drawing these
+[322.0s] bands. We have 100 ATR and right here is
+[325.2s] our most current candle. To draw these
+[328.0s] bands correctly, we look at the previous
+[330.7s] candles close. For the sake of
+[332.7s] simplicity, let's just say that's right
+[335.0s] here.
+[337.0s] Then we go $100 upwards. And from here,
+[340.4s] we would go $100 downwards. And that is
+[343.4s] exactly where our ATR band measurement
+[346.2s] is. This is important. Now, I did keep
+[348.6s] it symmetrical just for the sake of
+[350.5s] example, but this lower band would be a
+[352.9s] little bit higher if this is the close
+[354.8s] we used. And of course, this process
+[356.8s] continues indefinitely forever and ever
+[358.6s] and ever.
+[361.4s] Now, I'm about to show you exactly how
+[363.6s] he enters a trade. This black line is
+[366.0s] price. This is our lower ATR band. And
+[369.7s] obviously, this is ATR. Now, let's say
+[372.0s] that right here ATR is 50. Up here, it's
+[375.0s] 100. Down here it's 75. Up here we'll
+[378.5s] just do 100. Again, you get the point.
+[380.9s] These numbers are all ATR at the current
+[383.5s] time that this price data was
+[385.8s] developing. But what Trader MNQ actually
+[387.9s] does is takes each of these ATR numbers,
+[390.9s] whatever ATR was at the time, and
+[393.4s] multiplies it by 3.1.
+[397.8s] Trust me, this seems [music]
+[399.6s] suspiciously specific. So obviously, I
+[403.1s] tested it. So, and this is absolutely
+[405.5s] crucial to the success of this strategy
+[408.6s] for him. Trader MNQ takes whatever ATR
+[412.2s] is at the time and always multiplies by
+[414.8s] 3.1. He didn't tell me specifically why
+[417.8s] that number, but [music] again, I tested
+[419.7s] it. It checks out relative to his
+[421.8s] performance at IQ Capital. For a simple
+[424.7s] example, take our ATR measurement of 50,
+[427.6s] multiply by 3.1, and that equals
+[432.0s] 155. Again, there's an indicator that
+[434.5s] does all this stuff for you. You do not
+[436.6s] need to do it on a whiteboard with my
+[438.6s] terrible handwriting. And I'll show you
+[440.2s] all this on the chart anyways. But
+[442.2s] because we're multiplying ATR by 3.1,
+[445.4s] that means this lower ATR band is always
+[448.2s] going to be further away from price than
+[451.0s] just a one ATR band on its own. Now,
+[455.2s] finally, this is how he enters trades.
+[458.7s] Let's say this is where price currently
+[460.6s] is and we get a candle body that forms
+[463.0s] and kind of looks like this. It doesn't
+[465.0s] really matter. And remember, we always
+[467.0s] anchor the next ATR band measurement
+[470.2s] based on the [music] previous close. So,
+[472.3s] let's say this is the next ATR lower
+[475.7s] band measurement. If the lower wick of
+[478.1s] this candle touches the ATR lower band,
+[482.6s] this is a long entry. There is literally
+[487.9s] no other [music] filtration method to
+[490.0s] this and I thought it was crazy but
+[492.1s] you'll see the results soon. Now this is
+[494.2s] important. [music] Trader MNQ only uses
+[496.7s] the lower band. He does not use this on
+[499.1s] [music] the short side. And again quite
+[501.0s] literally whenever price clips the ATR
+[503.8s] lower band at any point that is where he
+[507.3s] goes long but not on a market order he
+[510.1s] does this with a limit order. This means
+[513.4s] wherever the lower band goes, there is a
+[516.3s] dynamically updating limit order always
+[519.7s] following it. Whenever it's touched,
+[522.0s] boom. And hopefully price does that
+[524.0s] after, but we can't guarantee that part.
+[525.8s] Remember, this is on the fiveinut chart.
+[528.5s] So, it requires an updating limit order
+[530.6s] every 5 minutes. Now, as for the exit
+[533.2s] model, which of course are the target
+[535.8s] and the stop-loss, I wish you guys would
+[538.9s] always stick to hard rules with these so
+[541.2s] you can actually test and verify or
+[543.4s] validate your strategy in some way, but
+[545.3s] no one seems to do that. [music]
+[546.8s] That includes trader MNQ. Now,
+[548.7s] obviously, it's extremely difficult to
+[550.6s] figure out how a guy is exiting his
+[552.9s] trades, so I had to email trader MNQ.
+[555.8s] So, no, I'm not just guessing here. He
+[557.4s] [music] told me what he does. Now for
+[559.2s] his target, he looks for a 2 ATR fixed
+[563.5s] limit order target. For his stop, 1.5
+[567.4s] ATR
+[569.6s] traditional fixed stop-loss. Now,
+[572.3s] everything we just discussed regarding
+[574.8s] ATR and volatility for the entry bands
+[577.8s] is generally applicable to the exact
+[581.0s] same idea for this 2 ATR target and one
+[584.5s] and a half ATR stop. It's all about
+[586.2s] volatility. Now, here's price again.
+[588.5s] Here's our candle. And let's [music] say
+[590.5s] we get a lower wick, hits the lower ATR
+[593.2s] band. This is our long entry. Remember,
+[596.4s] the ATR band [music] itself is the exact
+[599.0s] entry point. So, when setting the
+[601.2s] target, you go to whatever ATR is at
+[604.4s] from the previous bar. Let's say it's
+[606.6s] 100. For the target, go to the entry
+[609.0s] price, multiply 100 * 2. Obviously,
+[612.5s] that's 200.
+[615.0s] And that's where the trade's target is
+[617.8s] going to be. For the stop loss, you
+[620.1s] multiply 100, which was ATR from the
+[623.4s] previous bar, times 1.5. Obviously, that
+[626.5s] is 150. Go from the entry down $150, and
+[630.6s] that is where the stop is. [music]
+[632.6s] These numbers, these targets and stops
+[635.0s] do not change ever. [music] ATR is
+[637.8s] always fluctuating up and down every
+[639.9s] single tick. But you use the previous
+[642.7s] bar's ATR measurement for [music]
+[645.0s] everything in this strategy because it
+[647.0s] is static and does not change.
+[649.4s] Obviously, this is not financial advice.
+[651.6s] And obviously, if ATR is 50 over here,
+[655.6s] for instance, you would multiply that by
+[657.5s] two for the target and by 1.5 [music]
+[660.6s] for the stop. Now, why specifically
+[663.0s] these two numbers? Honestly, he didn't
+[665.4s] tell me. He might have determined these
+[666.9s] arbitrarily, but testing corroborated
+[669.6s] his performance. But there is one
+[671.9s] extremely important rule to this model.
+[674.6s] He never [music] trades the opening
+[677.4s] candle. Even if all of these conditions
+[680.1s] are met, opening candle volatility and
+[682.6s] fluctuations are too [music]
+[684.2s] unpredictable for him. At least that's
+[686.5s] what he said. But before I show you the
+[688.7s] back test, I want to take one of his
+[690.7s] actual trades and reconstruct it because
+[693.6s] if what he told me is accurate, we
+[695.8s] should be able to calculate his entry
+[697.9s] target and stops ourselves. Now, this is
+[701.0s] a perfect example of a trade that trader
+[703.5s] MNQ actually took. You can see it in the
+[706.0s] log here. But first, this is ATR. This
+[709.3s] is the lower band, and this is the upper
+[711.7s] band. And I configured the ATR bands to
+[715.1s] specifically use a period of 14, which
+[717.8s] is traditional, and [music] a scale
+[719.9s] factor of 3.1. I have my setup just like
+[724.1s] trader MNQs. Now, now focus on this
+[727.0s] particular trade. We can see the red
+[729.8s] lower band here moved down and the lower
+[733.0s] wick on this candle clipped the lower
+[735.8s] band. Now, here's what's important. ATR
+[738.5s] on the previous candle was 17.85.
+[742.2s] Now remember the stop and the target are
+[745.0s] calculated before the trade is even
+[747.4s] taken because we have that static ATR
+[749.8s] measurement from the previous candle. As
+[752.1s] I said 17.85 so multiply this number by
+[756.1s] two which is 35.7 obviously and of
+[760.6s] course this number that we multiply and
+[763.0s] calculate has to conform to the minimum
+[765.7s] tick size on MNQ or whatever futures
+[768.4s] asset it's 0.25 for MNQ. But once we
+[771.8s] figure out that distance, we go right
+[773.8s] here to where the long entry was taken.
+[776.2s] I will use the Trading View long tool
+[778.2s] here and we put this right where that
+[780.2s] green line is. You can see I have this
+[782.3s] algorithmically. So from the entry 17.85
+[786.2s] * 2 upwards, that's about 35.7. That's
+[789.8s] right where he puts his [music] targets.
+[791.9s] Then obviously we would multiply 17.85
+[794.9s] by 1.5, which gives [music] us 26.775.
+[799.0s] And we would use the exact same process
+[801.9s] to mark where the stop is, which is
+[804.2s] right where that red line is. This is
+[806.4s] how trader MNQ takes all of his long
+[809.3s] trades. This exact process. Obviously,
+[812.1s] you can see this blue arrow here, which
+[813.8s] is just where the long was taken. And
+[816.1s] [music] thankfully for trader MNQ, price
+[818.9s] quickly reversed upwards afterwards and
+[821.1s] ended up hitting his [music] target.
+[822.6s] Great trade. Now, as for the historical
+[825.2s] test, which I promised to show you like
+[827.1s] five times, obviously nothing here is
+[829.0s] financial [music] advice, but I did run
+[831.1s] this test simple in Trading View, and
+[833.8s] it's actually not that bad. Again, this
+[836.1s] is not indicative of future performance.
+[838.5s] And I tested a [music] fixed four
+[840.8s] contracts per trade. Trader MNQ doesn't
+[843.8s] always use four contracts. I'll get into
+[846.1s] that later. But at a 1.33 to1 RR, the
+[850.6s] strategy [music] had slightly more than
+[852.7s] a 50% win rate, which with this RR is
+[856.6s] actually quite strong. $2,614
+[860.1s] max draw down. Again, that's with a
+[862.2s] static four contracts. It's not always
+[864.4s] that way, but this does meet IQ
+[866.5s] Capital's maximum draw down threshold
+[870.0s] for 100K accounts and a 1.527 profit
+[873.8s] factor, which by all means is pretty
+[876.7s] good. Now, for position sizing, it is
+[878.9s] largely contingent on what ATR is
+[881.6s] itself. [music] Because ATR determines
+[884.2s] his stop-loss distance, which as a
+[887.4s] byproduct helps him determine how much
+[890.1s] contracts to actually [music] get in the
+[892.5s] market with. Now, obviously, IQ Capital
+[895.1s] limits the loss on any single position
+[898.6s] to 0.5%
+[900.5s] of the account's starting balance on a
+[903.0s] funded account, 1% on a challenge
+[906.0s] account. So, Trader MQ always adjusts
+[908.8s] his position size to make sure he does
+[911.2s] not breach that threshold if his
+[913.6s] stop-loss gets hit. And he does that
+[915.6s] with ATR. As you can see on my screen,
+[917.9s] as ATR increases, volatility increases,
+[921.2s] trader MNQ uses less contracts per
+[925.0s] order. But when ATR is lower, which
+[927.4s] means the stop-loss will be closer.
+[929.5s] [music] Trader MNQ scales up the amount
+[932.6s] of contracts that he enters [music] into
+[934.6s] a position with. Now, this is important.
+[937.2s] Here's how simple that math actually is.
+[939.8s] Five MNQ contracts are worth $10 per
+[942.9s] NASDAQ point. So, a 40point stop risks
+[946.3s] roughly $400. But an 80 point stop risks
+[950.7s] roughly $800. Same five contracts, but
+[954.5s] twice the stop distance, which
+[956.9s] consequently means twice the risk. So,
+[959.8s] he adjusts the number of contracts to
+[961.8s] make sure he doesn't hit IQ [music]
+[963.7s] Capitals maximum loss per position
+[966.5s] threshold. He didn't give me an exact
+[968.8s] formula for position sizing. It might
+[970.9s] just be a little arbitrary, but this is
+[972.9s] the basic philosophy [music] of what he
+[975.0s] does. But here's where things get weird.
+[979.2s] Remember when I told you his long and
+[981.2s] short strategies are completely [music]
+[983.4s] different? I inverted this exact
+[985.5s] strategy and tested it short and it
+[987.8s] [music] completely fell apart. And
+[990.6s] apparently trader MNQ already knows that
+[992.8s] because he uses a different short
+[994.3s] strategy entirely. What he does instead
+[997.0s] is almost stupidly simple. Now, with
+[1000.2s] this short model, Trader MNQ is
+[1002.8s] literally looking for one thing, [music]
+[1005.3s] a long upper wick candlestick. That's
+[1009.0s] it. But hold on, there are specifics to
+[1012.1s] this. He's basically shorting a candle
+[1014.6s] that increases aggressively intrabar,
+[1017.6s] but fails to hold at these higher price
+[1020.4s] areas [music]
+[1021.0s] and obviously closes all the way back
+[1023.1s] down here or down here. So, this can be
+[1025.6s] a green or a red candle. So you get a
+[1028.2s] relatively small candle body down
+[1030.3s] towards the bottom of the entire candle
+[1032.9s] range with a very large upper wick. Some
+[1036.5s] people call this a shooting star
+[1038.4s] pattern. Whatever it is, who cares? It's
+[1041.0s] the implications of the price action or
+[1043.9s] the candle structure that he's actually
+[1046.0s] concerned with. And of course, the lower
+[1048.3s] wick itself has to be very small or
+[1050.4s] non-existent. If you know me by now, I
+[1053.0s] like objective rule-based systems.
+[1055.2s] [music]
+[1055.9s] Unfortunately, this is not an objective
+[1058.5s] rule-based system. He ultimately
+[1060.7s] eyeballs this candle based on his own
+[1063.8s] personal interpretation.
+[1065.9s] This makes it very difficult to
+[1067.6s] replicate exactly what he's doing. Now,
+[1070.1s] because there's no objective rule set, I
+[1072.4s] can't actually back test this in a way
+[1076.0s] that perfectly replicates how trader MNQ
+[1079.1s] does it. But I invented an objective
+[1082.3s] rule set all on my own and I tested it.
+[1085.9s] So that is the interpretation that I
+[1088.2s] will be explaining. Now in this model
+[1090.6s] the upper wick has to be at least
+[1094.6s] two times larger than the candle body
+[1097.9s] and the lower wick has to be about 110th
+[1101.8s] of the size of the upper wick. Again,
+[1104.4s] you don't need to stick to this
+[1105.7s] objective structure, but it is what I
+[1107.9s] will be testing and showing you. So,
+[1110.0s] conceptually, this entire setup is
+[1112.5s] extremely simple. [music] Once this
+[1114.4s] pattern actually forms and the candle
+[1116.8s] closes, whether it's green or red, that
+[1119.9s] is when trader MNQ decisively
+[1123.9s] takes a short. He does that on a market
+[1126.4s] order and usually gets in at the opening
+[1129.3s] price of the very next bar. There is no
+[1132.2s] complicated confirmation layer here. No
+[1134.7s] order flow, no secondary indicator. This
+[1137.8s] candle is the entire trigger. What makes
+[1140.9s] this different is the exit [music]
+[1142.6s] strategy. It's how quickly he gets out
+[1145.5s] of this trade because there is no profit
+[1148.2s] [music] target and there is no
+[1151.1s] stop-loss. It's completely
+[1154.1s] timebased.
+[1156.2s] That's a stopwatch. Now, no matter what,
+[1159.3s] once a short is taken, trader MNQ gets
+[1162.6s] out on the very next [music] candle,
+[1166.2s] right at the close of it. Let's say this
+[1168.4s] is the close here. As soon as this
+[1171.0s] candle finishes, the [music] next bar
+[1173.7s] will open. And that is right where
+[1177.3s] trader MNQ gets out of his trade. So,
+[1180.4s] it's a five-minute hold, a single candle
+[1183.7s] holding time, and then the trade is
+[1185.8s] exited no matter what. Don't call me
+[1188.2s] crazy, call him crazy. This is what he
+[1190.1s] does not mean. So, if this next candle
+[1192.2s] falls, let's say, 50 points, that's
+[1194.4s] phenomenal. Everyone would be happy. If
+[1196.6s] it falls five points, well, that still
+[1198.7s] works out, too. But if price goes up
+[1201.6s] instead,
+[1203.2s] as we all know, that's not good with a
+[1205.0s] short position. Now, this is why I
+[1207.2s] called all of this a hybrid scalping
+[1210.7s] approach earlier. His long model uses an
+[1213.6s] ATRbased target and stop. So, the amount
+[1216.2s] of time he's in a trade can actually
+[1217.8s] vary. But on the short side, the exit
+[1219.9s] isn't determined by how far price moves.
+[1222.6s] It's determined by time. And I actually
+[1224.8s] really like framing the strategy this
+[1226.6s] way because now we have something
+[1228.4s] extremely easy to test. We can
+[1230.3s] objectively define the wick, enter after
+[1232.5s] it happens, measure [music] exactly what
+[1234.3s] price does over the next candle, and see
+[1236.3s] whether there is actually any predictive
+[1238.2s] value there. And I'll be honest, when I
+[1240.1s] coded this, I expected it to be garbage.
+[1243.0s] It's literally a traditional candlestick
+[1245.4s] pattern with a 5-minute exit. But the
+[1248.5s] results surprised me, and they'll
+[1250.5s] probably surprise you, too. Here is a
+[1252.9s] perfect example of a short trade trader
+[1255.4s] MNQ actually took. A long upper wick
+[1258.3s] candle formed here with a small body,
+[1260.6s] almost no lower wick. And after this
+[1263.0s] candle finished and the next bar opened,
+[1265.7s] trader MNQ immediately took a short.
+[1268.2s] Obviously, [music] it's near impossible
+[1270.1s] to get right in at the close of a
+[1272.0s] candle. So, the entry is almost [music]
+[1274.2s] always the next bar's open for him. I'm
+[1277.0s] sure if he really wanted to be cheeky,
+[1279.2s] he [music] could try to get in right
+[1280.6s] before the candle closes, but he said he
+[1282.9s] normally gets in at the next bar's open.
+[1285.0s] And of course, he exits at the open of
+[1287.7s] the next bar right after that, as
+[1289.7s] [music] you can see here with this pink
+[1291.6s] arrow. That is literally the entire
+[1294.6s] strategy. Okay, so one trade means
+[1296.9s] absolutely nothing. So, what happens
+[1299.2s] when we make the computer take every
+[1301.4s] single one of these? As I said, I
+[1303.6s] thought this back test would be
+[1304.8s] terrible, but surprisingly, it wasn't
+[1307.5s] that bad just using a simple candle
+[1309.8s] formation. Of course, this is not
+[1311.4s] financial advice, but if you look at the
+[1313.4s] equity curve here, this strategy started
+[1315.7s] out very strong weeks ago, but something
+[1319.2s] clearly changed recently because it is
+[1322.2s] basically going sideways now, even
+[1324.4s] though it's still working for Trader MNQ
+[1326.7s] with some discretion. And [music] this
+[1328.9s] is where I think there's actually
+[1330.9s] something that we can improve because
+[1333.0s] the question isn't just whether this
+[1334.9s] setup works, it's when it works. I'm
+[1337.8s] going to come back to that because I
+[1339.4s] found something interesting when I
+[1341.2s] started separating these trades by
+[1343.6s] market condition. Now, before we look at
+[1345.8s] the results, let me actually make this
+[1347.8s] just trade one contract so we can get
+[1349.9s] the correct numbers. But before we get
+[1351.8s] the right numbers, let me change the
+[1353.4s] default order size to [music] four
+[1355.4s] contracts. That's what we've been
+[1356.7s] testing with Trader MNQ. And with that
+[1359.4s] static position sizing, 1.413 413 profit
+[1362.9s] factor, 52% win rate, a $1,142
+[1367.4s] match draw down, and this [music] is the
+[1369.4s] P&L. But there's actually a problem with
+[1372.3s] this short model that does not show up
+[1374.6s] in profit factor or in win rate. And if
+[1377.4s] you're trading a prop account, which
+[1379.0s] this is a prop firm channel, it's very
+[1381.6s] important [music] because the short
+[1383.3s] trade is only being held for roughly one
+[1385.5s] bar. It does not use the same ATR target
+[1388.8s] or ATR stop-loss as the long model. It
+[1391.8s] simply enters on the long upper wick
+[1393.9s] exits on the following bar. So, position
+[1396.1s] sizing becomes extremely important here
+[1399.2s] because without a fixed stop inside of
+[1401.6s] the strategy logic. The amount you lose
+[1404.6s] during that 5minute [music] candle
+[1406.4s] depends on how far price actually moves
+[1409.0s] against you. And obviously, this can be
+[1411.1s] a problem with the maximum position loss
+[1413.4s] rule. So, even though the short model is
+[1415.9s] incredibly simple, the contract [music]
+[1418.2s] size still has to be kept to a
+[1420.3s] reasonable amount. And I've seen Trader
+[1422.5s] MQ go anywhere from one contract to
+[1425.0s] several [music] when using this short
+[1426.6s] model. Which finally brings us back to
+[1429.0s] that equity curve. Because if we're
+[1431.4s] going to improve the objective version
+[1433.4s] of this strategy, I don't just want to
+[1435.5s] throw any indicator on this and
+[1437.0s] cherrypick until we get a prettier back
+[1438.9s] test. We want to know why it performs
+[1441.1s] well during some periods and not as well
+[1443.2s] during other periods. Now, the problem
+[1445.3s] is MNQ tends to have a more macro
+[1449.2s] bullish bias, which makes short trades
+[1452.4s] much more difficult to pull off
+[1454.2s] timing-wise because Beta can't bail you
+[1457.4s] out. So, what if the short setup isn't
+[1460.0s] actually [music] failing here? It's just
+[1461.7s] being taken in a poor environment. I
+[1464.3s] tested exactly this by adding the
+[1466.3s] simplest rule ever to this strategy to
+[1469.2s] [music] act as a filtration method. Now,
+[1471.4s] before I show you the test, a short
+[1473.6s] trade can now only be taken when the
+[1476.1s] previous day's candle closes red. All
+[1479.3s] that means is that the previous day's
+[1481.0s] return has to be negative. If it is,
+[1483.7s] that gives the short model the green
+[1485.6s] light to be able to take a trade.
+[1488.0s] Obviously, this here is the daily chart.
+[1489.9s] I'm pointing at a red day. And when I
+[1492.6s] added this rule, it actually
+[1495.2s] significantly improved the historical
+[1498.0s] performance. Of course, not financial
+[1499.9s] advice. Now, when I did this, far less
+[1502.1s] trades were taken, only 60, but the
+[1505.0s] equity curve obviously isn't as flat
+[1507.8s] anymore along with the other numbers in
+[1510.6s] this test. [music] That said, 60 trades,
+[1513.2s] so the sample size isn't exactly
+[1515.3s] statistically significant. Further
+[1517.7s] exploration would be absolutely
+[1519.8s] necessary, but still this additional
+[1522.1s] condition tries to filter towards a more
+[1524.8s] long-term or higher timeframe bearish
+[1527.0s] environment. It won't always do that
+[1529.0s] perfectly since it's just a one candle
+[1531.0s] requirement, but you get the idea. But
+[1533.4s] hold on, there is an important caveat to
+[1536.1s] everything trader MNQ is doing. He
+[1538.6s] doesn't follow these exit rules for the
+[1540.4s] long model and short model mechanically
+[1543.6s] on every single trade. The two ATR
+[1546.2s] target, one and a half ATR stop for
+[1548.2s] longs and one bar short exit are
+[1550.7s] basically objective targets that he
+[1553.4s] tries to follow. The fivem minute hold
+[1555.4s] time and the structure of the long upper
+[1557.6s] wick candle for the short model aren't
+[1559.8s] always perfectly met. In reality,
+[1562.6s] sometimes he stays in a position longer,
+[1564.9s] sometimes he gets out earlier, and
+[1566.7s] importantly, he can close a trade early
+[1569.0s] if staying [music] in it risks violating
+[1571.5s] IQ Capital's maximum position loss rule.
+[1574.6s] So, what I'm back testing all throughout
+[1576.8s] this video isn't a perfect recreation of
+[1579.3s] every decision this guy makes. It's the
+[1581.5s] objective framework he gave me, stripped
+[1584.2s] of some of the discretion he uses when
+[1587.1s] he's actually trading. You can start
+[1589.0s] your first challenge for as little as $9
+[1591.6s] at IQ Capital. Built by traders for
+[1594.6s] traders.

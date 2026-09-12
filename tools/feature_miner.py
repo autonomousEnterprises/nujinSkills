@@ -69,6 +69,28 @@ def process_features(input_path: str, output_path: str, window: int = 20):
         (pl.col("sma_20") - 2.0 * pl.col("std_20")).alias("lower_band"),
     ])
 
+    # 7. Prop Firm Scalping Features (Trader MNQ ATR Bands & Shooting Star Rejection)
+    # True Range = max(high - low, abs(high - close_prev), abs(low - close_prev))
+    prev_close = pl.col("close").shift(1).fill_null(pl.col("open"))
+    tr1 = (pl.col("high") - pl.col("low")).abs()
+    tr2 = (pl.col("high") - prev_close).abs()
+    tr3 = (pl.col("low") - prev_close).abs()
+    
+    df = df.with_columns([
+        pl.max_horizontal(tr1, tr2, tr3).clip(1e-6, None).alias("true_range")
+    ]).with_columns([
+        pl.col("true_range").rolling_mean(14).fill_null(pl.col("true_range")).alias("atr_14")
+    ]).with_columns([
+        (pl.col("close").shift(1) - 3.1 * pl.col("atr_14").shift(1)).alias("atr_lower_band_3_1"),
+        (pl.col("close").shift(1) + 3.1 * pl.col("atr_14").shift(1)).alias("atr_upper_band_3_1"),
+        # Shooting star pattern: Upper wick >= 2 * body, lower wick <= 0.1 * upper wick, upper wick >= 0.40
+        ((pl.col("upper_wick") >= 2.0 * pl.col("body_ratio")) & 
+         (pl.col("lower_wick") <= 0.12 * pl.col("upper_wick")) & 
+         (pl.col("upper_wick") >= 0.38)).cast(pl.Int32).alias("shooting_star"),
+        # Rolling 24h / multi-bar regime: negative drift (bearish daily environment)
+        (pl.col("close") < pl.col("close").shift(96).fill_null(pl.col("close"))).cast(pl.Int32).alias("regime_bearish_daily")
+    ])
+
     df.write_csv(output_path)
     print(f"[FeatureMiner] Success! Features written to {output_path} ({len(df)} rows, {len(df.columns)} columns)")
 

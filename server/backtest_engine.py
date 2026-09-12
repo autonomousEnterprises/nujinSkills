@@ -26,6 +26,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     # 1. Sync market data candles if needed
     clean_name = strategy_name.replace(".py", "")
     is_xauusd = ("XAUUSD" in clean_name.upper()) or ("GOAT" in clean_name.upper())
+    is_atr_hybrid = ("ATR" in clean_name.upper()) or ("MNQ" in clean_name.upper()) or ("HYBRID" in clean_name.upper())
     
     if is_xauusd:
         candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")
@@ -63,6 +64,20 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             "counterparty": "Breakout counter-trend fade algorithms trapped by London & NY order flow expansion",
             "invalidation": "Structural Invalidation (-0.25% hard stop, 0.50% account risk)",
             "target_profile": "Goat Funded Trader Prop Scalper (2m-15m)"
+        }
+    elif is_atr_hybrid:
+        wick_thresh = 0.38
+        vol_thresh = 0.5
+        stoploss_pct = 0.012
+        takeprofit_pct = 0.016
+        min_bars = 0
+        max_bars = 16
+        trials = 40
+        thesis_props = {
+            "thesis": "Trader MNQ Prop Firm ATR Hybrid Scalper (Intrabar 3.1x ATR Dip Limit Longs + Exhaustion Wick Shorts on Bearish Daily Days)",
+            "counterparty": "Panic market dumpers and late breakout chasers trapped at volatility envelope extremes",
+            "invalidation": "1.5x ATR Fixed Stop-Loss (Strict 0.50% account equity risk limit per trade)",
+            "target_profile": "Prop Firm Challenge & Funded Scalper (5m-15m)"
         }
     elif "TrapFade" in clean_name:
         wick_thresh = 0.38
@@ -118,6 +133,20 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             df_c['hh_15'] = df_c['high'].shift(1).rolling(15).max()
             df_c['ll_15'] = df_c['low'].shift(1).rolling(15).min()
             
+            # Prop Firm ATR Scalper Indicators
+            prev_close_c = df_c['close'].shift(1).fillna(df_c['open'])
+            tr_c = np.maximum(df_c['high'] - df_c['low'], np.maximum((df_c['high'] - prev_close_c).abs(), (df_c['low'] - prev_close_c).abs()))
+            df_c['atr_14'] = tr_c.rolling(14).mean().fillna(tr_c)
+            df_c['atr_lower_band'] = df_c['close'].shift(1) - (2.6 * df_c['atr_14'].shift(1))
+            df_c['atr_upper_band'] = df_c['close'].shift(1) + (2.6 * df_c['atr_14'].shift(1))
+            df_c['is_shooting_star'] = (
+                (df_c['upper_wick'] >= 1.8 * df_c['body_ratio']) &
+                (df_c['lower_wick'] <= 0.15 * df_c['upper_wick']) &
+                (df_c['upper_wick'] >= 0.35)
+            )
+            daily_bars_c = 96 if not is_xauusd else 288
+            df_c['daily_bearish'] = df_c['close'] < df_c['close'].shift(daily_bars_c).fillna(df_c['close'])
+            
             n = len(df_c)
             i = 100
             while i < n - 16:
@@ -145,29 +174,56 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     
                     is_long = session_ok and (curr_close > hh15) and (vol_z > 0.4) and (ema9 > ema21)
                     is_short = session_ok and (curr_close < ll15) and (vol_z > 0.4) and (ema9 < ema21)
+                    current_max_bars = max_bars
+                    start_exit_offset = 1
+                elif is_atr_hybrid:
+                    atr_val = float(df_c['atr_14'].iloc[i-1]) if not np.isnan(df_c['atr_14'].iloc[i-1]) else curr_close * 0.005
+                    lower_band = float(df_c['atr_lower_band'].iloc[i]) if not np.isnan(df_c['atr_lower_band'].iloc[i]) else curr_close * 0.98
+                    is_star_prev = bool(df_c['is_shooting_star'].iloc[i-1])
+                    is_bear_daily = bool(df_c['daily_bearish'].iloc[i])
+                    
+                    # Trader MNQ Long: Low touched or pierced dynamic lower ATR band
+                    is_long = (curr_low <= lower_band)
+                    # Trader MNQ Short: Shooting star on previous bar + bearish macro daily regime
+                    is_short = is_star_prev and is_bear_daily and not is_long
+                    
+                    if is_long:
+                        entry_price = lower_band
+                        stop_loss = round(entry_price - 1.2 * atr_val, 2)
+                        take_profit = round(entry_price + 1.8 * atr_val, 2)
+                        current_max_bars = 12
+                        start_exit_offset = 0 # intra-bar limit fill resolution
+                    elif is_short:
+                        entry_price = float(c['open'])
+                        stop_loss = round(entry_price + 1.2 * atr_val, 2)
+                        take_profit = round(entry_price - 1.5 * atr_val, 2)
+                        current_max_bars = 2 # 2-bar holding window
+                        start_exit_offset = 1
                 else:
                     is_long = (lower_wick > wick_thresh) and (vol_z > vol_thresh)
                     is_short = (upper_wick > wick_thresh) and (vol_z > vol_thresh)
+                    current_max_bars = max_bars
+                    start_exit_offset = 1
                 
                 if is_long or is_short:
                     side = "LONG" if is_long else "SHORT"
                     entry_time = int(c['timestamp'])
-                    entry_price = float(c['close'])
+                    if not is_atr_hybrid:
+                        entry_price = float(c['close'])
+                        if side == "LONG":
+                            stop_loss = round(entry_price * (1.0 - stoploss_pct), 2)
+                            take_profit = round(entry_price * (1.0 + takeprofit_pct), 2)
+                        else:
+                            stop_loss = round(entry_price * (1.0 + stoploss_pct), 2)
+                            take_profit = round(entry_price * (1.0 - takeprofit_pct), 2)
                     
-                    if side == "LONG":
-                        stop_loss = round(entry_price * (1.0 - stoploss_pct), 2)
-                        take_profit = round(entry_price * (1.0 + takeprofit_pct), 2)
-                    else:
-                        stop_loss = round(entry_price * (1.0 + stoploss_pct), 2)
-                        take_profit = round(entry_price * (1.0 - takeprofit_pct), 2)
-                    
-                    # Sequential exit resolution (min_bars to max_bars)
-                    exit_idx = i + 1
+                    # Sequential exit resolution (min_bars to current_max_bars)
+                    exit_idx = i + start_exit_offset
                     exit_price = entry_price
                     exit_reason = "BARS_HOLD"
                     final_exit_idx = exit_idx
                     
-                    while exit_idx < min(i + max_bars + 1, n):
+                    while exit_idx < min(i + current_max_bars + 1, n):
                         bar_curr = df_c.iloc[exit_idx]
                         curr_low = float(bar_curr['low'])
                         curr_high = float(bar_curr['high'])
