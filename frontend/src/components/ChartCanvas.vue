@@ -442,9 +442,14 @@ const updateBoxCoordinates = () => {
 
   const startX = x1Raw !== null ? x1Raw : (x2Raw! - 100);
   const endX = x2Raw !== null ? x2Raw : (x1Raw! + 100);
-  const leftX = Math.min(startX, endX);
-  const rightX = Math.max(startX, endX);
-  const width = Math.max(rightX - leftX, 32);
+  let leftX = Math.min(startX, endX);
+  let rightX = Math.max(startX, endX);
+  let width = rightX - leftX;
+  if (width < 48) {
+    width = 48;
+    leftX = startX - 16;
+    rightX = leftX + width;
+  }
 
   if (rightX < -400 || leftX > containerW + 400) {
     positionBoxes.value = [];
@@ -521,16 +526,19 @@ const centerOnTrade = (trade: InspectableSignal) => {
 
     const t = timeToLocal(rawEntry);
     const tExit = timeToLocal(rawExit);
-    const span = Math.max(tExit - t, 3600);
+    const span = Math.max(tExit - t, 600);
 
     chart.timeScale().setVisibleRange({
-      from: (t - span * 2.5) as Time,
-      to: (tExit + span * 2.5) as Time,
+      from: (t - span * 1.8) as Time,
+      to: (tExit + span * 1.8) as Time,
     });
 
     setTimeout(() => {
       updateBoxCoordinates();
     }, 40);
+    setTimeout(() => {
+      updateBoxCoordinates();
+    }, 150);
   } catch (err) {
     console.warn('[ChartCanvas] centerOnTrade error:', err);
   }
@@ -541,6 +549,7 @@ const prevJump = () => {
   if (selectedSignalIndex.value > 0) {
     selectedSignalIndex.value--;
     centerOnTrade(allInspectableSignals.value[selectedSignalIndex.value]);
+    nextTick(() => updateBoxCoordinates());
   }
 };
 
@@ -548,6 +557,7 @@ const nextJump = () => {
   if (selectedSignalIndex.value < allInspectableSignals.value.length - 1) {
     selectedSignalIndex.value++;
     centerOnTrade(allInspectableSignals.value[selectedSignalIndex.value]);
+    nextTick(() => updateBoxCoordinates());
   }
 };
 
@@ -555,6 +565,7 @@ const jumpToIndex = (idx: number) => {
   if (idx >= 0 && idx < allInspectableSignals.value.length) {
     selectedSignalIndex.value = idx;
     centerOnTrade(allInspectableSignals.value[idx]);
+    nextTick(() => updateBoxCoordinates());
   }
 };
 
@@ -911,8 +922,31 @@ watch(() => props.tradesDetail, () => {
     const latestIdx = allInspectableSignals.value.length - 1;
     selectedSignalIndex.value = latestIdx;
     centerOnTrade(allInspectableSignals.value[latestIdx]);
+    nextTick(() => updateBoxCoordinates());
   }
 }, { deep: true });
+
+watch(() => selectedSignalIndex.value, (newIdx) => {
+  if (allInspectableSignals.value[newIdx]) {
+    centerOnTrade(allInspectableSignals.value[newIdx]);
+  }
+  nextTick(() => {
+    updateBoxCoordinates();
+  });
+});
+
+watch(inspectedSignal, () => {
+  nextTick(() => {
+    updateBoxCoordinates();
+  });
+});
+
+watch(() => props.selectedStrategy, (newStrat) => {
+  if (!newStrat) return;
+  const isGold = newStrat.toLowerCase().includes('xau') || newStrat.toLowerCase().includes('gold');
+  selectedSymbol.value = isGold ? 'XAU/USD' : 'BTC/USDT';
+  loadCandles();
+});
 
 onMounted(() => {
   initChart();

@@ -5,14 +5,15 @@ strategy("Goat Funded Trader Gold ATR Scalper (Trader MNQ)", overlay=true, initi
 // Strategy: Prop Firm ATR Hybrid Scalper on Gold (XAUUSD)
 // Reference: IQCapital Prop Firm Trader MNQ Strategy (https://youtu.be/snaP5117MxI)
 // Target: Goat Funded Trader (GFT) / FTMO Prop Firm Accounts
-// Optimized Microstructure: Long-Only Institutional Dip Absorption
+// Optimized Microstructure: Long-Only Institutional Dip Absorption + Wick Confirmation
 // -----------------------------------------------------------------------------
 
 // Inputs
 atrPeriod     = input.int(14, "ATR Period", minval=1)
-atrMult       = input.float(2.6, "Gold Dynamic ATR Band Multiplier", step=0.1)
-tpMult        = input.float(1.8, "Take Profit Multiplier (x ATR)", step=0.1)
+atrMult       = input.float(2.0, "Gold Dynamic ATR Band Multiplier", step=0.1)
+tpMult        = input.float(1.5, "Take Profit Multiplier (x ATR)", step=0.1)
 slMult        = input.float(1.2, "Stop Loss Multiplier (x ATR)", step=0.1)
+minWickRatio  = input.float(0.25, "Min Absorption Lower Wick Ratio", step=0.05)
 maxRiskPct    = input.float(0.5, "Max Account Risk Per Trade (%)", step=0.1)
 
 // 1. Indicator Calculations
@@ -24,29 +25,33 @@ prevAtr   = atrVal[1]
 lowerAtrBand = prevClose - (atrMult * prevAtr)
 upperAtrBand = prevClose + (atrMult * prevAtr)
 
-plot(lowerAtrBand, "Institutional Dip Absorption Band (2.6x ATR)", color=color.new(color.yellow, 20), linewidth=2)
+plot(lowerAtrBand, "Institutional Dip Absorption Band (2.0x ATR)", color=color.new(color.yellow, 20), linewidth=2)
 plot(upperAtrBand, "Upper Volatility Envelope", color=color.new(color.gray, 60), linewidth=1, style=plot.style_linebr)
 
-// 2. Position Sizing: Strict Prop Firm Risk Budgeting
+// 2. Candlestick Geometry: Lower Absorption Wick
+candleRange = math.max(high - low, syminfo.mintick)
+lowerWick   = math.min(close, open) - low
+lowerWickRatio = lowerWick / candleRange
+
+// 3. Position Sizing: Strict Prop Firm Risk Budgeting
 // Goat Funded Trader rules enforce maximum 4.5% overall drawdown and daily drawdown limits.
 // Position size is mathematically scaled so that a full stop loss never exceeds 0.50% equity.
 slDistance = slMult * prevAtr
 riskEquity = strategy.equity * (maxRiskPct / 100.0)
 contractsQty = slDistance > 0 ? (riskEquity / slDistance) : 1.0
 
-// 3. Long Entry Logic (Limit order at lower dynamic ATR envelope)
-// When 1m price wicks into the 2.6x ATR zone, liquidity absorption occurs.
-longCondition = (low <= lowerAtrBand) and not na(prevAtr)
+// 4. Long Entry Logic (Touches lower ATR band AND confirms with buying absorption wick)
+longCondition = (low <= lowerAtrBand) and (lowerWickRatio >= minWickRatio) and not na(prevAtr)
 
 var float longEntryPrice = na
 var float longTP = na
 var float longSL = na
 
 if (longCondition and strategy.position_size == 0)
-    longEntryPrice := lowerAtrBand
-    longTP := lowerAtrBand + (tpMult * prevAtr)
-    longSL := lowerAtrBand - (slMult * prevAtr)
-    strategy.entry("Long (Gold ATR Dip)", strategy.long, qty=contractsQty, limit=lowerAtrBand)
+    longEntryPrice := close
+    longTP := close + (tpMult * prevAtr)
+    longSL := close - (slMult * prevAtr)
+    strategy.entry("Long (Gold ATR Dip)", strategy.long, qty=contractsQty)
     strategy.exit("Exit Gold Scalp", "Long (Gold ATR Dip)", limit=longTP, stop=longSL)
 
 // Visual Signal Plotting

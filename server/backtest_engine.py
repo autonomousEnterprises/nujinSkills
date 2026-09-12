@@ -70,7 +70,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
         vol_thresh = 0.5
         stoploss_pct = 0.003
         takeprofit_pct = 0.005
-        min_bars = 0
+        min_bars = 1
         max_bars = 12
         trials = 35
         thesis_props = {
@@ -151,7 +151,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             prev_close_c = df_c['close'].shift(1).fillna(df_c['open'])
             tr_c = np.maximum(df_c['high'] - df_c['low'], np.maximum((df_c['high'] - prev_close_c).abs(), (df_c['low'] - prev_close_c).abs()))
             df_c['atr_14'] = tr_c.rolling(14).mean().fillna(tr_c)
-            mult = 2.6 if is_xauusd else 3.1
+            mult = 2.0 if is_xauusd else 3.1
             df_c['atr_lower_band'] = df_c['close'].shift(1) - (mult * df_c['atr_14'].shift(1))
             df_c['atr_upper_band'] = df_c['close'].shift(1) + (mult * df_c['atr_14'].shift(1))
             df_c['is_shooting_star'] = (
@@ -197,16 +197,20 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                     is_star_prev = bool(df_c['is_shooting_star'].iloc[i-1])
                     is_bear_daily = bool(df_c['daily_bearish'].iloc[i])
                     
-                    # Trader MNQ Long: Low touched or pierced dynamic lower ATR band
-                    is_long = (curr_low <= lower_band)
-                    is_short = (not is_xauusd) and is_star_prev and is_bear_daily and not is_long
+                    # Trader MNQ Long: Low touched or pierced dynamic lower ATR band with absorption confirmation on Gold
+                    if is_xauusd:
+                        is_long = (curr_low <= lower_band) and (lower_wick >= 0.25)
+                        is_short = False
+                    else:
+                        is_long = (curr_low <= lower_band)
+                        is_short = is_star_prev and is_bear_daily and not is_long
                     
                     if is_long:
-                        entry_price = lower_band
+                        entry_price = round(curr_close if is_xauusd else lower_band, 2)
                         stop_loss = round(entry_price - 1.2 * atr_val, 2)
-                        take_profit = round(entry_price + 1.8 * atr_val, 2)
+                        take_profit = round(entry_price + (1.5 if is_xauusd else 1.8) * atr_val, 2)
                         current_max_bars = 12
-                        start_exit_offset = 0 # intra-bar limit fill resolution
+                        start_exit_offset = 1 # Strictly next bar onwards to eliminate look-ahead
                     elif is_short:
                         entry_price = float(c['open'])
                         stop_loss = round(entry_price + 1.2 * atr_val, 2)

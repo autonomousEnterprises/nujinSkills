@@ -36,9 +36,10 @@ class PropFirmAtrHybridScalperXauusd(IStrategy):
     timeframe = '1m'
     can_short = False
 
-    atr_multiplier = 2.6
-    atr_tp_mult = 1.8
+    atr_multiplier = 2.0
+    atr_tp_mult = 1.5
     atr_sl_mult = 1.2
+    min_wick_ratio = 0.25
     max_risk_pct = 0.005
     
     minimal_roi = {
@@ -87,6 +88,7 @@ class PropFirmAtrHybridScalperXauusd(IStrategy):
     def populate_entry_trend(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         dataframe.loc[
             (dataframe['low'] <= dataframe['atr_lower_band']) & 
+            (dataframe['lower_wick'] >= self.min_wick_ratio) &
             (dataframe['atr_14'] > 0),
             'enter_long'
         ] = 1
