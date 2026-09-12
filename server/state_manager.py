@@ -468,33 +468,73 @@ class StrategyRegistry:
 
     def _infer_metadata(self, filename: str) -> Dict[str, Any]:
         clean = filename.replace(".py", "")
-        is_xau = ("XAU" in clean.upper()) or ("GOAT" in clean.upper())
+        filepath = os.path.join(self._dir, filename)
+
+        thesis = ""
+        symbol = ""
+        timeframe = ""
+        target_profile = ""
+        display_name = ""
+
+        # Parse from file content if it exists
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read(4096)
+                    for line in content.splitlines():
+                        line_s = line.strip()
+                        if line_s.startswith("# Thesis:"):
+                            thesis = line_s.replace("# Thesis:", "").strip()
+                        elif line_s.startswith("# Target Profile:"):
+                            target_profile = line_s.replace("# Target Profile:", "").strip()
+                        elif "timeframe =" in line_s or "timeframe=" in line_s:
+                            tf = line_s.split("=")[-1].strip().strip("'\"")
+                            if tf:
+                                timeframe = tf
+                        elif "symbol =" in line_s or "symbol=" in line_s:
+                            sym = line_s.split("=")[-1].strip().strip("'\"")
+                            if sym:
+                                symbol = sym
+            except Exception as e:
+                logger.debug(f"[StrategyRegistry] Metadata extract error for {filename}: {e}")
+
+        is_xau = ("XAU" in clean.upper()) or ("GOAT" in clean.upper()) or ("GOLD" in clean.upper())
         is_trap = "TRAP" in clean.upper()
+        is_atr = ("ATR" in clean.upper()) or ("MNQ" in clean.upper()) or ("HYBRID" in clean.upper())
+
+        import re
+        humanized_name = re.sub(r'([A-Z]+)', r' \1', clean).replace('_', ' ').strip()
+        humanized_name = re.sub(r'\s+', ' ', humanized_name)
+
+        if not symbol:
+            symbol = "XAU/USD" if is_xau else "BTC/USDT"
+        if not timeframe:
+            timeframe = "1m" if is_xau else "15m"
 
         if is_xau:
-            return {
-                "display_name": "Goat Funded Trader XAUUSD Scalper",
-                "target_profile": "Goat Funded Trader Prop Scalper (2m-15m)",
-                "thesis": "Dynamic Range Expansion Momentum Train on 1m-15m London/NY sessions",
-                "symbol": "XAU/USD",
-                "timeframe": "1m",
-            }
+            display_name = display_name or "Goat Funded Trader XAUUSD Scalper"
+            target_profile = target_profile or "Goat Funded Trader Prop Scalper (2m-15m)"
+            thesis = thesis or "Dynamic Range Expansion Momentum Train on 1m-15m London/NY sessions"
+        elif is_atr:
+            display_name = display_name or "Trader MNQ Prop Firm ATR Hybrid Scalper"
+            target_profile = target_profile or "Prop Firm Challenge & Funded Scalper (5m-15m)"
+            thesis = thesis or "Trader MNQ Prop Firm ATR Hybrid Scalper (Intrabar Dip Limits + Exhaustion Wick Shorts)"
         elif is_trap:
-            return {
-                "display_name": "Trap Fade Liquidity Sweep",
-                "target_profile": "Liquidity Sweep Fade (LONG & SHORT)",
-                "thesis": "Dual-Directional Asian Session Liquidity Sweep Fade beyond session extremes",
-                "symbol": "BTC/USDT",
-                "timeframe": "15m",
-            }
+            display_name = display_name or "Trap Fade Liquidity Sweep"
+            target_profile = target_profile or "Liquidity Sweep Fade (LONG & SHORT)"
+            thesis = thesis or "Dual-Directional Asian Session Liquidity Sweep Fade beyond session extremes"
         else:
-            return {
-                "display_name": "Prop Firm VSA Wick Rejection",
-                "target_profile": "Prop Firm Challenge (LONG & SHORT)",
-                "thesis": "VSA Wick Rejection with Volume Z-Score > 1.0 counterparty limit absorption",
-                "symbol": "BTC/USDT",
-                "timeframe": "15m",
-            }
+            display_name = display_name or humanized_name
+            target_profile = target_profile or f"{humanized_name} (Alpha Engine)"
+            thesis = thesis or f"Autonomous Alpha Model: {humanized_name}"
+
+        return {
+            "display_name": display_name,
+            "target_profile": target_profile,
+            "thesis": thesis,
+            "symbol": symbol,
+            "timeframe": timeframe,
+        }
 
     def _calculate_score(self, summary: Dict[str, Any], gates: Dict[str, Any]) -> float:
         if not summary or summary.get("trades", 0) == 0:
@@ -560,6 +600,18 @@ class StrategyRegistry:
                 # If system active strategy matches, sync status
                 if is_active_sys and item.get("status") != "ACTIVE_LIVE":
                     item["status"] = "ACTIVE_LIVE"
+                # Update display_name, thesis if available from file
+                if meta.get("thesis") and meta["thesis"] != "AI Discovered Strategy":
+                    item["thesis"] = meta["thesis"]
+                if meta.get("display_name"):
+                    item["display_name"] = meta["display_name"]
+                if meta.get("target_profile"):
+                    item["target_profile"] = meta["target_profile"]
+                if meta.get("symbol"):
+                    item["symbol"] = meta["symbol"]
+                if meta.get("timeframe"):
+                    item["timeframe"] = meta["timeframe"]
+
                 cron_cfg = item.setdefault("cron_config", {
                     "enabled": (item.get("status") == "CRON_BACKTEST"),
                     "interval": "24h",
@@ -580,7 +632,7 @@ class StrategyRegistry:
                 updated_list.append(item)
             else:
                 # Initialize new strategy record
-                default_status = "ACTIVE_LIVE" if is_active_sys else ("CRON_BACKTEST" if "Vsa" in clean_name else "DEACTIVATED")
+                default_status = "ACTIVE_LIVE" if is_active_sys else "CRON_BACKTEST"
                 record = {
                     "id": py_file,
                     "name": clean_name,

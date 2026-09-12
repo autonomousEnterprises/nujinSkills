@@ -387,19 +387,48 @@ async def list_strategies():
     strategies_dir = os.path.join(os.getcwd(), "strategies")
     os.makedirs(strategies_dir, exist_ok=True)
     
+    # Sync with registry so file list & registry always match
+    managed = strategy_registry.get_all(sync=True)
+    
     strategy_files = []
-    for file_name in os.listdir(strategies_dir):
-        if file_name.endswith(".py"):
-            file_path = os.path.join(strategies_dir, file_name)
-            stat = os.stat(file_path)
-            strategy_files.append({
-                "name": file_name,
-                "path": f"strategies/{file_name}",
-                "size_bytes": stat.st_size,
-                "last_modified": stat.st_mtime
-            })
-            
+    for s in managed:
+        file_name = s.get("file") or f"{s.get('name')}.py"
+        file_path = os.path.join(strategies_dir, file_name)
+        stat_size = 0
+        stat_mtime = 0
+        if os.path.exists(file_path):
+            st = os.stat(file_path)
+            stat_size = st.st_size
+            stat_mtime = st.st_mtime
+        strategy_files.append({
+            "name": file_name,
+            "path": f"strategies/{file_name}",
+            "display_name": s.get("display_name", file_name.replace(".py", "")),
+            "size_bytes": stat_size,
+            "last_modified": stat_mtime,
+            "status": s.get("status", "DEACTIVATED"),
+            "rank": s.get("rank", 99),
+            "tier": s.get("tier", "C-Tier"),
+            "sharpe": s.get("latest_backtest", {}).get("sharpe", 0.0),
+            "win_rate": s.get("latest_backtest", {}).get("win_rate", 0.0),
+        })
+        
     return {"strategies": strategy_files, "total": len(strategy_files)}
+
+
+@app.post("/api/strategies/sync")
+async def sync_strategies_endpoint():
+    """Explicit endpoint to force strategy filesystem re-scan & WebSocket broadcast."""
+    all_strats = strategy_registry.sync_with_filesystem()
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    payload = {
+        "strategies": all_strats,
+        "portfolio_summary": portfolio,
+        "distribution_analytics": distribution
+    }
+    await manager.broadcast({"event_type": "STRATEGIES_UPDATED", "payload": payload})
+    return {"status": "SUCCESS", "total": len(all_strats), **payload}
 
 
 # ── Strategy Management System Endpoints ─────────────────────────────────────
@@ -536,6 +565,133 @@ async def cron_backtest_scheduler():
 
 
 
+# ── Real-Time Strategy File & Disk State Auto-Discovery Watcher ─────────────
+async def strategy_auto_discovery_watcher():
+    """
+    Watches strategies/*.py directory and data/strategies.json for changes.
+    When a new strategy is created (by AI agent, CLI tool, or user):
+      1. Automatically registers it in strategy_registry.
+      2. Automatically executes an initial quantitative backtest in a worker thread.
+      3. Broadcasts STRATEGY_DISCOVERED and STRATEGIES_UPDATED over WebSocket.
+    When an existing strategy is modified or deleted:
+      Syncs filesystem and broadcasts STRATEGIES_UPDATED.
+    """
+    import asyncio
+    strategies_dir = os.path.join(os.getcwd(), "strategies")
+    os.makedirs(strategies_dir, exist_ok=True)
+    strategies_json = os.path.join(os.getcwd(), "data", "strategies.json")
+
+    def _get_strategies_snapshot():
+        snap = {}
+        if os.path.exists(strategies_dir):
+            for fname in os.listdir(strategies_dir):
+                if fname.endswith(".py"):
+                    fpath = os.path.join(strategies_dir, fname)
+                    try:
+                        st = os.stat(fpath)
+                        snap[fname] = (st.st_mtime, st.st_size)
+                    except OSError:
+                        pass
+        return snap
+
+    def _get_json_mtime():
+        if os.path.exists(strategies_json):
+            try:
+                return os.path.getmtime(strategies_json)
+            except OSError:
+                return 0.0
+        return 0.0
+
+    known_files = _get_strategies_snapshot()
+    last_json_mtime = _get_json_mtime()
+    logger.info(f"[StrategyWatcher] Initialized real-time strategy watcher with {len(known_files)} strategies on disk.")
+
+    while True:
+        await asyncio.sleep(1.5)
+        try:
+            curr_files = _get_strategies_snapshot()
+            curr_json_mtime = _get_json_mtime()
+
+            new_files = set(curr_files.keys()) - set(known_files.keys())
+            removed_files = set(known_files.keys()) - set(curr_files.keys())
+            modified_files = {
+                f for f in curr_files.keys() & known_files.keys()
+                if curr_files[f] != known_files[f]
+            }
+
+            has_file_changes = bool(new_files or removed_files or modified_files)
+            json_changed_externally = (curr_json_mtime != last_json_mtime and not has_file_changes)
+
+            if has_file_changes:
+                logger.info(f"[StrategyWatcher] Detected strategy changes: new={list(new_files)}, modified={list(modified_files)}, removed={list(removed_files)}")
+                
+                # Sync filesystem state with strategy registry
+                all_strats = strategy_registry.sync_with_filesystem()
+
+                # For brand new strategies, run an initial quantitative backtest in background thread
+                for new_file in new_files:
+                    clean_name = new_file.replace(".py", "")
+                    meta = strategy_registry._infer_metadata(new_file)
+                    logger.info(f"[StrategyWatcher] 🚀 New strategy discovered: {new_file} ({meta.get('display_name')}). Emitting discovery & running initial backtest...")
+                    
+                    # Notify frontend immediately of discovery
+                    await manager.broadcast({
+                        "event_type": "STRATEGY_DISCOVERED",
+                        "payload": {
+                            "strategy": clean_name,
+                            "file": new_file,
+                            "display_name": meta.get("display_name", clean_name),
+                            "target_profile": meta.get("target_profile", ""),
+                            "thesis": meta.get("thesis", ""),
+                            "symbol": meta.get("symbol", "BTC/USDT"),
+                            "timeframe": meta.get("timeframe", "15m")
+                        }
+                    })
+
+                    try:
+                        # Run real backtest in worker thread so we don't block the async event loop
+                        await asyncio.to_thread(run_real_backtest, new_file, save_as_active=False)
+                        logger.info(f"[StrategyWatcher] Initial backtest complete for {new_file}")
+                    except Exception as bt_err:
+                        logger.warning(f"[StrategyWatcher] Initial backtest error for {new_file}: {bt_err}")
+
+                # Re-fetch after backtests
+                all_strats = strategy_registry.get_all(sync=False)
+                portfolio = strategy_registry.get_portfolio_summary()
+                distribution = strategy_registry.get_distribution_analytics()
+
+                await manager.broadcast({
+                    "event_type": "STRATEGIES_UPDATED",
+                    "payload": {
+                        "strategies": all_strats,
+                        "portfolio_summary": portfolio,
+                        "distribution_analytics": distribution
+                    }
+                })
+
+                known_files = curr_files
+                last_json_mtime = _get_json_mtime()
+
+            elif json_changed_externally:
+                logger.info(f"[StrategyWatcher] data/strategies.json changed externally. Broadcasting update...")
+                all_strats = strategy_registry.get_all(sync=False)
+                portfolio = strategy_registry.get_portfolio_summary()
+                distribution = strategy_registry.get_distribution_analytics()
+
+                await manager.broadcast({
+                    "event_type": "STRATEGIES_UPDATED",
+                    "payload": {
+                        "strategies": all_strats,
+                        "portfolio_summary": portfolio,
+                        "distribution_analytics": distribution
+                    }
+                })
+                last_json_mtime = curr_json_mtime
+
+        except Exception as e:
+            logger.error(f"[StrategyWatcher] Auto-discovery loop error: {e}")
+
+
 # ── XAUUSD & Goat Funded Trader Prop Scalping Endpoints ──────────────────────
 @app.on_event("startup")
 async def startup_event():
@@ -545,6 +701,8 @@ async def startup_event():
     asyncio.create_task(xauusd_engine.run_live_feed(manager.broadcast))
     logger.info("[NujinSkillsServer] Launching Periodic Strategy Cron Backtest Scheduler...")
     asyncio.create_task(cron_backtest_scheduler())
+    logger.info("[NujinSkillsServer] Launching Strategy Auto-Discovery File Watcher...")
+    asyncio.create_task(strategy_auto_discovery_watcher())
 
     # Automatically resume existing managed active strategies without running backtests
     try:

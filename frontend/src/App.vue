@@ -79,11 +79,53 @@
         @navigateToBacktest="handleNavigateToBacktest"
       />
     </main>
+
+    <!-- Real-Time Strategy Discovery Toast Alert -->
+    <transition
+      enter-active-class="transform transition ease-out duration-300"
+      enter-from-class="translate-y-4 opacity-0 scale-95"
+      enter-to-class="translate-y-0 opacity-100 scale-100"
+      leave-active-class="transition ease-in duration-200"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+    >
+      <div v-if="activeToast" class="fixed bottom-4 right-4 z-50 max-w-sm">
+        <div class="alert alert-info shadow-2xl border border-info/40 backdrop-blur-md bg-base-300/95 flex items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2.5 overflow-hidden">
+            <Sparkles class="w-5 h-5 text-info shrink-0 animate-bounce" />
+            <div class="truncate">
+              <div class="font-bold flex items-center gap-1.5 text-base-content">
+                <span>New Strategy Discovered!</span>
+                <span class="badge badge-xs badge-info font-mono">{{ activeToast.timeframe || '15m' }}</span>
+              </div>
+              <div class="text-[11px] font-mono text-base-content/80 truncate">
+                {{ activeToast.display_name || activeToast.strategy }}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button 
+              @click="inspectDiscoveredStrategy(activeToast.file || activeToast.strategy)"
+              class="btn btn-xs btn-primary font-bold font-mono shadow-sm"
+            >
+              Inspect (F4)
+            </button>
+            <button 
+              @click="activeToast = null"
+              class="btn btn-xs btn-ghost btn-circle text-base-content/60 hover:text-base-content"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { Sparkles } from 'lucide-vue-next';
 import Header from './components/Header.vue';
 import ChartCanvas from './components/ChartCanvas.vue';
 import SignalDeck from './components/SignalDeck.vue';
@@ -138,6 +180,7 @@ const {
   managedStrategies,
   portfolioSummary,
   distributionAnalytics,
+  latestDiscoveredStrategy,
 } = useWebSocket();
 
 const activeState = computed(() => liveSystemState.value);
@@ -171,6 +214,69 @@ const fetchStrategies = async () => {
     strategies.value = data.strategies || [];
   } catch (e) {
     console.error('[App] Error fetching strategies:', e);
+  }
+};
+
+// Keep strategies synchronized whenever managedStrategies updates from WebSocket or API
+watch(
+  managedStrategies,
+  (newManaged) => {
+    if (newManaged && newManaged.length > 0) {
+      strategies.value = newManaged.map((s) => ({
+        name: s.file || (s.name.endsWith('.py') ? s.name : `${s.name}.py`),
+        path: s.path || `strategies/${s.file || s.name + '.py'}`,
+        display_name: s.display_name || s.name,
+        status: s.status,
+        rank: s.rank,
+        tier: s.tier,
+        sharpe: s.latest_backtest?.sharpe || 0,
+        win_rate: s.latest_backtest?.win_rate || 0,
+      }));
+    }
+  },
+  { immediate: true, deep: true }
+);
+
+// Toast notification for newly discovered strategies
+const activeToast = ref<any>(null);
+let toastTimer: any = null;
+
+watch(latestDiscoveredStrategy, (discovered) => {
+  if (discovered) {
+    activeToast.value = discovered;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      activeToast.value = null;
+    }, 8000);
+  }
+});
+
+const inspectDiscoveredStrategy = (stratName: string) => {
+  const file = stratName.endsWith('.py') ? stratName : `${stratName}.py`;
+  handleSelectStrategy(file);
+  activeScreen.value = 'STRATEGY_MANAGER';
+  activeToast.value = null;
+};
+
+// Periodic polling fallback to guarantee real-time detection across networks/reconnects
+let pollInterval: any = null;
+const pollStrategies = async () => {
+  try {
+    const res = await fetch('/api/strategies/manage');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.strategies && Array.isArray(data.strategies)) {
+        managedStrategies.value = data.strategies;
+      }
+      if (data?.portfolio_summary) {
+        portfolioSummary.value = data.portfolio_summary;
+      }
+      if (data?.distribution_analytics) {
+        distributionAnalytics.value = data.distribution_analytics;
+      }
+    }
+  } catch {
+    // silent
   }
 };
 
@@ -307,6 +413,7 @@ onMounted(() => {
   }
 
   fetchStrategies();
+  pollStrategies();
 
   fetch('/api/state')
     .then((r) => r.json())
@@ -322,10 +429,17 @@ onMounted(() => {
     });
 
   window.addEventListener('keydown', handleKeyDown);
+
+  // Periodic polling safety net & window focus auto-refresh
+  pollInterval = setInterval(pollStrategies, 3500);
+  window.addEventListener('focus', pollStrategies);
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('focus', pollStrategies);
+  if (pollInterval) clearInterval(pollInterval);
+  if (toastTimer) clearTimeout(toastTimer);
   if (mediaQuery) {
     mediaQuery.removeEventListener('change', handleSystemThemeChange);
   }

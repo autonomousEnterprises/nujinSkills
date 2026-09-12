@@ -220,6 +220,11 @@ def register_strategy(strategy: str, thesis: str, profile: str, symbol: str, tim
     print(f"{TOOL_NAME} Strategy registered successfully:")
     print(json.dumps(record, indent=2))
 
+    # Notify running server for real-time Cockpit updates
+    sync_res = _fetch_json(f"{endpoint}/api/strategies/sync", method="POST", data={})
+    if sync_res:
+        print(f"{TOOL_NAME} Real-time Cockpit telemetry updated via {endpoint}.")
+
 def summary(endpoint: str):
     from server.state_manager import strategy_registry, state_manager
     strats = strategy_registry.get_all(sync=True)

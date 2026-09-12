@@ -33,6 +33,17 @@ export interface SystemState {
   active_strategies?: string[];
 }
 
+export interface DiscoveredStrategyPayload {
+  strategy: string;
+  file: string;
+  display_name: string;
+  target_profile?: string;
+  thesis?: string;
+  symbol?: string;
+  timeframe?: string;
+  timestamp?: number;
+}
+
 export function useWebSocket() {
   const isConnected = ref(false);
   const widgetsMap = ref<Record<string, WidgetData>>({});
@@ -42,6 +53,7 @@ export function useWebSocket() {
   const managedStrategies = ref<ManagedStrategy[]>([]);
   const portfolioSummary = ref<PortfolioSummary | null>(null);
   const distributionAnalytics = ref<DistributionAnalytics | null>(null);
+  const latestDiscoveredStrategy = ref<DiscoveredStrategyPayload | null>(null);
 
   const widgets = computed(() => Object.values(widgetsMap.value));
 
@@ -135,6 +147,14 @@ export function useWebSocket() {
               }
               break;
             }
+            case 'STRATEGY_DISCOVERED': {
+              console.log('[WS] 🚀 STRATEGY_DISCOVERED received:', payload);
+              latestDiscoveredStrategy.value = {
+                ...payload,
+                timestamp: Date.now(),
+              };
+              break;
+            }
             default:
               break;
           }
@@ -223,5 +243,6 @@ export function useWebSocket() {
     managedStrategies,
     portfolioSummary,
     distributionAnalytics,
+    latestDiscoveredStrategy,
   };
 }

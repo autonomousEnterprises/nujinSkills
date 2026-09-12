@@ -156,6 +156,21 @@ def emit_strategy(thesis: str, rules_path_or_json: str, framework: str, out_path
         
     print(f"[StrategyEmitter] Strategy script successfully generated: {out_path}")
 
+    # Notify running server for instant recognition, or sync registry locally
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://localhost:8000/api/strategies/sync", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            print("[StrategyEmitter] Telemetry server notified — real-time Cockpit telemetry updated instantly.")
+    except Exception:
+        try:
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+            from server.state_manager import strategy_registry
+            strategy_registry.sync_with_filesystem()
+            print("[StrategyEmitter] Local strategy registry synced on disk.")
+        except Exception:
+            pass
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Strategy Code Emitter CLI")
     parser.add_argument("--thesis", required=True, help="Economic thesis description")
