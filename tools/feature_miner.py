@@ -91,6 +91,46 @@ def process_features(input_path: str, output_path: str, window: int = 20):
         (pl.col("close") < pl.col("close").shift(96).fill_null(pl.col("close"))).cast(pl.Int32).alias("regime_bearish_daily")
     ])
 
+    # 8. Order Flow & Microstructure Toxicity Proxies (CVD, Delta, VPIN Proxy)
+    df = df.with_columns([
+        (((pl.col("close") - pl.col("open")) / pl.col("total_range")) * pl.col("volume")).alias("delta_proxy")
+    ]).with_columns([
+        pl.col("delta_proxy").rolling_sum(window).alias("cvd_proxy"),
+        (pl.col("delta_proxy").abs().rolling_sum(window) / (pl.col("volume").rolling_sum(window).clip(1e-6, None))).alias("vpin_proxy")
+    ])
+
+    # 9. Smart Money Concepts (SMC) & Liquidity Sweeps (FVGs, High/Low Sweeps)
+    df = df.with_columns([
+        # Fair Value Gaps (Bullish & Bearish Imbalances)
+        ((pl.col("low") > pl.col("high").shift(2)) & (pl.col("close") > pl.col("open"))).cast(pl.Int32).alias("fvg_bullish"),
+        ((pl.col("high") < pl.col("low").shift(2)) & (pl.col("close") < pl.col("open"))).cast(pl.Int32).alias("fvg_bearish"),
+        # Liquidity Sweep Rejections (fading liquidity runs beyond 20-bar rolling extremes)
+        ((pl.col("high") > pl.col("high").shift(1).rolling_max(window).fill_null(pl.col("high"))) & 
+         (pl.col("upper_wick") >= 0.38) & 
+         (pl.col("volume_zscore") > 1.0)).cast(pl.Int32).alias("sweep_high_rejection"),
+        ((pl.col("low") < pl.col("low").shift(1).rolling_min(window).fill_null(pl.col("low"))) & 
+         (pl.col("lower_wick") >= 0.38) & 
+         (pl.col("volume_zscore") > 1.0)).cast(pl.Int32).alias("sweep_low_rejection")
+    ])
+
+    # 10. Session Windows / Killzones (if timestamp present)
+    if "timestamp" in df.columns:
+        # Convert timestamp to UTC hour if numeric unix epoch
+        try:
+            ts_dtype = df.schema["timestamp"]
+            if ts_dtype in [pl.Int64, pl.Float64, pl.Int32]:
+                # Assuming unix timestamp in seconds
+                df = df.with_columns([
+                    ((pl.col("timestamp") % 86400) // 3600).alias("utc_hour")
+                ])
+                df = df.with_columns([
+                    ((pl.col("utc_hour") >= 0) & (pl.col("utc_hour") < 6)).cast(pl.Int32).alias("session_asian"),
+                    ((pl.col("utc_hour") >= 7) & (pl.col("utc_hour") < 9)).cast(pl.Int32).alias("killzone_london"),
+                    ((pl.col("utc_hour") >= 12) & (pl.col("utc_hour") < 15)).cast(pl.Int32).alias("killzone_ny")
+                ])
+        except Exception as e:
+            print(f"[FeatureMiner] Note on timestamp session extraction: {e}")
+
     df.write_csv(output_path)
     print(f"[FeatureMiner] Success! Features written to {output_path} ({len(df)} rows, {len(df.columns)} columns)")
 
