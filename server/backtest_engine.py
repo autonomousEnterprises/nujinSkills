@@ -51,7 +51,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
     subprocess.run(cmd_feat, cwd=cwd, check=True)
         
     # 2. Derive rule parameters & thesis based on strategy file name
-    if is_xauusd:
+    if is_xauusd and not is_atr_hybrid:
         wick_thresh = 0.40
         vol_thresh = 0.4
         stoploss_pct = 0.0025   # ~$11.00 gold move (0.50% account risk for GFT)
@@ -64,6 +64,20 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
             "counterparty": "Breakout counter-trend fade algorithms trapped by London & NY order flow expansion",
             "invalidation": "Structural Invalidation (-0.25% hard stop, 0.50% account risk)",
             "target_profile": "Goat Funded Trader Prop Scalper (2m-15m)"
+        }
+    elif is_atr_hybrid and is_xauusd:
+        wick_thresh = 0.38
+        vol_thresh = 0.5
+        stoploss_pct = 0.003
+        takeprofit_pct = 0.005
+        min_bars = 0
+        max_bars = 12
+        trials = 50
+        thesis_props = {
+            "thesis": "Trader MNQ Prop Firm ATR Hybrid Scalper on Gold XAUUSD (Intrabar 2.6x ATR Dip Longs + Shooting Star Shorts)",
+            "counterparty": "Panic retail dip sellers and breakout chasers trapped by institutional Gold liquidity envelopes",
+            "invalidation": "1.2x ATR Fixed Stop-Loss (Strict 0.50% account equity risk limit per trade)",
+            "target_profile": "XAUUSD Prop Scalper (1m-5m)"
         }
     elif is_atr_hybrid:
         wick_thresh = 0.38
@@ -163,7 +177,7 @@ def run_real_backtest(strategy_name: str, save_as_active: bool = False) -> dict:
                 
                 # Session Filter for Gold Scalping (London 07:30-10:30 UTC or NY 12:45-16:30 UTC)
                 session_ok = True
-                if is_xauusd:
+                if is_xauusd and not is_atr_hybrid:
                     dt_utc = datetime.fromtimestamp(int(c['timestamp']), tz=timezone.utc)
                     minute_of_day = dt_utc.hour * 60 + dt_utc.minute
                     # London (07:30-10:30 UTC) or NY (12:45-16:30 UTC)
