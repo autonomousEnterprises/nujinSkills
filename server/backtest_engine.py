@@ -226,7 +226,10 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
                     pass
         roi_keys.sort()
         
-        min_bars = min([k for k in roi_keys if k > 0], default=getattr(strat_inst, "min_bars", 1))
+        # Minimum and maximum holding bars (anti-arbitrage or holding window)
+        min_bars = getattr(strat_inst, "min_bars", getattr(strat_inst, "min_hold_bars", None))
+        if min_bars is None:
+            min_bars = 2 if "GOAT" in clean_name.upper() else 1
         max_bars = max(roi_keys, default=getattr(strat_inst, "max_bars", 15 if is_gold else 12))
         if max_bars == 0:
             max_bars = 12
@@ -335,15 +338,19 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
                 curr_c = float(bar_curr['close'])
                 bars_held = exit_idx - i
 
-                # Time-decaying ROI check if defined
-                target_tp = take_profit
-                if minimal_roi:
+                # Target Take Profit: Preserve ATR-based TP if configured, otherwise use time-decaying minimal_roi
+                if atr_tp_mult is not None and atr_val > 0:
+                    target_tp = take_profit
+                elif minimal_roi:
+                    target_tp = take_profit
                     for step_bar in sorted(roi_keys, reverse=True):
                         if bars_held >= step_bar:
                             step_roi = float(minimal_roi.get(str(step_bar), minimal_roi.get(step_bar, 0.0)))
                             if step_roi > 0:
                                 target_tp = round(entry_price * (1.0 + step_roi) if side == "LONG" else entry_price * (1.0 - step_roi), 2)
                             break
+                else:
+                    target_tp = take_profit
 
                 if side == "LONG":
                     if curr_l <= stop_loss:
@@ -390,6 +397,9 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
             else:
                 pnl_pct = round(((entry_price - exit_price) / entry_price) * 100.0, 2)
 
+            actual_tp = exit_price if exit_reason == "TAKE_PROFIT" else target_tp
+            actual_sl = exit_price if exit_reason == "STOP_LOSS" else stop_loss
+
             price_fmt = f"${entry_price:.2f}" if is_gold else f"${entry_price:,.1f}"
             trade_markers.append({
                 "time": entry_time,
@@ -398,8 +408,8 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
                 "shape": "arrowUp" if side == "LONG" else "arrowDown",
                 "text": f"[BT] {side} {price_fmt}",
                 "entry_price": entry_price,
-                "stop_loss": stop_loss,
-                "take_profit": take_profit,
+                "stop_loss": actual_sl,
+                "take_profit": actual_tp,
                 "side": side
             })
 
@@ -416,8 +426,8 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
                 "side": side,
                 "entry_time": entry_time,
                 "entry_price": entry_price,
-                "stop_loss": stop_loss,
-                "take_profit": take_profit,
+                "stop_loss": actual_sl,
+                "take_profit": actual_tp,
                 "exit_time": exit_time,
                 "exit_price": exit_price,
                 "exit_reason": exit_reason,
