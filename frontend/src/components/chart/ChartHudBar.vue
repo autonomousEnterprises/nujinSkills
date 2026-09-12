@@ -1,5 +1,14 @@
 <template>
-  <div class="h-7 bg-base-200/50 backdrop-blur-xs border-b border-base-content/10 px-3 flex items-center gap-3 text-[11px] font-mono text-base-content/80 overflow-x-auto shrink-0 z-10 select-text">
+  <div class="h-7 bg-base-200/60 backdrop-blur-xs border-b border-base-content/10 px-3 flex items-center gap-3 text-[11px] font-mono text-base-content/80 overflow-x-auto shrink-0 z-10 select-text">
+    <!-- 0. Dedicated Strategy Framework Indicator Badge -->
+    <div v-if="strategyProfile" class="flex items-center gap-1.5 shrink-0" :title="strategyProfile.frameworkDescription">
+      <span class="badge badge-xs font-bold font-mono text-[9px] uppercase tracking-wider py-1 px-1.5 shadow-xs" :class="strategyProfile.badgeClass">
+        <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse mr-1" />
+        {{ strategyProfile.frameworkBadge }}
+      </span>
+      <div class="h-3 w-[1px] bg-base-content/20 shrink-0" />
+    </div>
+
     <!-- 1. Candlestick Coordinates (Crosshair or Latest) -->
     <div v-if="legendData.open !== undefined" class="flex items-center gap-2 shrink-0">
       <span class="text-base-content/40 font-bold uppercase text-[9px]">Candle:</span>
@@ -15,16 +24,35 @@
 
     <div class="h-3 w-[1px] bg-base-content/20 shrink-0" />
 
-    <!-- 2. Technical Indicator Coordinates -->
+    <!-- 2. Dedicated Strategy Technical Indicator Coordinates -->
     <div class="flex items-center gap-2.5 shrink-0">
-      <span class="text-base-content/40 font-bold uppercase text-[9px]">Indicators:</span>
-      <span v-if="legendData.ema9" class="text-sky-400">EMA9: <strong>{{ formatPrice(legendData.ema9, isGoldStrategy || isSpStrategy) }}</strong></span>
-      <span v-if="legendData.ema21" class="text-indigo-400">EMA21: <strong>{{ formatPrice(legendData.ema21, isGoldStrategy || isSpStrategy) }}</strong></span>
-      <span v-if="legendData.ema200" class="text-amber-400">EMA200: <strong>{{ formatPrice(legendData.ema200, isGoldStrategy || isSpStrategy) }}</strong></span>
-      <span v-if="legendData.hh15" class="text-emerald-400">HH15: <strong>{{ formatPrice(legendData.hh15, isGoldStrategy || isSpStrategy) }}</strong></span>
-      <span v-if="legendData.ll15" class="text-rose-400">LL15: <strong>{{ formatPrice(legendData.ll15, isGoldStrategy || isSpStrategy) }}</strong></span>
-      <span v-if="legendData.bbUpper" class="text-purple-400">BB: <strong>[{{ formatPrice(legendData.bbUpper, isGoldStrategy || isSpStrategy) }} - {{ formatPrice(legendData.bbLower, isGoldStrategy || isSpStrategy) }}]</strong></span>
-      <span v-if="legendData.hurst" class="text-pink-400">Hurst: <strong>{{ legendData.hurst?.toFixed(3) }}</strong></span>
+      <span class="text-base-content/40 font-bold uppercase text-[9px]">Strategy Alpha:</span>
+
+      <!-- Dynamic Dedicated Indicator Chips -->
+      <template v-if="hudItems && hudItems.length > 0">
+        <span
+          v-for="item in hudItems"
+          :key="item.id"
+          class="flex items-center gap-1 font-mono text-[11px]"
+          :style="{ color: item.color || undefined }"
+          :class="item.colorClass || ''"
+        >
+          <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: item.color || '#38bdf8' }" />
+          <span>{{ item.label }}:</span>
+          <strong class="text-base-content/95">{{ item.value }}</strong>
+        </span>
+      </template>
+
+      <!-- Fallback generic indicators if profile not computed yet -->
+      <template v-else>
+        <span v-if="legendData.ema9" class="text-sky-400">EMA9: <strong>{{ formatPrice(legendData.ema9, isGoldStrategy || isSpStrategy) }}</strong></span>
+        <span v-if="legendData.ema21" class="text-indigo-400">EMA21: <strong>{{ formatPrice(legendData.ema21, isGoldStrategy || isSpStrategy) }}</strong></span>
+        <span v-if="legendData.ema200" class="text-amber-400">EMA200: <strong>{{ formatPrice(legendData.ema200, isGoldStrategy || isSpStrategy) }}</strong></span>
+        <span v-if="legendData.hh15" class="text-emerald-400">HH15: <strong>{{ formatPrice(legendData.hh15, isGoldStrategy || isSpStrategy) }}</strong></span>
+        <span v-if="legendData.ll15" class="text-rose-400">LL15: <strong>{{ formatPrice(legendData.ll15, isGoldStrategy || isSpStrategy) }}</strong></span>
+        <span v-if="legendData.bbUpper" class="text-purple-400">BB: <strong>[{{ formatPrice(legendData.bbUpper, isGoldStrategy || isSpStrategy) }} - {{ formatPrice(legendData.bbLower, isGoldStrategy || isSpStrategy) }}]</strong></span>
+        <span v-if="legendData.hurst" class="text-pink-400">Hurst: <strong>{{ legendData.hurst?.toFixed(3) }}</strong></span>
+      </template>
     </div>
 
     <!-- 3. Target Trade Coordinates (When inspecting a jump) -->
@@ -52,6 +80,7 @@
 
 <script setup lang="ts">
 import type { InspectableSignal } from '../../types';
+import type { IndicatorChipData, StrategyIndicatorProfile } from '../../utils/indicators';
 import { formatPrice } from '../../utils/formatters';
 
 defineProps<{
@@ -61,5 +90,7 @@ defineProps<{
   tradeRiskReward?: string;
   isGoldStrategy: boolean;
   isSpStrategy?: boolean;
+  hudItems?: IndicatorChipData[];
+  strategyProfile?: StrategyIndicatorProfile | null;
 }>();
 </script>

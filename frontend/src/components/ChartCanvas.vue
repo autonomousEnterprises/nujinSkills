@@ -31,6 +31,8 @@
       :tradeRiskReward="tradeRiskReward"
       :isGoldStrategy="isGoldStrategy"
       :isSpStrategy="isSpStrategy"
+      :hudItems="currentHudItems"
+      :strategyProfile="currentProfile"
     />
 
     <!-- ── Lightweight Charts Main Canvas Container ── -->
@@ -159,11 +161,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { createChart, ColorType, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import ChartTopBar from './chart/ChartTopBar.vue';
 import ChartHudBar from './chart/ChartHudBar.vue';
-import { calculateEMA, calculateBollingerBands, calculateHHLL } from '../utils/indicators';
+import {
+  getStrategyIndicatorProfile,
+  type IndicatorPoint,
+  type IndicatorChipData,
+  type StrategyIndicatorProfile,
+} from '../utils/indicators';
 import { formatPrice as formatPriceUtil } from '../utils/formatters';
 import type { SignalData, InspectableSignal, PositionBoxCoord, TradeDetail } from '../types';
 
@@ -220,13 +227,16 @@ const chartContainerRef = ref<HTMLDivElement | null>(null);
 let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<'Candlestick'> | null = null;
 let volumeSeries: ISeriesApi<'Histogram'> | null = null;
-let ema9Series: ISeriesApi<'Line'> | null = null;
-let ema21Series: ISeriesApi<'Line'> | null = null;
-let ema200Series: ISeriesApi<'Line'> | null = null;
-let bbUpperSeries: ISeriesApi<'Line'> | null = null;
-let bbLowerSeries: ISeriesApi<'Line'> | null = null;
-let hhSeries: ISeriesApi<'Line'> | null = null;
-let llSeries: ISeriesApi<'Line'> | null = null;
+
+// Dynamic indicator series and profile state
+const activeIndicatorSeries = new Map<string, ISeriesApi<'Line'>>();
+const currentProfile = ref<StrategyIndicatorProfile | null>(null);
+const currentHudItems = ref<IndicatorChipData[]>([]);
+const timeIndexMap = new Map<number, number>();
+let indicatorCalculator: {
+  seriesData: Record<string, IndicatorPoint[]>;
+  getHudItems: (idx: number) => IndicatorChipData[];
+} | null = null;
 
 const cleanStrategyName = computed(() => (props.selectedStrategy || props.activeStrategy || 'OpeningFlushReversalScalper').replace('.py', ''));
 const isGoldStrategy = computed(() => {
@@ -652,19 +662,6 @@ const initChart = () => {
     scaleMargins: { top: 0.82, bottom: 0 },
   });
 
-  // EMA Lines
-  ema9Series = chart.addLineSeries({ color: '#38bdf8', lineWidth: 1.5, title: 'EMA 9' });
-  ema21Series = chart.addLineSeries({ color: '#818cf8', lineWidth: 1.5, title: 'EMA 21' });
-  ema200Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 2, title: 'EMA 200' });
-
-  // Bollinger Bands Lines
-  bbUpperSeries = chart.addLineSeries({ color: '#c084fc', lineWidth: 1, lineStyle: 2, title: 'BB Upper' });
-  bbLowerSeries = chart.addLineSeries({ color: '#c084fc', lineWidth: 1, lineStyle: 2, title: 'BB Lower' });
-
-  // HH/LL 15
-  hhSeries = chart.addLineSeries({ color: '#34d399', lineWidth: 1, lineStyle: 3, title: 'HH15' });
-  llSeries = chart.addLineSeries({ color: '#f87171', lineWidth: 1, lineStyle: 3, title: 'LL15' });
-
   // Crosshair move handler (Coordinates HUD sync)
   chart.subscribeCrosshairMove((param) => {
     if (!param.time || !param.seriesData || !candleSeries) return;
@@ -677,14 +674,15 @@ const initChart = () => {
         close: cData.close,
         volume: volumeSeries ? (param.seriesData.get(volumeSeries) as any)?.value : undefined,
         changePct: cData.open ? ((cData.close - cData.open) / cData.open) * 100 : 0,
-        ema9: ema9Series ? (param.seriesData.get(ema9Series) as any)?.value : undefined,
-        ema21: ema21Series ? (param.seriesData.get(ema21Series) as any)?.value : undefined,
-        ema200: ema200Series ? (param.seriesData.get(ema200Series) as any)?.value : undefined,
-        hh15: hhSeries ? (param.seriesData.get(hhSeries) as any)?.value : undefined,
-        ll15: llSeries ? (param.seriesData.get(llSeries) as any)?.value : undefined,
-        bbUpper: bbUpperSeries ? (param.seriesData.get(bbUpperSeries) as any)?.value : undefined,
-        bbLower: bbLowerSeries ? (param.seriesData.get(bbLowerSeries) as any)?.value : undefined,
       };
+
+      if (indicatorCalculator) {
+        const hoverTime = Number(param.time);
+        const idx = timeIndexMap.get(hoverTime);
+        if (idx !== undefined) {
+          currentHudItems.value = indicatorCalculator.getHudItems(idx);
+        }
+      }
     }
   });
 
@@ -707,6 +705,71 @@ const initChart = () => {
   resizeObserver.observe(chartContainerRef.value);
 
   loadCandles();
+};
+
+const applyStrategyIndicators = () => {
+  if (!chart || !rawCandles.value || rawCandles.value.length === 0) return;
+
+  const profile = getStrategyIndicatorProfile(props.selectedStrategy);
+  currentProfile.value = profile;
+
+  // 1. Remove obsolete series from chart that are not in the new profile
+  const currentConfigIds = new Set(profile.seriesConfigs.map((c) => c.id));
+  for (const [id, s] of activeIndicatorSeries.entries()) {
+    if (!currentConfigIds.has(id)) {
+      try {
+        chart.removeSeries(s);
+      } catch (e) {}
+      activeIndicatorSeries.delete(id);
+    }
+  }
+
+  // 2. Add or reconfigure series for current profile
+  for (const cfg of profile.seriesConfigs) {
+    if (!activeIndicatorSeries.has(cfg.id)) {
+      const s = chart.addLineSeries({
+        color: cfg.color,
+        lineWidth: (cfg.lineWidth || 1.5) as any,
+        lineStyle: (cfg.lineStyle ?? 0) as any,
+        title: cfg.title,
+      });
+      activeIndicatorSeries.set(cfg.id, s);
+    } else {
+      const s = activeIndicatorSeries.get(cfg.id)!;
+      s.applyOptions({
+        color: cfg.color,
+        lineWidth: (cfg.lineWidth || 1.5) as any,
+        lineStyle: (cfg.lineStyle ?? 0) as any,
+        title: cfg.title,
+      });
+    }
+  }
+
+  // 3. Prepare formatted candles
+  const candles = rawCandles.value.map((c: any) => ({
+    ...c,
+    time: timeToLocal(Number(c.time)) as Time,
+  }));
+
+  // Rebuild timeIndexMap
+  timeIndexMap.clear();
+  candles.forEach((c: any, idx: number) => {
+    timeIndexMap.set(Number(c.time), idx);
+  });
+
+  // 4. Calculate indicators
+  indicatorCalculator = profile.calculate(candles);
+
+  // 5. Populate series data
+  for (const cfg of profile.seriesConfigs) {
+    const s = activeIndicatorSeries.get(cfg.id);
+    const data = indicatorCalculator.seriesData[cfg.id] || [];
+    s?.setData(data);
+  }
+
+  // 6. Populate HUD items for latest candle
+  const lastIdx = candles.length - 1;
+  currentHudItems.value = indicatorCalculator.getHudItems(lastIdx);
 };
 
 const loadCandles = async () => {
@@ -737,28 +800,8 @@ const loadCandles = async () => {
       }));
       volumeSeries?.setData(volumes);
 
-      // Quantitative Indicators
-      const ema9 = calculateEMA(candles, 9);
-      const ema21 = calculateEMA(candles, 21);
-      const ema200 = calculateEMA(candles, Math.min(200, candles.length));
-      const bb = calculateBollingerBands(candles, 20, 2.0);
-      const hhll = calculateHHLL(candles, 15);
-
-      ema9Series?.setData(ema9);
-      ema21Series?.setData(ema21);
-      ema200Series?.setData(ema200);
-
-      if (isGold) {
-        hhSeries?.setData(hhll.hh);
-        llSeries?.setData(hhll.ll);
-        bbUpperSeries?.setData([]);
-        bbLowerSeries?.setData([]);
-      } else {
-        bbUpperSeries?.setData(bb.upper);
-        bbLowerSeries?.setData(bb.lower);
-        hhSeries?.setData([]);
-        llSeries?.setData([]);
-      }
+      // Dedicated Quantitative Indicators
+      applyStrategyIndicators();
 
       const last = candles[candles.length - 1];
       if (last) {
@@ -770,13 +813,6 @@ const loadCandles = async () => {
           close: last.close,
           volume: last.volume,
           changePct: last.open ? ((last.close - last.open) / last.open) * 100 : 0,
-          ema9: ema9[ema9.length - 1]?.value,
-          ema21: ema21[ema21.length - 1]?.value,
-          ema200: ema200[ema200.length - 1]?.value,
-          hh15: hhll.hh[hhll.hh.length - 1]?.value,
-          ll15: hhll.ll[hhll.ll.length - 1]?.value,
-          bbUpper: bb.upper[bb.upper.length - 1]?.value,
-          bbLower: bb.lower[bb.lower.length - 1]?.value,
         };
       }
 
@@ -927,7 +963,13 @@ watch(() => props.selectedStrategy, (newStrat) => {
     const s = newStrat.toLowerCase();
     const isSp = s.includes('sp') || s.includes('es') || s.includes('opening');
     const isGold = s.includes('xau') || s.includes('gold') || s.includes('goat');
-    selectedSymbol.value = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAU/USD' : 'BTC/USDT');
+    const newSymbol = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAU/USD' : 'BTC/USDT');
+    if (selectedSymbol.value !== newSymbol) {
+      selectedSymbol.value = newSymbol;
+    } else {
+      // Same symbol: immediately update dedicated visual indicators on existing candles
+      applyStrategyIndicators();
+    }
   }
 });
 
@@ -988,6 +1030,12 @@ onUnmounted(() => {
     chartContainerRef.value.removeEventListener('pointerup', updateBoxCoordinates);
   }
   if (resizeObserver) resizeObserver.disconnect();
+  for (const s of activeIndicatorSeries.values()) {
+    try {
+      chart?.removeSeries(s);
+    } catch {}
+  }
+  activeIndicatorSeries.clear();
   if (chart) {
     chart.remove();
     chart = null;
