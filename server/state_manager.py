@@ -444,6 +444,79 @@ class SignalStore:
 # StrategyRegistry
 # ─────────────────────────────────────────────────────────────
 
+KNOWN_STRATEGY_CATALOG: Dict[str, Dict[str, str]] = {
+    "GoatLondonOpenOtadScalper": {
+        "display_name": "Goat Funded Trader London Open OTAD Scalper",
+        "target_profile": "Goat Funded Trader Prop OTAD Scalper (1m-25m)",
+        "thesis": "Quantitative London Open One-Trade-A-Day (OTAD) Mean Reversion & Volatility Absorption on Gold (XAUUSD)",
+        "symbol": "XAU/USD",
+        "timeframe": "1m",
+    },
+    "PropFirmAtrHybridScalperXauusd": {
+        "display_name": "Trader MNQ ATR Scalper on Gold",
+        "target_profile": "Prop Firm Gold ATR Envelope Scalper (1m-5m)",
+        "thesis": "Trader MNQ volatility envelope limit dip buying & exhaustion fading on Gold (XAUUSD)",
+        "symbol": "XAU/USD",
+        "timeframe": "1m",
+    },
+    "GoldLiquiditySweepAtrScalper": {
+        "display_name": "Gold Liquidity Sweep & ATR Rebound Scalper",
+        "target_profile": "Gold Liquidity Sweep Scalper (1m)",
+        "thesis": "Institutional liquidity absorption and ATR rebound on XAUUSD 1-minute sweeps",
+        "symbol": "XAU/USD",
+        "timeframe": "1m",
+    },
+    "GoatFundedTraderXauusdScalper": {
+        "display_name": "Goat Funded Trader XAUUSD Scalper",
+        "target_profile": "Goat Funded Trader Prop Scalper (2m-15m)",
+        "thesis": "Dynamic Range Expansion Momentum Train on 1m-15m London/NY sessions",
+        "symbol": "XAU/USD",
+        "timeframe": "1m",
+    },
+    "OpeningFlushReversalScalper": {
+        "display_name": "S&P 500 Opening Flush Reversal Scalper",
+        "target_profile": "S&P 500 Futures Intraday Reversal (1m)",
+        "thesis": "4-Factor Opening Liquidity Flush & Inverted Head-and-Shoulders Reversal on S&P 500 Futures",
+        "symbol": "S&P 500 (ES)",
+        "timeframe": "1m",
+    },
+    "OrderFlowImbalanceScalper": {
+        "display_name": "Order Flow Imbalance Scalper",
+        "target_profile": "Order Flow Imbalance Scalper (Alpha Engine)",
+        "thesis": "Autonomous Alpha Model: Order Flow Imbalance Scalper",
+        "symbol": "S&P 500 (ES)",
+        "timeframe": "1m",
+    },
+    "AsianRangeLiquidityFade": {
+        "display_name": "Asian Range Liquidity Fade",
+        "target_profile": "Asian Range Liquidity Fade (Alpha Engine)",
+        "thesis": "Autonomous Alpha Model: Asian Range Liquidity Fade",
+        "symbol": "BTC/USDT",
+        "timeframe": "15m",
+    },
+    "PropFirmAtrHybridScalper": {
+        "display_name": "Trader MNQ Prop Firm ATR Hybrid Scalper",
+        "target_profile": "Prop Firm Challenge & Funded Scalper (5m-15m)",
+        "thesis": "Trader MNQ Prop Firm ATR Hybrid Scalper (Intrabar Dip Limits + Exhaustion Wick Shorts)",
+        "symbol": "BTC/USDT",
+        "timeframe": "5m",
+    },
+    "TrapFade_v1": {
+        "display_name": "Trap Fade Liquidity Sweep",
+        "target_profile": "Liquidity Sweep Fade (LONG & SHORT)",
+        "thesis": "Fade Asian Liquidity Sweeps",
+        "symbol": "BTC/USDT",
+        "timeframe": "15m",
+    },
+    "PropFirmVsaWickRejection": {
+        "display_name": "Prop Firm Vsa Wick Rejection",
+        "target_profile": "Prop Firm Vsa Wick Rejection (Alpha Engine)",
+        "thesis": "Prop Firm Challenge VSA Wick Rejection",
+        "symbol": "BTC/USDT",
+        "timeframe": "15m",
+    },
+}
+
 class StrategyRegistry:
     """
     Manages data/strategies.json.
@@ -470,6 +543,9 @@ class StrategyRegistry:
         clean = filename.replace(".py", "")
         filepath = os.path.join(self._dir, filename)
 
+        if clean in KNOWN_STRATEGY_CATALOG:
+            return dict(KNOWN_STRATEGY_CATALOG[clean])
+
         thesis = ""
         symbol = ""
         timeframe = ""
@@ -483,10 +559,29 @@ class StrategyRegistry:
                     content = f.read(4096)
                     for line in content.splitlines():
                         line_s = line.strip()
-                        if line_s.startswith("# Thesis:"):
+                        if line_s.startswith("# Strategy:"):
+                            raw_strat = line_s.replace("# Strategy:", "").strip()
+                            match = re.search(r'\((.*?)\)', raw_strat)
+                            if match:
+                                display_name = match.group(1).strip()
+                            elif raw_strat:
+                                display_name = raw_strat
+                        elif line_s.startswith("# Display Name:") or line_s.startswith("# Name:"):
+                            display_name = line_s.split(":", 1)[1].strip()
+                        elif line_s.startswith("# Thesis:"):
                             thesis = line_s.replace("# Thesis:", "").strip()
-                        elif line_s.startswith("# Target Profile:"):
-                            target_profile = line_s.replace("# Target Profile:", "").strip()
+                        elif line_s.startswith("# Target Profile:") or line_s.startswith("# Target Prop Firm:"):
+                            target_profile = line_s.split(":", 1)[1].strip()
+                        elif line_s.startswith("# Asset:") or line_s.startswith("# Symbol:"):
+                            sym = line_s.split(":", 1)[1].strip()
+                            if "XAU" in sym.upper() or "GOLD" in sym.upper():
+                                symbol = "XAU/USD"
+                            elif "SP" in sym.upper() or "ES" in sym.upper():
+                                symbol = "S&P 500 (ES)"
+                            elif "MNQ" in sym.upper() or "NQ" in sym.upper():
+                                symbol = "MNQ (Futures)"
+                            elif "BTC" in sym.upper():
+                                symbol = "BTC/USDT"
                         elif "timeframe =" in line_s or "timeframe=" in line_s:
                             tf = line_s.split("=")[-1].strip().strip("'\"")
                             if tf:
@@ -498,45 +593,32 @@ class StrategyRegistry:
             except Exception as e:
                 logger.debug(f"[StrategyRegistry] Metadata extract error for {filename}: {e}")
 
-        is_xau = ("XAU" in clean.upper()) or ("GOAT" in clean.upper()) or ("GOLD" in clean.upper())
-        is_sp500 = any(k in clean.upper() for k in ["SP500", "SPX", "ES", "FLUSH"])
-        is_trap = "TRAP" in clean.upper()
-        is_atr = ("ATR" in clean.upper()) or ("MNQ" in clean.upper()) or ("HYBRID" in clean.upper())
-
-        import re
+        # Humanize filename cleanly
         humanized_name = re.sub(r'([A-Z]+)', r' \1', clean).replace('_', ' ').strip()
         humanized_name = re.sub(r'\s+', ' ', humanized_name)
 
+        if not display_name:
+            display_name = humanized_name
+
         if not symbol:
-            if is_sp500:
+            clean_up = clean.upper()
+            if any(k in clean_up for k in ["SP500", "SPX", "ES", "FLUSH"]):
                 symbol = "S&P 500 (ES)"
-            elif is_xau:
+            elif any(k in clean_up for k in ["XAU", "GOLD"]):
                 symbol = "XAU/USD"
+            elif any(k in clean_up for k in ["MNQ", "NQ"]):
+                symbol = "MNQ (Futures)"
             else:
                 symbol = "BTC/USDT"
-        if not timeframe:
-            timeframe = "1m" if (is_xau or is_sp500) else "15m"
 
-        if is_sp500:
-            display_name = display_name or "S&P 500 Opening Flush Reversal Scalper"
-            target_profile = target_profile or "S&P 500 Futures Intraday Reversal (1m)"
-            thesis = thesis or "4-Factor Opening Liquidity Flush & Inverted Head-and-Shoulders Reversal on S&P 500 Futures"
-        elif is_xau:
-            display_name = display_name or "Goat Funded Trader XAUUSD Scalper"
-            target_profile = target_profile or "Goat Funded Trader Prop Scalper (2m-15m)"
-            thesis = thesis or "Dynamic Range Expansion Momentum Train on 1m-15m London/NY sessions"
-        elif is_atr:
-            display_name = display_name or "Trader MNQ Prop Firm ATR Hybrid Scalper"
-            target_profile = target_profile or "Prop Firm Challenge & Funded Scalper (5m-15m)"
-            thesis = thesis or "Trader MNQ Prop Firm ATR Hybrid Scalper (Intrabar Dip Limits + Exhaustion Wick Shorts)"
-        elif is_trap:
-            display_name = display_name or "Trap Fade Liquidity Sweep"
-            target_profile = target_profile or "Liquidity Sweep Fade (LONG & SHORT)"
-            thesis = thesis or "Dual-Directional Asian Session Liquidity Sweep Fade beyond session extremes"
-        else:
-            display_name = display_name or humanized_name
-            target_profile = target_profile or f"{humanized_name} (Alpha Engine)"
-            thesis = thesis or f"Autonomous Alpha Model: {humanized_name}"
+        if not timeframe:
+            timeframe = "1m" if any(k in symbol.upper() for k in ["XAU", "SP", "ES", "S&P"]) else "15m"
+
+        if not target_profile:
+            target_profile = f"{display_name} (Alpha Engine)"
+
+        if not thesis:
+            thesis = f"Autonomous Alpha Model: {display_name}"
 
         return {
             "display_name": display_name,

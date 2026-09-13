@@ -427,11 +427,85 @@ export function getStrategyIndicatorProfile(rawStratName?: string): StrategyIndi
     };
   }
 
-  // 2. Goat Funded Trader XAUUSD Scalper (The Gold Momentum Train)
+  // 2. Goat Funded Trader London Open OTAD Scalper
+  if (name.includes('otad') || (name.includes('london') && (name.includes('goat') || name.includes('scalper')))) {
+    return {
+      strategyKey: 'GoatLondonOpenOtadScalper',
+      strategyDisplayName: 'Goat Funded Trader London Open OTAD Scalper',
+      frameworkBadge: 'LONDON OPEN VOLATILITY ABSORPTION (ATR 1.8x) + ASIAN RANGE',
+      frameworkDescription: 'One-Trade-A-Day (OTAD) London Open Volatility Extension Fade & Asian Range Reversion',
+      badgeClass: 'badge-warning',
+      seriesConfigs: [
+        { id: 'atr_upper_band', title: 'ATR Upper (1.8x)', color: '#f43f5e', lineStyle: 0, lineWidth: 1.5 },
+        { id: 'atr_lower_band', title: 'ATR Lower (1.8x)', color: '#10b981', lineStyle: 0, lineWidth: 1.5 },
+      ],
+      calculate: (candles: any[]) => {
+        const atrBands = calculateDynamicAtrBands(candles, 14, 1.8);
+        const zscores = calculateVolumeZScore(candles, 20);
+
+        return {
+          seriesData: {
+            atr_upper_band: atrBands.upper,
+            atr_lower_band: atrBands.lower,
+          },
+          getHudItems: (idx: number) => {
+            if (idx < 0 || idx >= candles.length) return [];
+            const t = candles[idx].time;
+            const date = typeof t === 'number' ? new Date(t * 1000) : new Date();
+            const minOfDay = date.getUTCHours() * 60 + date.getUTCMinutes();
+            const isLondon = minOfDay >= 420 && minOfDay <= 570;
+
+            return [
+              { id: 'atr_upper', label: 'ATR Band Upper', color: '#f43f5e', value: `$${atrBands.upper[idx]?.value.toFixed(2)}` },
+              { id: 'atr_lower', label: 'ATR Band Lower', color: '#10b981', value: `$${atrBands.lower[idx]?.value.toFixed(2)}` },
+              { id: 'session', label: 'London Window', color: isLondon ? '#34d399' : '#94a3b8', value: isLondon ? 'ACTIVE' : 'STANDBY' },
+              { id: 'volz', label: 'Vol Z', color: '#38bdf8', value: `${zscores[idx] >= 0 ? '+' : ''}${zscores[idx]}` },
+            ];
+          },
+        };
+      },
+    };
+  }
+
+  // 3. Gold Liquidity Sweep & ATR Rebound Scalper
+  if (name.includes('liquidity') && (name.includes('sweep') || name.includes('rebound')) && (name.includes('gold') || name.includes('xau'))) {
+    return {
+      strategyKey: 'GoldLiquiditySweepAtrScalper',
+      strategyDisplayName: 'Gold Liquidity Sweep & ATR Rebound Scalper',
+      frameworkBadge: 'DYNAMIC ATR ENVELOPE (2.0x) + WICK ABSORPTION',
+      frameworkDescription: 'XAUUSD 1-Minute Volatility Sweep Piercing with Passive Institutional Absorption Fading',
+      badgeClass: 'badge-warning',
+      seriesConfigs: [
+        { id: 'atr_lower_band', title: 'ATR Lower (-2.0x)', color: '#10b981', lineStyle: 0, lineWidth: 2 },
+        { id: 'atr_upper_band', title: 'ATR Upper (+1.8x)', color: '#f43f5e', lineStyle: 0, lineWidth: 2 },
+      ],
+      calculate: (candles: any[]) => {
+        const atrBands = calculateDynamicAtrBands(candles, 14, 2.0);
+        const zscores = calculateVolumeZScore(candles, 20);
+
+        return {
+          seriesData: {
+            atr_lower_band: atrBands.lower,
+            atr_upper_band: atrBands.upper,
+          },
+          getHudItems: (idx: number) => {
+            if (idx < 0 || idx >= candles.length) return [];
+            return [
+              { id: 'atr_lower', label: 'Dip Envelope (-2.0x)', color: '#10b981', value: `$${atrBands.lower[idx]?.value.toFixed(2)}` },
+              { id: 'atr_upper', label: 'Target Envelope (+1.8x)', color: '#f43f5e', value: `$${atrBands.upper[idx]?.value.toFixed(2)}` },
+              { id: 'volz', label: 'Vol Z', color: '#38bdf8', value: `${zscores[idx] >= 0 ? '+' : ''}${zscores[idx]}` },
+            ];
+          },
+        };
+      },
+    };
+  }
+
+  // 4. Goat Funded Trader XAUUSD Scalper (The Gold Momentum Train)
   if (name.includes('goat') || (name.includes('xau') && !name.includes('hybrid') && !name.includes('atr'))) {
     return {
       strategyKey: 'GoatFundedTraderXauusdScalper',
-      strategyDisplayName: 'Goat Funded Trader Gold Momentum Train',
+      strategyDisplayName: 'Goat Funded Trader XAUUSD Scalper',
       frameworkBadge: 'MOMENTUM RIBBON (EMA 9/21/200) + HH/LL 15 BREAKOUT',
       frameworkDescription: '9/21/200 Exponential Moving Average Accelerator Ribbon and 15-Bar Breakout Channel',
       badgeClass: 'badge-warning',
@@ -483,11 +557,11 @@ export function getStrategyIndicatorProfile(rawStratName?: string): StrategyIndi
     };
   }
 
-  // 3. Prop Firm ATR Hybrid Scalper XAUUSD (Trader MNQ on Gold 1m)
+  // 5. Prop Firm ATR Hybrid Scalper XAUUSD (Trader MNQ on Gold 1m)
   if (name.includes('atr') && (name.includes('xau') || name.includes('gold'))) {
     return {
       strategyKey: 'PropFirmAtrHybridScalperXauusd',
-      strategyDisplayName: 'Prop Firm ATR Hybrid Scalper (Gold Spot 1m)',
+      strategyDisplayName: 'Trader MNQ ATR Scalper on Gold',
       frameworkBadge: 'DYNAMIC ATR BANDS (±2.0x) + SMA 20 BASELINE',
       frameworkDescription: 'Trader MNQ Dynamic Intraday ATR Lower Envelope Limit Fill & Upper Exhaustion Reversal',
       badgeClass: 'badge-warning',
