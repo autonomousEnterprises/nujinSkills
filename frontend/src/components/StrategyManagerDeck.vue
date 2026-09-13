@@ -96,6 +96,7 @@ const portfolio = computed<PortfolioSummary>(() => {
   let totalTrades = 0;
   let totalWins = 0;
   let weightedSharpeSum = 0;
+  let netPnlSum = 0;
   const pfs: number[] = [];
   const syms: string[] = [];
   const names: string[] = [];
@@ -109,6 +110,11 @@ const portfolio = computed<PortfolioSummary>(() => {
     const normWr = rawWr <= 1.0 ? rawWr : rawWr / 100;
     const sh = bt.sharpe || 0;
     const pf = bt.profit_factor || 0;
+
+    const eq = s.backtest_equity_curve || [];
+    if (eq && eq.length >= 2) {
+      netPnlSum += (eq[eq.length - 1].equity_pct || 100) - (eq[0].equity_pct || 100);
+    }
 
     totalTrades += trades;
     totalWins += Math.round(trades * normWr);
@@ -127,7 +133,8 @@ const portfolio = computed<PortfolioSummary>(() => {
     blended_sharpe: Number(blendedSh.toFixed(2)),
     total_trades: totalTrades,
     combined_profit_factor: Number(combinedPf.toFixed(2)),
-    total_realized_pnl: 0,
+    total_realized_pnl: Number(netPnlSum.toFixed(2)),
+    total_net_pnl: Number(netPnlSum.toFixed(2)),
     symbols: syms,
     best_performer: activeStrats[0]?.name || null,
   };

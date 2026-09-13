@@ -53,6 +53,8 @@ export interface PortfolioSummary {
   total_trades: number;
   combined_profit_factor: number;
   total_realized_pnl: number;
+  total_net_pnl?: number;
+  backtest_net_pnl?: number;
   symbols: string[];
   best_performer?: string | null;
   live_trades?: number;

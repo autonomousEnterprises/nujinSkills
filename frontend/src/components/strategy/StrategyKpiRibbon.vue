@@ -53,7 +53,7 @@
   </div>
 
   <!-- ── PORTFOLIO KPI STATS RIBBON ── -->
-  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+  <div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
     <!-- Active Bots -->
     <div class="stat bg-base-200 border border-base-content/10 rounded-box p-3">
       <div class="stat-title text-[10px] uppercase font-bold text-base-content/60">ACTIVE LIVE BOTS</div>
@@ -63,6 +63,18 @@
       <div class="stat-desc text-[10px] text-base-content/60 mt-0.5 truncate">
         {{ portfolio.active_strategies.map(s => s.replace('.py','')).join(', ') || 'No active bots' }}
       </div>
+    </div>
+
+    <!-- Total Net PnL -->
+    <div class="stat bg-base-200 border border-base-content/10 rounded-box p-3">
+      <div class="stat-title text-[10px] uppercase font-bold text-base-content/60">TOTAL NET PnL</div>
+      <div 
+        class="stat-value text-xl font-mono mt-0.5" 
+        :class="(portfolio.total_net_pnl ?? portfolio.total_realized_pnl ?? 0) >= 0 ? 'text-success' : 'text-error'"
+      >
+        {{ (portfolio.total_net_pnl ?? portfolio.total_realized_pnl) != null ? `${(portfolio.total_net_pnl ?? portfolio.total_realized_pnl) > 0 ? '+' : ''}${(portfolio.total_net_pnl ?? portfolio.total_realized_pnl).toFixed(2)}%` : '–' }}
+      </div>
+      <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">Across active strategies</div>
     </div>
 
     <!-- Blended Sharpe -->

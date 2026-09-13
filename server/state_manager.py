@@ -956,6 +956,8 @@ class StrategyRegistry:
                 "total_trades": 0,
                 "combined_profit_factor": 0.0,
                 "total_realized_pnl": 0.0,
+                "total_net_pnl": 0.0,
+                "backtest_net_pnl": 0.0,
                 "symbols": [],
                 "best_performer": None,
                 "live_trades": 0,
@@ -1000,6 +1002,7 @@ class StrategyRegistry:
         bt_wins_sum = 0
         bt_sharpe_weighted = 0.0
         bt_pfs = []
+        bt_net_pnl_pct = 0.0
         for s in active_strats:
             bt = s.get("latest_backtest", {})
             t = bt.get("trades", 0)
@@ -1007,6 +1010,14 @@ class StrategyRegistry:
             norm_wr = raw_wr if raw_wr <= 1.0 else (raw_wr / 100.0)
             sh = bt.get("sharpe", 0.0)
             pf = bt.get("profit_factor", 0.0)
+
+            # Cumulative net pnl from equity curve
+            eq = s.get("backtest_equity_curve", [])
+            if eq and len(eq) >= 2:
+                s_pnl = float(eq[-1].get("equity_pct", 100.0)) - float(eq[0].get("equity_pct", 100.0))
+            else:
+                s_pnl = 0.0
+            bt_net_pnl_pct += s_pnl
 
             bt_trades_sum += t
             bt_wins_sum += round(t * norm_wr)
@@ -1041,6 +1052,7 @@ class StrategyRegistry:
             "backtest_win_rate": bt_blended_win_rate,
             "backtest_sharpe": bt_blended_sharpe,
             "backtest_profit_factor": bt_combined_pf,
+            "backtest_net_pnl": round(bt_net_pnl_pct, 2),
 
             # Unified root fields representing the portfolio benchmark across all activated strategies
             "blended_win_rate": bt_blended_win_rate,
@@ -1048,6 +1060,7 @@ class StrategyRegistry:
             "total_trades": bt_trades_sum,
             "combined_profit_factor": bt_combined_pf,
             "total_realized_pnl": live_total_pnl,
+            "total_net_pnl": live_total_pnl if live_trades_count > 0 else round(bt_net_pnl_pct, 2),
         }
 
     def get_distribution_analytics(self) -> Dict[str, Any]:
