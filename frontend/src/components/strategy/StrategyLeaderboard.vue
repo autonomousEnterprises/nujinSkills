@@ -56,9 +56,9 @@
             <th>Symbol</th>
             <th>Status</th>
             <th class="text-right">Baseline &rarr; Current Sharpe</th>
-            <th class="text-right">Win Rate</th>
+            <th class="text-right">Win Rate Drift</th>
             <th class="text-right">Profit Factor</th>
-            <th class="text-right">Max DD</th>
+            <th class="text-right">Max DD Drift</th>
             <th class="text-center">Sharpe Drift Curve</th>
             <th class="text-center">Drift Trajectory</th>
             <th>Cron</th>
@@ -124,11 +124,15 @@
                 </div>
               </td>
 
-              <!-- Win Rate -->
+              <!-- Win Rate Drift -->
               <td class="text-right whitespace-nowrap">
-                <span :class="getValColor(getStratWinRate(strat) - 50)">
-                  {{ getStratWinRate(strat) != null ? `${getStratWinRate(strat).toFixed(1)}%` : '–' }}
-                </span>
+                <div class="font-bold">
+                  <span class="text-base-content/50 text-[10px]">{{ getBaselineWinRate(strat).toFixed(1) }}% &rarr; </span>
+                  <span :class="getValColor(getStratWinRate(strat) - 50)">{{ getStratWinRate(strat) != null ? `${getStratWinRate(strat).toFixed(1)}%` : '–' }}</span>
+                </div>
+                <div class="text-[9px] font-bold" :class="getDeltaWinRate(strat) >= 0 ? 'text-success' : 'text-error'">
+                  {{ getDeltaWinRate(strat) > 0 ? '+' : '' }}{{ getDeltaWinRate(strat).toFixed(1) }}%
+                </div>
               </td>
 
               <!-- Profit Factor -->
@@ -136,9 +140,15 @@
                 {{ getStratPf(strat) != null ? (typeof getStratPf(strat) === 'number' ? getStratPf(strat).toFixed(2) : getStratPf(strat)) : '–' }}
               </td>
 
-              <!-- Max DD -->
-              <td class="text-right font-bold text-error whitespace-nowrap">
-                {{ strat.latest_backtest?.max_drawdown != null ? `${(strat.latest_backtest.max_drawdown <= 1.0 ? strat.latest_backtest.max_drawdown * 100 : strat.latest_backtest.max_drawdown).toFixed(2)}%` : '–' }}
+              <!-- Max DD Drift -->
+              <td class="text-right whitespace-nowrap">
+                <div class="font-bold">
+                  <span class="text-base-content/50 text-[10px]">{{ getBaselineMdd(strat).toFixed(2) }}% &rarr; </span>
+                  <span class="text-error">{{ getStratMdd(strat) != null ? `${getStratMdd(strat).toFixed(2)}%` : '–' }}</span>
+                </div>
+                <div class="text-[9px] font-bold" :class="getDeltaMdd(strat) <= 0 ? 'text-success' : 'text-error'">
+                  {{ getDeltaMdd(strat) > 0 ? '+' : '' }}{{ getDeltaMdd(strat).toFixed(2) }}%
+                </div>
               </td>
 
               <!-- Sharpe Drift Curve Sparkline -->
@@ -352,6 +362,42 @@ const getBaselineSharpe = (strat: ManagedStrategy): number => {
 const getDeltaSharpe = (strat: ManagedStrategy): number => {
   const base = getBaselineSharpe(strat);
   const cur = getStratSharpe(strat) ?? 0;
+  return Number((cur - base).toFixed(2));
+};
+
+const getStratMdd = (strat: ManagedStrategy): number => {
+  const raw = strat.latest_backtest?.max_drawdown;
+  if (raw == null) return 0;
+  return raw <= 1.0 ? raw * 100 : raw;
+};
+
+const getBaselineWinRate = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[0].win_rate !== undefined) {
+    const raw = Number(hist[0].win_rate);
+    return raw <= 1.0 ? raw * 100 : raw;
+  }
+  return getStratWinRate(strat) ?? 0;
+};
+
+const getDeltaWinRate = (strat: ManagedStrategy): number => {
+  const base = getBaselineWinRate(strat);
+  const cur = getStratWinRate(strat) ?? 0;
+  return Number((cur - base).toFixed(1));
+};
+
+const getBaselineMdd = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[0].max_drawdown !== undefined) {
+    const raw = Number(hist[0].max_drawdown);
+    return raw <= 1.0 ? raw * 100 : raw;
+  }
+  return getStratMdd(strat);
+};
+
+const getDeltaMdd = (strat: ManagedStrategy): number => {
+  const base = getBaselineMdd(strat);
+  const cur = getStratMdd(strat);
   return Number((cur - base).toFixed(2));
 };
 
