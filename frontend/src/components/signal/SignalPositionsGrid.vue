@@ -37,7 +37,9 @@
       <div 
         v-for="pos in openPositions" 
         :key="pos.id"
-        class="card bg-base-300/60 border border-base-content/10 p-4 space-y-3 hover:border-primary/50 transition-all"
+        @click="emit('inspectPosition', pos)"
+        class="card bg-base-300/60 border border-base-content/10 p-4 space-y-3 hover:border-primary/80 hover:bg-base-300/90 hover:shadow-lg active:scale-[0.99] cursor-pointer transition-all relative group"
+        title="Click to view and inspect this trade setup with Entry/TP/SL boxes on chart (F1)"
       >
         <!-- Card Header -->
         <div class="flex items-center justify-between">
@@ -47,9 +49,15 @@
             </span>
             <span class="text-xs font-bold text-secondary font-mono">{{ pos.strategy || cleanSelectedName }}</span>
           </div>
-          <span class="badge badge-sm font-bold" :class="isShort(pos) ? 'badge-error' : 'badge-success'">
-            {{ isShort(pos) ? '⬇ SHORT ENTRY' : '⬆ LONG ENTRY' }}
-          </span>
+          <div class="flex items-center gap-1.5">
+            <span class="badge badge-xs badge-primary badge-outline gap-1 font-mono uppercase tracking-wider font-bold group-hover:bg-primary group-hover:text-primary-content transition-colors">
+              <ExternalLink class="w-2.5 h-2.5" />
+              Chart (F1)
+            </span>
+            <span class="badge badge-sm font-bold" :class="isShort(pos) ? 'badge-error' : 'badge-success'">
+              {{ isShort(pos) ? '⬇ SHORT ENTRY' : '⬆ LONG ENTRY' }}
+            </span>
+          </div>
         </div>
 
         <!-- Pricing Grid -->
@@ -86,7 +94,7 @@
             </span>
           </div>
           <button
-            @click="emit('closePosition', pos)"
+            @click.stop="emit('closePosition', pos)"
             :disabled="actionLoading"
             class="btn btn-sm btn-error shadow font-bold text-xs"
           >
@@ -118,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { Zap, MessageSquare, Activity } from 'lucide-vue-next';
+import { Zap, MessageSquare, Activity, ExternalLink } from 'lucide-vue-next';
 import type { SignalData } from '../../types';
 
 const props = defineProps<{
@@ -131,6 +139,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'closePosition', pos: SignalData): void;
+  (e: 'inspectPosition', pos: SignalData): void;
 }>();
 
 const isShort = (pos: SignalData) => pos.action === 'SHORT' || pos.action === 'SELL';

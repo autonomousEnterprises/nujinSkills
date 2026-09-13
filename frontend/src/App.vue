@@ -22,13 +22,16 @@
       <ChartCanvas
         :latestSignal="latestSignal"
         :signals="signals"
+        :targetedSignal="targetedSignal"
         :theme="theme"
         :selectedStrategy="selectedStrategy"
         :tradeMarkers="selectedBacktestData?.trade_markers || activeState?.trade_markers || []"
         :tradesDetail="selectedBacktestData?.trades_detail || activeState?.trades_detail || []"
         :activeStrategy="activeBots[0] || 'GoatFundedTraderXauusdScalper'"
         :strategies="strategies"
+        :isActiveScreen="activeScreen === 'CHART'"
         @selectStrategy="handleSelectStrategy"
+        @dismissSignal="targetedSignal = null"
       />
     </main>
 
@@ -43,6 +46,9 @@
         :activeState="activeState"
         :managedStrategies="managedStrategies"
         :portfolioSummary="portfolioSummary"
+        @inspectSignal="handleInspectSignal"
+        @clearSignals="targetedSignal = null"
+        @closePosition="(pos) => { if (targetedSignal?.id === pos.id) targetedSignal = null; }"
       />
     </main>
 
@@ -132,6 +138,7 @@ import SignalDeck from './components/SignalDeck.vue';
 import BacktestDeck from './components/BacktestDeck.vue';
 import StrategyManagerDeck from './components/StrategyManagerDeck.vue';
 import { useWebSocket } from './composables/useWebSocket';
+import type { SignalData } from './types';
 
 type ScreenType = 'CHART' | 'AGENT_DECK' | 'BACKTEST' | 'STRATEGY_MANAGER';
 
@@ -170,6 +177,7 @@ const selectedStrategy = ref('GoatFundedTraderXauusdScalper.py');
 const selectedBacktestData = ref<any>(null);
 const strategies = ref<any[]>([]);
 const loadingBacktest = ref(false);
+const targetedSignal = ref<SignalData | null>(null);
 
 const {
   isConnected,
@@ -281,6 +289,9 @@ const pollStrategies = async () => {
 };
 
 const handleSelectStrategy = async (stratName: string) => {
+  if (targetedSignal.value && targetedSignal.value.strategy && !targetedSignal.value.strategy.includes(stratName.replace('.py', ''))) {
+    targetedSignal.value = null;
+  }
   selectedStrategy.value = stratName;
   loadingBacktest.value = true;
   try {
@@ -372,6 +383,24 @@ const handleTriggerCron = async () => {
 const handleNavigateToBacktest = (stratName: string) => {
   handleSelectStrategy(stratName);
   activeScreen.value = 'BACKTEST';
+};
+
+const handleInspectSignal = (signal: SignalData) => {
+  targetedSignal.value = signal;
+  if (signal.strategy) {
+    const clean = signal.strategy.replace('Strategy', '');
+    const stratFile = clean.endsWith('.py') ? clean : `${clean}.py`;
+    const matched = strategies.value.find(
+      (s) =>
+        s.name.toLowerCase() === stratFile.toLowerCase() ||
+        s.name.toLowerCase().includes(clean.toLowerCase())
+    );
+    const targetFile = matched ? matched.name : stratFile;
+    if (selectedStrategy.value !== targetFile) {
+      handleSelectStrategy(targetFile);
+    }
+  }
+  activeScreen.value = 'CHART';
 };
 
 // Global Hotkeys: F1-F4 & Ctrl+Space

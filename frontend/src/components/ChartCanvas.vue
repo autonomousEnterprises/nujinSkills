@@ -33,6 +33,8 @@
       :isSpStrategy="isSpStrategy"
       :hudItems="currentHudItems"
       :strategyProfile="currentProfile"
+      :isInspectingTrade="isInspectingTrade"
+      @dismissInspection="dismissInspection"
     />
 
     <!-- ── Lightweight Charts Main Canvas Container ── -->
@@ -96,13 +98,13 @@
           <rect
             :x="getLabelX(box)"
             :y="getClampedY(box.yEntry - 8)"
-            width="78"
+            width="86"
             height="17"
             rx="3"
             fill="rgba(56, 189, 248, 0.92)"
           />
           <text
-            :x="getLabelX(box) + 39"
+            :x="getLabelX(box) + 43"
             :y="getClampedY(box.yEntry - 8) + 12"
             fill="#041829"
             font-size="9"
@@ -117,13 +119,13 @@
           <rect
             :x="getLabelX(box)"
             :y="getClampedY(box.isLong ? box.yProfitTop + 2 : box.yProfitTop + box.profitHeight - 19)"
-            width="78"
+            width="86"
             height="17"
             rx="3"
             fill="rgba(38, 166, 154, 0.92)"
           />
           <text
-            :x="getLabelX(box) + 39"
+            :x="getLabelX(box) + 43"
             :y="getClampedY(box.isLong ? box.yProfitTop + 2 : box.yProfitTop + box.profitHeight - 19) + 12"
             fill="#ffffff"
             font-size="9"
@@ -138,13 +140,13 @@
           <rect
             :x="getLabelX(box)"
             :y="getClampedY(box.isLong ? box.yLossTop + box.lossHeight - 19 : box.yLossTop + 2)"
-            width="78"
+            width="86"
             height="17"
             rx="3"
             fill="rgba(239, 83, 80, 0.92)"
           />
           <text
-            :x="getLabelX(box) + 39"
+            :x="getLabelX(box) + 43"
             :y="getClampedY(box.isLong ? box.yLossTop + box.lossHeight - 19 : box.yLossTop + 2) + 12"
             fill="#ffffff"
             font-size="9"
@@ -186,12 +188,14 @@ const props = withDefaults(
   defineProps<{
     latestSignal?: SignalData | null;
     signals?: SignalData[];
+    targetedSignal?: SignalData | InspectableSignal | null;
     theme?: 'dark' | 'light';
     selectedStrategy?: string;
     tradeMarkers?: any[];
     tradesDetail?: TradeDetail[];
     activeStrategy?: string;
     strategies?: StrategyItem[];
+    isActiveScreen?: boolean;
   }>(),
   {
     theme: 'dark',
@@ -199,11 +203,13 @@ const props = withDefaults(
     tradeMarkers: () => [],
     tradesDetail: () => [],
     strategies: () => [],
+    isActiveScreen: true,
   }
 );
 
 const emit = defineEmits<{
   (e: 'selectStrategy', stratName: string): void;
+  (e: 'dismissSignal'): void;
 }>();
 
 function timeToLocal(originalTime: number): number {
@@ -262,6 +268,7 @@ const loadingCandles = ref(false);
 const legendData = ref<Record<string, any>>({});
 const rawCandles = ref<any[]>([]);
 const positionBoxes = ref<PositionBoxCoord[]>([]);
+const isInspectingTrade = ref<boolean>(false);
 
 let binanceWs: WebSocket | null = null;
 let oandaTimer: any = null;
@@ -302,7 +309,7 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
       const entryTime = rawTime;
       if (list.some((existing) => Math.abs(existing.entry_time - entryTime) < 2)) continue;
       list.push({
-        id: `live-${i}`,
+        id: s.id != null ? s.id : `live-${i}`,
         source: 'LIVE',
         side: s.action || 'LONG',
         entry_time: entryTime,
@@ -313,7 +320,7 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
         pnl_pct: s.pnl_pct || 0,
         stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
         take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
-        isLiveActive: s.status === 'ACTIVE_IN_POSITION',
+        isLiveActive: s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION',
       });
     }
   }
@@ -348,6 +355,45 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
         take_profit: props.latestSignal.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
         isLiveActive: !isClosed && props.latestSignal.status === 'ACTIVE_IN_POSITION',
       });
+    }
+  }
+
+  // 4. Targeted signal from user selection in SignalDeck or Grid
+  if (props.targetedSignal && (props.targetedSignal.entry_price || props.targetedSignal.price)) {
+    const s = props.targetedSignal;
+    const entryPrice = Number(s.entry_price || s.price);
+    const isBuy = s.action === 'BUY' || s.action === 'LONG' || (s as any).side === 'BUY' || (s as any).side === 'LONG';
+    const rawTime = s.time
+      ? Number(s.time)
+      : (s.timestamp ? Math.floor(s.timestamp / 1000) : (rawCandles.value.length > 0 ? Number(rawCandles.value[rawCandles.value.length - 1].time) : Math.floor(Date.now() / 1000)));
+    const entryTime = rawTime;
+    const existingIdx = list.findIndex(
+      (existing) => (s.id != null && String(existing.id) === String(s.id)) || Math.abs(existing.entry_time - entryTime) < 2
+    );
+    const isClosed = Boolean(
+      s.exit_price ||
+      (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
+      s.status === 'COMPLETED' ||
+      s.status === 'CLOSED'
+    );
+    const inspectable: InspectableSignal = {
+      id: s.id ?? 'targeted-signal',
+      source: 'LIVE',
+      side: s.action || (s as any).side || (isBuy ? 'LONG' : 'SHORT'),
+      entry_time: entryTime,
+      entry_price: entryPrice,
+      exit_time: s.exit_price ? entryTime : undefined,
+      exit_price: s.exit_price,
+      exit_reason: s.exit_reason,
+      pnl_pct: s.pnl_pct || 0,
+      stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
+      take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
+      isLiveActive: !isClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
+    };
+    if (existingIdx !== -1) {
+      list[existingIdx] = { ...list[existingIdx], ...inspectable };
+    } else {
+      list.push(inspectable);
     }
   }
 
@@ -396,7 +442,8 @@ const findCandleIndex = (timeSec: number): number => {
   if (!rawCandles.value || rawCandles.value.length === 0) return -1;
   const firstT = Number(rawCandles.value[0].time);
   const lastT = Number(rawCandles.value[rawCandles.value.length - 1].time);
-  if (timeSec < firstT || timeSec > lastT) return -1;
+  if (timeSec >= lastT) return rawCandles.value.length - 1;
+  if (timeSec <= firstT) return 0;
 
   let low = 0, high = rawCandles.value.length - 1;
   while (low <= high) {
@@ -414,6 +461,11 @@ const findCandleIndex = (timeSec: number): number => {
 };
 
 const updateBoxCoordinates = () => {
+  if (!isInspectingTrade.value && !props.targetedSignal) {
+    positionBoxes.value = [];
+    return;
+  }
+
   const target = inspectedSignal.value;
   if (!target || !target.entry_price || !chart || !candleSeries || !chartContainerRef.value || rawCandles.value.length === 0) {
     positionBoxes.value = [];
@@ -448,7 +500,7 @@ const updateBoxCoordinates = () => {
     const lastCandleLocalTime = timeToLocal(Number(rawCandles.value[lastIdx].time));
     const lastX = chart.timeScale().timeToCoordinate(lastCandleLocalTime as Time) 
       ?? chart.timeScale().logicalToCoordinate(lastIdx as any);
-    x2Raw = lastX !== null ? lastX + 80 : containerW - 65;
+    x2Raw = lastX !== null ? lastX + 60 : containerW - 40;
   } else {
     let exitIdx = findCandleIndex(rawExit);
     if (exitIdx < 0) {
@@ -470,18 +522,17 @@ const updateBoxCoordinates = () => {
     return;
   }
 
-  const startX = x1Raw !== null ? x1Raw : (x2Raw! - 100);
-  const endX = x2Raw !== null ? x2Raw : (x1Raw! + 100);
+  const startX = x1Raw !== null ? x1Raw : (x2Raw! - 80);
+  const endX = x2Raw !== null ? x2Raw : (x1Raw! + 80);
   let leftX = Math.min(startX, endX);
   let rightX = Math.max(startX, endX);
   let width = rightX - leftX;
-  if (width < 48) {
-    width = 48;
-    leftX = startX - 16;
+  if (width < 32) {
+    width = 32;
     rightX = leftX + width;
   }
 
-  if (rightX < -400 || leftX > containerW + 400) {
+  if (rightX < -200 || leftX > containerW + 200) {
     positionBoxes.value = [];
     return;
   }
@@ -525,7 +576,7 @@ const updateBoxCoordinates = () => {
 };
 
 const getLabelX = (box: PositionBoxCoord) => {
-  const labelWidth = 78;
+  const labelWidth = 86;
   const containerW = chartContainerRef.value?.clientWidth || 800;
   return Math.max(
     box.x + 4,
@@ -544,25 +595,27 @@ const centerOnTrade = (trade: InspectableSignal) => {
   if (!rawCandles.value || rawCandles.value.length === 0) return;
   try {
     const rawEntry = trade.entry_time > 2000000000 ? trade.entry_time / 1000 : trade.entry_time;
-    const firstT = Number(rawCandles.value[0].time);
-    const lastT = Number(rawCandles.value[rawCandles.value.length - 1].time);
-    if (rawEntry < firstT || rawEntry > lastT) {
-      console.warn(`[ChartCanvas] Trade entry time ${rawEntry} is outside candle range [${firstT}, ${lastT}]`);
-      return;
-    }
     const rawExit = trade.exit_time 
       ? (trade.exit_time > 2000000000 ? trade.exit_time / 1000 : trade.exit_time)
-      : rawEntry + 15 * 60;
+      : null;
 
-    const t = timeToLocal(rawEntry);
-    const tExit = timeToLocal(rawExit);
-    const span = Math.max(tExit - t, 600);
+    const entryIdx = findCandleIndex(rawEntry);
+    if (entryIdx < 0) return;
 
-    chart.priceScale('right').applyOptions({ autoScale: true });
-    chart.timeScale().setVisibleRange({
-      from: (t - span * 1.8) as Time,
-      to: (tExit + span * 1.8) as Time,
+    let exitIdx = (rawExit && !trade.isLiveActive) ? findCandleIndex(rawExit) : -1;
+    if (exitIdx < 0) {
+      exitIdx = trade.isLiveActive ? rawCandles.value.length - 1 : Math.min(rawCandles.value.length - 1, entryIdx + 6);
+    }
+
+    // Use setVisibleLogicalRange: directly scroll to the exact bars with comfortable padding
+    const fromLogical = Math.max(0, entryIdx - 20);
+    const toLogical = Math.min(rawCandles.value.length + 15, Math.max(entryIdx + 20, exitIdx + 20));
+
+    chart.timeScale().setVisibleLogicalRange({
+      from: fromLogical,
+      to: toLogical,
     });
+    chart.priceScale('right').applyOptions({ autoScale: true });
 
     requestAnimationFrame(() => {
       updateBoxCoordinates();
@@ -584,6 +637,7 @@ const centerOnTrade = (trade: InspectableSignal) => {
 // Jump navigation methods
 const prevJump = () => {
   if (selectedSignalIndex.value > 0) {
+    isInspectingTrade.value = true;
     selectedSignalIndex.value--;
     centerOnTrade(allInspectableSignals.value[selectedSignalIndex.value]);
     nextTick(() => updateBoxCoordinates());
@@ -592,6 +646,7 @@ const prevJump = () => {
 
 const nextJump = () => {
   if (selectedSignalIndex.value < allInspectableSignals.value.length - 1) {
+    isInspectingTrade.value = true;
     selectedSignalIndex.value++;
     centerOnTrade(allInspectableSignals.value[selectedSignalIndex.value]);
     nextTick(() => updateBoxCoordinates());
@@ -600,6 +655,7 @@ const nextJump = () => {
 
 const jumpToIndex = (idx: number) => {
   if (idx >= 0 && idx < allInspectableSignals.value.length) {
+    isInspectingTrade.value = true;
     selectedSignalIndex.value = idx;
     centerOnTrade(allInspectableSignals.value[idx]);
     nextTick(() => updateBoxCoordinates());
@@ -619,13 +675,21 @@ const jumpToActive = () => {
   }
 };
 
-// Global Hotkeys for Jumping [Left Arrow / '[' : Prev, Right Arrow / ']' : Next]
+const dismissInspection = () => {
+  isInspectingTrade.value = false;
+  positionBoxes.value = [];
+  emit('dismissSignal');
+};
+
+// Global Hotkeys for Jumping [Left Arrow / '[' : Prev, Right Arrow / ']' : Next, Esc: Dismiss]
 const handleKeyDown = (e: KeyboardEvent) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
   if (e.key === 'ArrowLeft' || e.key === '[') {
     prevJump();
   } else if (e.key === 'ArrowRight' || e.key === ']') {
     nextJump();
+  } else if (e.key === 'Escape') {
+    dismissInspection();
   }
 };
 
@@ -839,11 +903,24 @@ const loadCandles = async () => {
         applyMarkers(props.tradeMarkers);
       }
 
-      // If trades exist, auto-center on the latest trade
-      if (allInspectableSignals.value.length > 0) {
-        const latestIdx = allInspectableSignals.value.length - 1;
-        selectedSignalIndex.value = latestIdx;
-        centerOnTrade(allInspectableSignals.value[latestIdx]);
+      // If a targeted signal is set, prioritize finding and centering on it
+      let targetIdx = -1;
+      if (props.targetedSignal) {
+        const s = props.targetedSignal;
+        const targetTime = s.time ? Number(s.time) : ((s as any).timestamp ? Math.floor((s as any).timestamp / 1000) : 0);
+        targetIdx = allInspectableSignals.value.findIndex((sig) =>
+          (s.id != null && String(sig.id) === String(s.id)) ||
+          (targetTime && Math.abs(sig.entry_time - targetTime) < 2)
+        );
+      }
+      if (targetIdx !== -1) {
+        isInspectingTrade.value = true;
+        selectedSignalIndex.value = targetIdx;
+        centerOnTrade(allInspectableSignals.value[targetIdx]);
+      } else if (isInspectingTrade.value && allInspectableSignals.value.length > 0) {
+        const idx = Math.min(selectedSignalIndex.value, allInspectableSignals.value.length - 1);
+        selectedSignalIndex.value = idx;
+        centerOnTrade(allInspectableSignals.value[idx]);
       } else {
         chart.timeScale().fitContent();
       }
@@ -988,7 +1065,9 @@ watch(() => props.selectedStrategy, (newStrat) => {
       // Same symbol: immediately update dedicated visual indicators on existing candles
       applyStrategyIndicators();
       nextTick(() => {
-        if (allInspectableSignals.value.length > 0) {
+        if (props.targetedSignal) {
+          applyTargetedSignal(props.targetedSignal);
+        } else if (allInspectableSignals.value.length > 0) {
           jumpToLatest();
         }
       });
@@ -1016,16 +1095,20 @@ watch(() => props.tradeMarkers, (newMarkers) => {
 }, { deep: true });
 
 watch(() => props.tradesDetail, () => {
-  if (allInspectableSignals.value.length > 0) {
-    const latestIdx = allInspectableSignals.value.length - 1;
-    selectedSignalIndex.value = latestIdx;
-    centerOnTrade(allInspectableSignals.value[latestIdx]);
+  if (props.targetedSignal) {
+    applyTargetedSignal(props.targetedSignal);
+    return;
+  }
+  if (isInspectingTrade.value && allInspectableSignals.value.length > 0) {
+    const idx = Math.min(selectedSignalIndex.value, allInspectableSignals.value.length - 1);
+    selectedSignalIndex.value = idx;
+    centerOnTrade(allInspectableSignals.value[idx]);
     nextTick(() => updateBoxCoordinates());
   }
 }, { deep: true });
 
 watch(() => selectedSignalIndex.value, (newIdx) => {
-  if (allInspectableSignals.value[newIdx]) {
+  if (isInspectingTrade.value && allInspectableSignals.value[newIdx]) {
     centerOnTrade(allInspectableSignals.value[newIdx]);
   }
   nextTick(() => {
@@ -1037,6 +1120,69 @@ watch(inspectedSignal, () => {
   nextTick(() => {
     updateBoxCoordinates();
   });
+});
+
+const applyTargetedSignal = (target: SignalData | InspectableSignal | null) => {
+  if (!target) return;
+  isInspectingTrade.value = true;
+  const pair = (target as any).pair || '';
+  const strat = (target as any).strategy || '';
+  const isSp = pair.includes('SP') || pair.includes('ES') || strat.toLowerCase().includes('sp') || strat.toLowerCase().includes('opening');
+  const isGold = pair.includes('XAU') || strat.toLowerCase().includes('xau') || strat.toLowerCase().includes('gold') || strat.toLowerCase().includes('goat');
+  const neededSymbol = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAU/USD' : 'BTC/USDT');
+  if (selectedSymbol.value !== neededSymbol) {
+    selectedSymbol.value = neededSymbol;
+  }
+
+  const targetTime = (target as any).time ? Number((target as any).time) : ((target as any).timestamp ? Math.floor((target as any).timestamp / 1000) : 0);
+  nextTick(() => {
+    const idx = allInspectableSignals.value.findIndex((s) =>
+      (target.id != null && String(s.id) === String(target.id)) ||
+      (targetTime && Math.abs(s.entry_time - targetTime) < 2)
+    );
+    if (idx !== -1) {
+      selectedSignalIndex.value = idx;
+      centerOnTrade(allInspectableSignals.value[idx]);
+    } else if (allInspectableSignals.value.length > 0) {
+      selectedSignalIndex.value = allInspectableSignals.value.length - 1;
+      centerOnTrade(allInspectableSignals.value[selectedSignalIndex.value]);
+    }
+  });
+};
+
+watch(() => props.targetedSignal, (newTarget) => {
+  if (newTarget) {
+    isInspectingTrade.value = true;
+    applyTargetedSignal(newTarget);
+  } else {
+    isInspectingTrade.value = false;
+    positionBoxes.value = [];
+  }
+}, { deep: true, immediate: true });
+
+watch(() => props.isActiveScreen, (active) => {
+  if (active) {
+    nextTick(() => {
+      if (chartContainerRef.value && chart) {
+        chart.applyOptions({
+          width: chartContainerRef.value.clientWidth,
+          height: chartContainerRef.value.clientHeight,
+        });
+      }
+      if (isInspectingTrade.value && inspectedSignal.value) {
+        centerOnTrade(inspectedSignal.value);
+      }
+      setTimeout(() => {
+        updateBoxCoordinates();
+      }, 50);
+      setTimeout(() => {
+        updateBoxCoordinates();
+      }, 150);
+      setTimeout(() => {
+        updateBoxCoordinates();
+      }, 300);
+    });
+  }
 });
 
 onMounted(() => {

@@ -45,15 +45,26 @@ export interface InspectableSignal {
 
 export interface PositionBoxCoord {
   id: string | number;
-  side: string;
-  pnl_pct?: number;
-  isProfit: boolean;
-  isLiveActive: boolean;
-  source: 'LIVE' | 'BACKTEST';
-  x1: number;
-  x2: number;
-  yTop: number;
-  yBottom: number;
-  labelX: number;
-  labelY: number;
+  x: number;
+  width: number;
+  yEntry: number;
+  yProfitTop: number;
+  profitHeight: number;
+  yLossTop: number;
+  lossHeight: number;
+  tpPrice: number;
+  slPrice: number;
+  entryPrice: number;
+  pnlPct: number;
+  isLong: boolean;
+  side?: string;
+  isProfit?: boolean;
+  isLiveActive?: boolean;
+  source?: 'LIVE' | 'BACKTEST';
+  x1?: number;
+  x2?: number;
+  yTop?: number;
+  yBottom?: number;
+  labelX?: number;
+  labelY?: number;
 }

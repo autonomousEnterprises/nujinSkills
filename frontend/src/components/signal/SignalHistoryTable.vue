@@ -34,7 +34,13 @@
               No signals recorded yet under selected filter scope.
             </td>
           </tr>
-          <tr v-for="(sig, idx) in allSignals" :key="sig.id || idx" class="hover">
+          <tr 
+            v-for="(sig, idx) in allSignals" 
+            :key="sig.id || idx" 
+            @click="emit('inspectPosition', sig)"
+            class="hover cursor-pointer hover:bg-base-100 transition-colors"
+            title="Click to view and inspect this signal with Entry/TP/SL boxes on chart (F1)"
+          >
             <td class="font-bold opacity-70">#{{ sig.id || idx + 1 }}</td>
             <td class="opacity-70 whitespace-nowrap">
               {{ formatDate(sig.time) }}
@@ -77,10 +83,17 @@
                 {{ sig.status || 'CLOSED' }}
               </span>
             </td>
-            <td class="text-right">
+            <td class="text-right whitespace-nowrap">
+              <button
+                @click.stop="emit('inspectPosition', sig)"
+                class="btn btn-xs btn-ghost btn-primary font-bold mr-1"
+                title="View on Chart (F1)"
+              >
+                Chart ↗
+              </button>
               <button
                 v-if="sig.status === 'ACTIVE_IN_POSITION'"
-                @click="emit('closePosition', sig)"
+                @click.stop="emit('closePosition', sig)"
                 :disabled="actionLoading"
                 class="btn btn-xs btn-error btn-outline font-bold"
               >
@@ -106,6 +119,7 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'closePosition', sig: SignalData): void;
+  (e: 'inspectPosition', sig: SignalData): void;
 }>();
 
 const isLongAction = (sig: SignalData) => sig.action === 'BUY' || sig.action === 'LONG';

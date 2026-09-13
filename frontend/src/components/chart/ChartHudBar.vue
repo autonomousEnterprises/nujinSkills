@@ -56,7 +56,7 @@
     </div>
 
     <!-- 3. Target Trade Coordinates (When inspecting a jump) -->
-    <template v-if="inspectedSignal">
+    <template v-if="inspectedSignal && isInspectingTrade">
       <div class="h-3 w-[1px] bg-base-content/20 shrink-0" />
       <div class="flex items-center gap-2.5 shrink-0 bg-base-300/60 px-2 py-0.5 rounded border border-base-content/10">
         <span class="text-primary font-bold uppercase text-[9px]">Trade #{{ selectedSignalIndex + 1 }} Coordinates:</span>
@@ -73,6 +73,14 @@
         <span v-if="inspectedSignal.exit_reason" class="badge badge-xs badge-neutral text-[9px] opacity-75">
           {{ inspectedSignal.exit_reason }}
         </span>
+        <button
+          @click="emit('dismissInspection')"
+          class="btn btn-ghost btn-xs h-5 min-h-0 px-1.5 text-[10px] text-base-content/60 hover:text-error hover:bg-base-200 ml-1 gap-1"
+          title="Dismiss trade box and return to clean chart"
+        >
+          <span>✕</span>
+          <span class="hidden sm:inline text-[9px]">Close Box</span>
+        </button>
       </div>
     </template>
   </div>
@@ -92,5 +100,10 @@ defineProps<{
   isSpStrategy?: boolean;
   hudItems?: IndicatorChipData[];
   strategyProfile?: StrategyIndicatorProfile | null;
+  isInspectingTrade?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (e: 'dismissInspection'): void;
 }>();
 </script>

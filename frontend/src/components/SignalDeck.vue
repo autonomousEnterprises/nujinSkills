@@ -40,6 +40,7 @@
         :cleanSelectedName="cleanSelectedName"
         :actionLoading="actionLoading"
         @closePosition="handleClosePosition"
+        @inspectPosition="(pos) => emit('inspectSignal', pos)"
       />
 
       <!-- ── 5. SIGNAL TELEMETRY & AUDIT FEED TABLE ── -->
@@ -48,6 +49,7 @@
         :cleanSelectedName="cleanSelectedName"
         :actionLoading="actionLoading"
         @closePosition="handleClosePosition"
+        @inspectPosition="(sig) => emit('inspectSignal', sig)"
       />
 
     </div>
@@ -82,6 +84,12 @@ const props = withDefaults(
     portfolioSummary: null,
   }
 );
+
+const emit = defineEmits<{
+  (e: 'inspectSignal', signal: SignalData): void;
+  (e: 'clearSignals'): void;
+  (e: 'closePosition', signal: SignalData): void;
+}>();
 
 const fetchedSignals = ref<SignalData[]>([]);
 const loading = ref(false);
@@ -226,7 +234,11 @@ const fetchSignals = async () => {
     const res = await fetch('/api/signals');
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data)) fetchedSignals.value = data;
+      if (Array.isArray(data)) {
+        fetchedSignals.value = data;
+      } else if (data && Array.isArray(data.signals)) {
+        fetchedSignals.value = data.signals;
+      }
     }
     const stRes = await fetch('/api/status');
     if (stRes.ok) systemStatus.value = await stRes.json();
@@ -281,6 +293,7 @@ const handleClearSignals = async () => {
       body: JSON.stringify(target ? { strategy: target } : {}),
     });
     fetchedSignals.value = [];
+    emit('clearSignals');
     await fetchSignals();
   } catch (e) {
     console.error('Failed to clear signals:', e);
@@ -301,6 +314,7 @@ const handleClosePosition = async (pos: SignalData) => {
         strategy: pos.strategy,
       }),
     });
+    emit('closePosition', pos);
     await fetchSignals();
   } catch (e) {
     console.error('Failed to manually close position:', e);

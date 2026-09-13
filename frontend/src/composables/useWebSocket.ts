@@ -225,6 +225,20 @@ export function useWebSocket() {
       })
       .catch(() => {});
 
+    // 4. Initial signals fetch
+    fetch('/api/signals')
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted) {
+          if (Array.isArray(data)) {
+            signals.value = data;
+          } else if (data && Array.isArray(data.signals)) {
+            signals.value = data.signals;
+          }
+        }
+      })
+      .catch(() => {});
+
     connect();
   });
 
