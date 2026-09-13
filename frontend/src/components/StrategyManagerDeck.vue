@@ -14,37 +14,8 @@
         @triggerCron="handleTriggerCron"
       />
 
-      <!-- ── TOP NAVIGATION TABS (LEADERBOARD vs ALPHA DRIFT & RISK) ── -->
-      <div class="flex items-center gap-2 border-b border-base-content/10 pb-1">
-        <button
-          @click="activeTab = 'LEADERBOARD'"
-          class="btn btn-sm font-mono font-bold gap-2"
-          :class="activeTab === 'LEADERBOARD' ? 'btn-primary shadow' : 'btn-ghost text-base-content/60'"
-        >
-          <Award class="w-4 h-4" />
-          <span>Strategy Leaderboard</span>
-          <span class="badge badge-xs badge-neutral">{{ strategies.length }}</span>
-        </button>
-
-        <button
-          @click="activeTab = 'ALPHA_DRIFT_AND_RISK'"
-          class="btn btn-sm font-mono font-bold gap-2"
-          :class="activeTab === 'ALPHA_DRIFT_AND_RISK' ? 'btn-primary shadow' : 'btn-ghost text-base-content/60'"
-        >
-          <TrendingUp class="w-4 h-4" />
-          <span>Alpha Drift &amp; Portfolio Risk</span>
-          <span 
-            class="badge badge-xs font-bold"
-            :class="distribution.improving.length > 0 ? 'badge-success' : 'badge-neutral'"
-          >
-            {{ distribution.improving.length }} Expanding
-          </span>
-        </button>
-      </div>
-
-      <!-- ── TAB 1: STRATEGY LEADERBOARD & SNAPSHOT DETAILS ── -->
+      <!-- ── STRATEGY LEADERBOARD TABLE (WITH DRIFT METRICS & SNAPSHOTS) ── -->
       <StrategyLeaderboard
-        v-if="activeTab === 'LEADERBOARD'"
         :strategies="strategies"
         :activeCount="activeCount"
         :cronCount="cronCount"
@@ -54,9 +25,8 @@
         @updateStatus="handleUpdateStatus"
       />
 
-      <!-- ── TAB 2: UNIFIED ALPHA DRIFT & PORTFOLIO RISK MATRIX ── -->
+      <!-- ── PORTFOLIO RISK, CORRELATION MATRIX & ALLOCATION SCOPE ── -->
       <StrategyAlphaRiskDeck
-        v-else-if="activeTab === 'ALPHA_DRIFT_AND_RISK'"
         :strategies="strategies"
         :portfolio="portfolio"
         :portfolioSummary="portfolioSummary"
@@ -75,7 +45,6 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Award, TrendingUp } from 'lucide-vue-next';
 import StrategyKpiRibbon from './strategy/StrategyKpiRibbon.vue';
 import StrategyLeaderboard from './strategy/StrategyLeaderboard.vue';
 import StrategyAlphaRiskDeck from './strategy/StrategyAlphaRiskDeck.vue';
@@ -107,7 +76,6 @@ const emit = defineEmits<{
   (e: 'navigateToBacktest', stratName: string): void;
 }>();
 
-const activeTab = ref<'LEADERBOARD' | 'ALPHA_DRIFT_AND_RISK'>('LEADERBOARD');
 const runningCron = ref(false);
 const runningAll = ref(false);
 const actionLoading = ref<Record<string, boolean>>({});

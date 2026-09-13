@@ -55,10 +55,11 @@
             <th>Strategy Name</th>
             <th>Symbol</th>
             <th>Status</th>
-            <th class="text-right">Sharpe</th>
+            <th class="text-right">Baseline &rarr; Current Sharpe</th>
             <th class="text-right">Win Rate</th>
             <th class="text-right">Profit Factor</th>
             <th class="text-right">Max DD</th>
+            <th class="text-center">Sharpe Drift Curve</th>
             <th class="text-center">Drift Trajectory</th>
             <th>Cron</th>
             <th class="text-right">Actions</th>
@@ -66,7 +67,7 @@
         </thead>
         <tbody>
           <tr v-if="displayedStrategies.length === 0">
-            <td colspan="12" class="text-center py-8 text-base-content/50 text-xs">
+            <td colspan="13" class="text-center py-8 text-base-content/50 text-xs">
               No strategies match the current filters.
             </td>
           </tr>
@@ -112,9 +113,15 @@
                 </span>
               </td>
 
-              <!-- Sharpe -->
-              <td class="text-right font-bold whitespace-nowrap" :class="getValColor(getStratSharpe(strat))">
-                {{ getStratSharpe(strat) != null ? getStratSharpe(strat).toFixed(2) : '–' }}
+              <!-- Baseline -> Current Sharpe -->
+              <td class="text-right whitespace-nowrap">
+                <div class="font-bold">
+                  <span class="text-base-content/50 text-[10px]">{{ getBaselineSharpe(strat).toFixed(2) }} &rarr; </span>
+                  <span :class="getValColor(getStratSharpe(strat))">{{ getStratSharpe(strat) != null ? getStratSharpe(strat).toFixed(2) : '–' }}</span>
+                </div>
+                <div class="text-[9px] font-bold" :class="getDeltaSharpe(strat) >= 0 ? 'text-success' : 'text-error'">
+                  {{ getDeltaSharpe(strat) > 0 ? '+' : '' }}{{ getDeltaSharpe(strat).toFixed(2) }}
+                </div>
               </td>
 
               <!-- Win Rate -->
@@ -132,6 +139,17 @@
               <!-- Max DD -->
               <td class="text-right font-bold text-error whitespace-nowrap">
                 {{ strat.latest_backtest?.max_drawdown != null ? `${(strat.latest_backtest.max_drawdown <= 1.0 ? strat.latest_backtest.max_drawdown * 100 : strat.latest_backtest.max_drawdown).toFixed(2)}%` : '–' }}
+              </td>
+
+              <!-- Sharpe Drift Curve Sparkline -->
+              <td class="text-center w-36 px-2">
+                <DaisyDriftSparkline 
+                  :values="getSharpeSeries(strat)"
+                  :hurdle="1.80"
+                  :height="30"
+                  :width="120"
+                  :idPrefix="`lb_${strat.id}`"
+                />
               </td>
 
               <!-- Drift Trajectory -->
@@ -194,7 +212,7 @@
 
             <!-- Expandable Row Detail: Snapshots, Cynic Audit & Equity Curve -->
             <tr v-if="expandedRows.has(strat.id)" class="bg-base-200/50">
-              <td colspan="12" class="p-3">
+              <td colspan="13" class="p-3">
                 <StrategySnapshotsTable 
                   :strat="strat" 
                   @navigateToBacktest="emit('navigateToBacktest', $event)" 
@@ -215,6 +233,7 @@ import {
   Activity, TrendingUp, TrendingDown
 } from 'lucide-vue-next';
 import StrategySnapshotsTable from './StrategySnapshotsTable.vue';
+import DaisyDriftSparkline from '../charts/DaisyDriftSparkline.vue';
 import type { ManagedStrategy } from '../../types';
 import {
   getValColor,
@@ -320,5 +339,30 @@ const getTrajectoryText = (strat: ManagedStrategy) => {
     if (dSh < -0.05) return `${dSh} DECAYING`;
   }
   return 'STABLE';
+};
+
+const getBaselineSharpe = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[0].sharpe !== undefined) {
+    return Number(hist[0].sharpe);
+  }
+  return strat.latest_backtest?.sharpe || 0;
+};
+
+const getDeltaSharpe = (strat: ManagedStrategy): number => {
+  const base = getBaselineSharpe(strat);
+  const cur = getStratSharpe(strat) ?? 0;
+  return Number((cur - base).toFixed(2));
+};
+
+const getSharpeSeries = (strat: ManagedStrategy): number[] => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0) {
+    const series = hist.map((h: any) => Number(h.sharpe || 0));
+    if (series.length === 1) return [series[0], series[0]];
+    return series;
+  }
+  const cur = strat.latest_backtest?.sharpe || 0;
+  return [cur, cur];
 };
 </script>
