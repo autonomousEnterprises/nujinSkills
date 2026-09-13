@@ -57,7 +57,7 @@
             <th>Status</th>
             <th class="text-right">Baseline &rarr; Current Sharpe</th>
             <th class="text-right">Win Rate Drift</th>
-            <th class="text-right">Profit Factor</th>
+            <th class="text-right">Profit Factor Drift</th>
             <th class="text-right">Max DD Drift</th>
             <th class="text-center">Sharpe Drift Curve</th>
             <th class="text-center">Drift Trajectory</th>
@@ -135,9 +135,15 @@
                 </div>
               </td>
 
-              <!-- Profit Factor -->
-              <td class="text-right whitespace-nowrap" :class="getValColor((getStratPf(strat) || 1.0) - 1.0)">
-                {{ getStratPf(strat) != null ? (typeof getStratPf(strat) === 'number' ? getStratPf(strat).toFixed(2) : getStratPf(strat)) : '–' }}
+              <!-- Profit Factor Drift -->
+              <td class="text-right whitespace-nowrap">
+                <div class="font-bold">
+                  <span class="text-base-content/50 text-[10px]">{{ getBaselinePf(strat).toFixed(2) }} &rarr; </span>
+                  <span :class="getValColor((getStratPf(strat) || 1.0) - 1.0)">{{ getStratPf(strat) != null ? (typeof getStratPf(strat) === 'number' ? getStratPf(strat).toFixed(2) : getStratPf(strat)) : '–' }}</span>
+                </div>
+                <div class="text-[9px] font-bold" :class="getDeltaPf(strat) >= 0 ? 'text-success' : 'text-error'">
+                  {{ getDeltaPf(strat) > 0 ? '+' : '' }}{{ getDeltaPf(strat).toFixed(2) }}
+                </div>
               </td>
 
               <!-- Max DD Drift -->
@@ -399,6 +405,22 @@ const getDeltaMdd = (strat: ManagedStrategy): number => {
   const base = getBaselineMdd(strat);
   const cur = getStratMdd(strat);
   return Number((cur - base).toFixed(2));
+};
+
+const getBaselinePf = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[0].profit_factor !== undefined) {
+    return Number(hist[0].profit_factor);
+  }
+  const cur = getStratPf(strat);
+  return typeof cur === 'number' ? cur : 1.0;
+};
+
+const getDeltaPf = (strat: ManagedStrategy): number => {
+  const base = getBaselinePf(strat);
+  const cur = getStratPf(strat);
+  const curNum = typeof cur === 'number' ? cur : 1.0;
+  return Number((curNum - base).toFixed(2));
 };
 
 const getSharpeSeries = (strat: ManagedStrategy): number[] => {
