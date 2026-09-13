@@ -267,22 +267,22 @@ const displayedStrategies = computed(() => {
 });
 
 const getStratSharpe = (strat: ManagedStrategy) => {
-  if (tableMetricMode.value === 'LIVE' && strat.live_stats?.sharpe_live !== undefined) {
+  if (tableMetricMode.value === 'LIVE' && (strat.live_stats?.total_trades || 0) > 0) {
     return strat.live_stats.sharpe_live;
   }
   return strat.latest_backtest?.sharpe;
 };
 
 const getStratWinRate = (strat: ManagedStrategy) => {
-  if (tableMetricMode.value === 'LIVE' && strat.live_stats?.win_rate !== undefined) {
-    return strat.live_stats.win_rate * 100;
+  if (tableMetricMode.value === 'LIVE' && (strat.live_stats?.total_trades || 0) > 0) {
+    return (strat.live_stats.win_rate || 0) * 100;
   }
   const raw = strat.latest_backtest?.win_rate || 0;
   return raw <= 1.0 ? raw * 100 : raw;
 };
 
 const getStratPf = (strat: ManagedStrategy) => {
-  if (tableMetricMode.value === 'LIVE' && strat.live_stats?.profit_factor !== undefined) {
+  if (tableMetricMode.value === 'LIVE' && (strat.live_stats?.total_trades || 0) > 0) {
     return strat.live_stats.profit_factor;
   }
   return strat.latest_backtest?.profit_factor;

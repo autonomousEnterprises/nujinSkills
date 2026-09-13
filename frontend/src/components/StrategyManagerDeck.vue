@@ -116,7 +116,12 @@ const activeCount = computed(() => props.strategies.filter((s) => s.status === '
 const cronCount = computed(() => props.strategies.filter((s) => s.status === 'CRON_BACKTEST').length);
 
 const portfolio = computed<PortfolioSummary>(() => {
-  if (props.portfolioSummary && props.portfolioSummary.active_count !== undefined) {
+  if (
+    props.portfolioSummary &&
+    props.portfolioSummary.active_count !== undefined &&
+    props.portfolioSummary.blended_win_rate !== undefined &&
+    props.portfolioSummary.blended_win_rate > 0
+  ) {
     return props.portfolioSummary;
   }
   const activeStrats = props.strategies.filter((s) => s.status === 'ACTIVE_LIVE');

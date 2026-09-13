@@ -69,7 +69,7 @@
     <div class="stat bg-base-200 border border-base-content/10 rounded-box p-3">
       <div class="stat-title text-[10px] uppercase font-bold text-base-content/60">BLENDED SHARPE</div>
       <div class="stat-value text-xl font-mono mt-0.5" :class="getValColor(portfolio.blended_sharpe)">
-        {{ portfolio.blended_sharpe > 0 ? portfolio.blended_sharpe.toFixed(2) : '–' }}
+        {{ portfolio.blended_sharpe != null && portfolio.blended_sharpe > 0 ? portfolio.blended_sharpe.toFixed(2) : '–' }}
       </div>
       <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">Target: &gt;= 1.80</div>
     </div>
@@ -77,8 +77,8 @@
     <!-- Blended Win Rate -->
     <div class="stat bg-base-200 border border-base-content/10 rounded-box p-3">
       <div class="stat-title text-[10px] uppercase font-bold text-base-content/60">BLENDED WIN RATE</div>
-      <div class="stat-value text-xl font-mono mt-0.5" :class="getValColor(portfolio.blended_win_rate - 50)">
-        {{ portfolio.blended_win_rate > 0 ? `${portfolio.blended_win_rate.toFixed(1)}%` : '–' }}
+      <div class="stat-value text-xl font-mono mt-0.5" :class="getValColor((portfolio.blended_win_rate ?? 0) - 50)">
+        {{ portfolio.blended_win_rate != null && portfolio.blended_win_rate >= 0 ? `${portfolio.blended_win_rate.toFixed(1)}%` : '–' }}
       </div>
       <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">Across active positions</div>
     </div>
@@ -86,8 +86,8 @@
     <!-- Combined Profit Factor -->
     <div class="stat bg-base-200 border border-base-content/10 rounded-box p-3">
       <div class="stat-title text-[10px] uppercase font-bold text-base-content/60">PROFIT FACTOR</div>
-      <div class="stat-value text-xl font-mono mt-0.5" :class="getValColor(portfolio.combined_profit_factor - 1.0)">
-        {{ portfolio.combined_profit_factor > 0 ? portfolio.combined_profit_factor.toFixed(2) : '–' }}
+      <div class="stat-value text-xl font-mono mt-0.5" :class="getValColor(((portfolio.combined_profit_factor ?? 1.0)) - 1.0)">
+        {{ portfolio.combined_profit_factor != null && portfolio.combined_profit_factor >= 0 ? portfolio.combined_profit_factor.toFixed(2) : '–' }}
       </div>
       <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">Hurdle: &gt;= 1.50</div>
     </div>
@@ -96,7 +96,7 @@
     <div class="stat bg-base-200 border border-base-content/10 rounded-box p-3">
       <div class="stat-title text-[10px] uppercase font-bold text-base-content/60">TOTAL TRADES</div>
       <div class="stat-value text-xl font-mono mt-0.5 text-base-content">
-        {{ portfolio.total_trades > 0 ? portfolio.total_trades.toLocaleString() : '–' }}
+        {{ portfolio.total_trades != null && portfolio.total_trades >= 0 ? portfolio.total_trades.toLocaleString() : '–' }}
       </div>
       <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">Statistical significance</div>
     </div>

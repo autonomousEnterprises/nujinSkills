@@ -1009,13 +1009,15 @@ class StrategyRegistry:
             pf = bt.get("profit_factor", 0.0)
 
             bt_trades_sum += t
-            bt_wins_sum += int(t * norm_wr)
+            bt_wins_sum += round(t * norm_wr)
             bt_sharpe_weighted += sh * max(1, t)
             if pf > 0:
                 bt_pfs.append(pf)
 
         bt_blended_win_rate = round((bt_wins_sum / bt_trades_sum * 100.0), 1) if bt_trades_sum > 0 else 0.0
-        bt_blended_sharpe = round((bt_sharpe_weighted / max(1, bt_trades_sum)), 2) if bt_trades_sum > 0 else round(sum(s.get("latest_backtest", {}).get("sharpe", 0.0) for s in active_strats) / len(active_strats), 2)
+        bt_blended_sharpe = round((bt_sharpe_weighted / max(1, bt_trades_sum)), 2) if bt_trades_sum > 0 else (
+            round(sum(s.get("latest_backtest", {}).get("sharpe", 0.0) for s in active_strats) / len(active_strats), 2) if active_strats else 0.0
+        )
         bt_combined_pf = round(sum(bt_pfs) / len(bt_pfs), 2) if bt_pfs else 0.0
 
         best = max(active_strats, key=lambda s: s.get("ranking_score", 0.0), default=None)
@@ -1040,11 +1042,11 @@ class StrategyRegistry:
             "backtest_sharpe": bt_blended_sharpe,
             "backtest_profit_factor": bt_combined_pf,
 
-            # Unified root fields
-            "blended_win_rate": live_wr_pct if live_trades_count > 0 else bt_blended_win_rate,
+            # Unified root fields representing the portfolio benchmark across all activated strategies
+            "blended_win_rate": bt_blended_win_rate,
             "blended_sharpe": bt_blended_sharpe,
-            "total_trades": live_trades_count if live_trades_count > 0 else bt_trades_sum,
-            "combined_profit_factor": live_pf if live_trades_count > 0 else bt_combined_pf,
+            "total_trades": bt_trades_sum,
+            "combined_profit_factor": bt_combined_pf,
             "total_realized_pnl": live_total_pnl,
         }
 
