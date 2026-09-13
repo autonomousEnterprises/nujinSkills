@@ -24,24 +24,6 @@
           <option value="CRON_BACKTEST">Cron Monitored ({{ cronCount }})</option>
           <option value="DEACTIVATED">Deactivated / Bench</option>
         </select>
-
-        <!-- Metric Mode Toggle: LIVE vs BACKTEST -->
-        <div class="join border border-base-content/10 rounded-lg">
-          <button
-            @click="tableMetricMode = 'LIVE'"
-            class="btn btn-xs join-item font-mono text-[10px]"
-            :class="tableMetricMode === 'LIVE' ? 'btn-primary font-bold' : 'btn-ghost text-base-content/60'"
-          >
-            LIVE METRICS
-          </button>
-          <button
-            @click="tableMetricMode = 'BACKTEST'"
-            class="btn btn-xs join-item font-mono text-[10px]"
-            :class="tableMetricMode === 'BACKTEST' ? 'btn-primary font-bold' : 'btn-ghost text-base-content/60'"
-          >
-            BACKTEST METRICS
-          </button>
-        </div>
       </div>
     </div>
 
@@ -117,7 +99,7 @@
               <td class="text-right whitespace-nowrap">
                 <div class="font-bold">
                   <span class="text-base-content/50 text-[10px]">{{ getBaselineSharpe(strat).toFixed(2) }} &rarr; </span>
-                  <span :class="getValColor(getStratSharpe(strat))">{{ getStratSharpe(strat) != null ? getStratSharpe(strat).toFixed(2) : '–' }}</span>
+                  <span :class="getValColor(getCurrentSharpe(strat))">{{ getCurrentSharpe(strat).toFixed(2) }}</span>
                 </div>
                 <div class="text-[9px] font-bold" :class="getDeltaSharpe(strat) >= 0 ? 'text-success' : 'text-error'">
                   {{ getDeltaSharpe(strat) > 0 ? '+' : '' }}{{ getDeltaSharpe(strat).toFixed(2) }}
@@ -128,7 +110,7 @@
               <td class="text-right whitespace-nowrap">
                 <div class="font-bold">
                   <span class="text-base-content/50 text-[10px]">{{ getBaselineWinRate(strat).toFixed(1) }}% &rarr; </span>
-                  <span :class="getValColor(getStratWinRate(strat) - 50)">{{ getStratWinRate(strat) != null ? `${getStratWinRate(strat).toFixed(1)}%` : '–' }}</span>
+                  <span :class="getValColor(getCurrentWinRate(strat) - 50)">{{ getCurrentWinRate(strat).toFixed(1) }}%</span>
                 </div>
                 <div class="text-[9px] font-bold" :class="getDeltaWinRate(strat) >= 0 ? 'text-success' : 'text-error'">
                   {{ getDeltaWinRate(strat) > 0 ? '+' : '' }}{{ getDeltaWinRate(strat).toFixed(1) }}%
@@ -139,7 +121,7 @@
               <td class="text-right whitespace-nowrap">
                 <div class="font-bold">
                   <span class="text-base-content/50 text-[10px]">{{ getBaselinePf(strat).toFixed(2) }} &rarr; </span>
-                  <span :class="getValColor((getStratPf(strat) || 1.0) - 1.0)">{{ getStratPf(strat) != null ? (typeof getStratPf(strat) === 'number' ? getStratPf(strat).toFixed(2) : getStratPf(strat)) : '–' }}</span>
+                  <span :class="getValColor(getCurrentPf(strat) - 1.0)">{{ getCurrentPf(strat).toFixed(2) }}</span>
                 </div>
                 <div class="text-[9px] font-bold" :class="getDeltaPf(strat) >= 0 ? 'text-success' : 'text-error'">
                   {{ getDeltaPf(strat) > 0 ? '+' : '' }}{{ getDeltaPf(strat).toFixed(2) }}
@@ -150,7 +132,7 @@
               <td class="text-right whitespace-nowrap">
                 <div class="font-bold">
                   <span class="text-base-content/50 text-[10px]">{{ getBaselineMdd(strat).toFixed(2) }}% &rarr; </span>
-                  <span class="text-error">{{ getStratMdd(strat) != null ? `${getStratMdd(strat).toFixed(2)}%` : '–' }}</span>
+                  <span class="text-error">{{ getCurrentMdd(strat).toFixed(2) }}%</span>
                 </div>
                 <div class="text-[9px] font-bold" :class="getDeltaMdd(strat) <= 0 ? 'text-success' : 'text-error'">
                   {{ getDeltaMdd(strat) > 0 ? '+' : '' }}{{ getDeltaMdd(strat).toFixed(2) }}%
@@ -272,7 +254,6 @@ const emit = defineEmits<{
 
 const searchQuery = ref('');
 const statusFilter = ref<'ALL' | 'ACTIVE_LIVE' | 'CRON_BACKTEST' | 'DEACTIVATED'>('ALL');
-const tableMetricMode = ref<'LIVE' | 'BACKTEST'>('LIVE');
 const expandedRows = ref<Set<string>>(new Set());
 
 const toggleRow = (id: string) => {
@@ -300,28 +281,6 @@ const displayedStrategies = computed(() => {
   }
   return list;
 });
-
-const getStratSharpe = (strat: ManagedStrategy) => {
-  if (tableMetricMode.value === 'LIVE' && (strat.live_stats?.total_trades || 0) > 0) {
-    return strat.live_stats.sharpe_live;
-  }
-  return strat.latest_backtest?.sharpe;
-};
-
-const getStratWinRate = (strat: ManagedStrategy) => {
-  if (tableMetricMode.value === 'LIVE' && (strat.live_stats?.total_trades || 0) > 0) {
-    return (strat.live_stats.win_rate || 0) * 100;
-  }
-  const raw = strat.latest_backtest?.win_rate || 0;
-  return raw <= 1.0 ? raw * 100 : raw;
-};
-
-const getStratPf = (strat: ManagedStrategy) => {
-  if (tableMetricMode.value === 'LIVE' && (strat.live_stats?.total_trades || 0) > 0) {
-    return strat.live_stats.profit_factor;
-  }
-  return strat.latest_backtest?.profit_factor;
-};
 
 const getTrajectoryIcon = (strat: ManagedStrategy) => {
   const hist = strat.cron_config?.drift_history || [];
@@ -357,70 +316,93 @@ const getTrajectoryText = (strat: ManagedStrategy) => {
   return 'STABLE';
 };
 
+// ─── Quantitative Drift Computations (Baseline -> Current) ─────────
 const getBaselineSharpe = (strat: ManagedStrategy): number => {
   const hist = strat.cron_config?.drift_history || [];
-  if (hist.length > 0 && hist[0].sharpe !== undefined) {
+  if (hist.length > 0 && hist[0].sharpe != null) {
     return Number(hist[0].sharpe);
   }
   return strat.latest_backtest?.sharpe || 0;
 };
 
-const getDeltaSharpe = (strat: ManagedStrategy): number => {
-  const base = getBaselineSharpe(strat);
-  const cur = getStratSharpe(strat) ?? 0;
-  return Number((cur - base).toFixed(2));
+const getCurrentSharpe = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[hist.length - 1].sharpe != null) {
+    return Number(hist[hist.length - 1].sharpe);
+  }
+  return strat.latest_backtest?.sharpe || 0;
 };
 
-const getStratMdd = (strat: ManagedStrategy): number => {
-  const raw = strat.latest_backtest?.max_drawdown;
-  if (raw == null) return 0;
-  return raw <= 1.0 ? raw * 100 : raw;
+const getDeltaSharpe = (strat: ManagedStrategy): number => {
+  return Number((getCurrentSharpe(strat) - getBaselineSharpe(strat)).toFixed(2));
 };
 
 const getBaselineWinRate = (strat: ManagedStrategy): number => {
   const hist = strat.cron_config?.drift_history || [];
-  if (hist.length > 0 && hist[0].win_rate !== undefined) {
+  if (hist.length > 0 && hist[0].win_rate != null) {
     const raw = Number(hist[0].win_rate);
     return raw <= 1.0 ? raw * 100 : raw;
   }
-  return getStratWinRate(strat) ?? 0;
+  const raw = strat.latest_backtest?.win_rate || 0;
+  return raw <= 1.0 ? raw * 100 : raw;
+};
+
+const getCurrentWinRate = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[hist.length - 1].win_rate != null) {
+    const raw = Number(hist[hist.length - 1].win_rate);
+    return raw <= 1.0 ? raw * 100 : raw;
+  }
+  const raw = strat.latest_backtest?.win_rate || 0;
+  return raw <= 1.0 ? raw * 100 : raw;
 };
 
 const getDeltaWinRate = (strat: ManagedStrategy): number => {
-  const base = getBaselineWinRate(strat);
-  const cur = getStratWinRate(strat) ?? 0;
-  return Number((cur - base).toFixed(1));
-};
-
-const getBaselineMdd = (strat: ManagedStrategy): number => {
-  const hist = strat.cron_config?.drift_history || [];
-  if (hist.length > 0 && hist[0].max_drawdown !== undefined) {
-    const raw = Number(hist[0].max_drawdown);
-    return raw <= 1.0 ? raw * 100 : raw;
-  }
-  return getStratMdd(strat);
-};
-
-const getDeltaMdd = (strat: ManagedStrategy): number => {
-  const base = getBaselineMdd(strat);
-  const cur = getStratMdd(strat);
-  return Number((cur - base).toFixed(2));
+  return Number((getCurrentWinRate(strat) - getBaselineWinRate(strat)).toFixed(1));
 };
 
 const getBaselinePf = (strat: ManagedStrategy): number => {
   const hist = strat.cron_config?.drift_history || [];
-  if (hist.length > 0 && hist[0].profit_factor !== undefined) {
+  if (hist.length > 0 && hist[0].profit_factor != null) {
     return Number(hist[0].profit_factor);
   }
-  const cur = getStratPf(strat);
-  return typeof cur === 'number' ? cur : 1.0;
+  return Number(strat.latest_backtest?.profit_factor || 1.0);
+};
+
+const getCurrentPf = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[hist.length - 1].profit_factor != null) {
+    return Number(hist[hist.length - 1].profit_factor);
+  }
+  return Number(strat.latest_backtest?.profit_factor || 1.0);
 };
 
 const getDeltaPf = (strat: ManagedStrategy): number => {
-  const base = getBaselinePf(strat);
-  const cur = getStratPf(strat);
-  const curNum = typeof cur === 'number' ? cur : 1.0;
-  return Number((curNum - base).toFixed(2));
+  return Number((getCurrentPf(strat) - getBaselinePf(strat)).toFixed(2));
+};
+
+const getBaselineMdd = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[0].max_drawdown != null) {
+    const raw = Number(hist[0].max_drawdown);
+    return raw <= 1.0 ? raw * 100 : raw;
+  }
+  const raw = strat.latest_backtest?.max_drawdown || 0;
+  return raw <= 1.0 ? raw * 100 : raw;
+};
+
+const getCurrentMdd = (strat: ManagedStrategy): number => {
+  const hist = strat.cron_config?.drift_history || [];
+  if (hist.length > 0 && hist[hist.length - 1].max_drawdown != null) {
+    const raw = Number(hist[hist.length - 1].max_drawdown);
+    return raw <= 1.0 ? raw * 100 : raw;
+  }
+  const raw = strat.latest_backtest?.max_drawdown || 0;
+  return raw <= 1.0 ? raw * 100 : raw;
+};
+
+const getDeltaMdd = (strat: ManagedStrategy): number => {
+  return Number((getCurrentMdd(strat) - getBaselineMdd(strat)).toFixed(2));
 };
 
 const getSharpeSeries = (strat: ManagedStrategy): number[] => {
