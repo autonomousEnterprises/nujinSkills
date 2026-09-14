@@ -487,6 +487,8 @@ async def list_strategies():
             "name": file_name,
             "path": f"strategies/{file_name}",
             "display_name": s.get("display_name", file_name.replace(".py", "")),
+            "symbol": s.get("symbol", "XAU/USD" if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else ("S&P 500 (ES)" if any(k in file_name.upper() for k in ["SP", "ES", "OPENING"]) else "BTC/USDT")),
+            "timeframe": s.get("timeframe", "1m" if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT", "SP", "ES", "OPENING"]) else "15m"),
             "size_bytes": stat_size,
             "last_modified": stat_mtime,
             "status": s.get("status", "DEACTIVATED"),

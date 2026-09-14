@@ -25,8 +25,8 @@
         :targetedSignal="targetedSignal"
         :theme="theme"
         :selectedStrategy="selectedStrategy"
-        :tradeMarkers="selectedBacktestData?.trade_markers || activeState?.trade_markers || []"
-        :tradesDetail="selectedBacktestData?.trades_detail || activeState?.trades_detail || []"
+        :tradeMarkers="currentStrategyBacktest?.trade_markers || (isLiveStrategySelected ? activeState?.trade_markers : []) || []"
+        :tradesDetail="currentStrategyBacktest?.trades_detail || (isLiveStrategySelected ? activeState?.trades_detail : []) || []"
         :activeStrategy="activeBots[0] || 'GoatFundedTraderXauusdScalper'"
         :strategies="strategies"
         :isActiveScreen="activeScreen === 'CHART'"
@@ -227,6 +227,22 @@ const fetchStrategies = async () => {
   }
 };
 
+const currentStrategyBacktest = computed(() => {
+  if (!selectedBacktestData.value) return null;
+  const currClean = selectedStrategy.value.replace('.py', '').toLowerCase();
+  const backtestStrat = (selectedBacktestData.value.strategy || '').replace('.py', '').toLowerCase();
+  if (backtestStrat && currClean && backtestStrat === currClean) {
+    return selectedBacktestData.value;
+  }
+  return null;
+});
+
+const isLiveStrategySelected = computed(() => {
+  const currClean = selectedStrategy.value.replace('.py', '').toLowerCase();
+  const liveClean = (activeState.value?.active_strategy || '').replace('.py', '').toLowerCase();
+  return Boolean(currClean && liveClean && currClean === liveClean);
+});
+
 // Keep strategies synchronized whenever managedStrategies updates from WebSocket or API
 watch(
   managedStrategies,
@@ -239,6 +255,8 @@ watch(
         status: s.status,
         rank: s.rank,
         tier: s.tier,
+        symbol: s.symbol,
+        timeframe: s.timeframe,
         sharpe: s.latest_backtest?.sharpe || 0,
         win_rate: s.latest_backtest?.win_rate || 0,
       }));
@@ -315,6 +333,7 @@ const handleSelectStrategy = async (stratName: string) => {
     targetedSignal.value = null;
   }
   selectedStrategy.value = stratName;
+  selectedBacktestData.value = null;
   loadingBacktest.value = true;
   try {
     const res = await fetch('/api/strategies/select', {
@@ -323,11 +342,15 @@ const handleSelectStrategy = async (stratName: string) => {
       body: JSON.stringify({ strategy: stratName }),
     });
     const data = await res.json();
-    selectedBacktestData.value = data;
+    if (selectedStrategy.value === stratName) {
+      selectedBacktestData.value = data;
+    }
   } catch (e) {
     console.error('[App] Failed to run backtest preview:', e);
   } finally {
-    loadingBacktest.value = false;
+    if (selectedStrategy.value === stratName) {
+      loadingBacktest.value = false;
+    }
   }
 };
 

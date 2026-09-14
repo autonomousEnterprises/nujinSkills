@@ -54,7 +54,7 @@ class XauusdScalpEngine:
         """Loads cached 1m candles or pulls fresh from TradingView."""
         try:
             from server.data_manager import fetch_real_oanda_candles
-            bars = fetch_real_oanda_candles(interval="1m", count=1000)
+            bars = fetch_real_oanda_candles(interval="1m", count=20000)
             if bars:
                 self.candles_1m = bars
                 last_c = self.candles_1m[-1]
@@ -483,7 +483,7 @@ class XauusdScalpEngine:
                                     self._last_tv_sync = now_mono
                                     asyncio.create_task(self._sync_authentic_candles())
 
-                            if len(self.candles_1m) > 1500:
+                            if len(self.candles_1m) > 20000:
                                 self.candles_1m.pop(0)
 
                     if self.candles_1m:

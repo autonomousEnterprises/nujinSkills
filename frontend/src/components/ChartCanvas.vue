@@ -283,6 +283,23 @@ let periodicSyncTimer: any = null;
 let resizeObserver: ResizeObserver | null = null;
 
 // ── Precision Coordinate & Candle Search Helpers ──
+const isPriceCompatible = (price: number): boolean => {
+  if (!price || isNaN(price) || price <= 0) return false;
+  if (!rawCandles.value || rawCandles.value.length === 0) return true;
+  const sampleClose = Number(rawCandles.value[rawCandles.value.length - 1].close);
+  if (!sampleClose || sampleClose <= 0) return true;
+  return price >= sampleClose * 0.4 && price <= sampleClose * 2.5;
+};
+
+const getMaxHoldBars = (target?: InspectableSignal | null): number => {
+  if (target?.max_hold_bars) return target.max_hold_bars;
+  const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
+  const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES');
+  if (isGold) return 25;
+  if (isSp) return 15;
+  return 20;
+};
+
 const findCandleIndex = (timeSec: number): number => {
   if (!rawCandles.value || rawCandles.value.length === 0) return -1;
   const firstT = Number(rawCandles.value[0].time);
@@ -305,7 +322,7 @@ const findCandleIndex = (timeSec: number): number => {
     : high;
 };
 
-// Evaluates whether a trade is closed based on explicit status or candle price breach (SL/TP)
+// Evaluates whether a trade is closed based on explicit status or candle price breach (SL/TP/Holding Limit)
 const resolveTradeExit = (target: InspectableSignal, entryIdx: number): {
   isClosed: boolean;
   exitIdx: number;
@@ -348,13 +365,14 @@ const resolveTradeExit = (target: InspectableSignal, entryIdx: number): {
     };
   }
 
-  // 2. Candle price breach inspection: walk candles forward from entryIdx to detect if SL or TP was reached
+  // 2. Sequential candle inspection: check from entryIdx + 1 forward (never on entry bar itself)
   const isLong = target.side === 'LONG' || target.side === 'BUY' || ((target.take_profit || 0) >= target.entry_price);
   const sl = target.stop_loss;
   const tp = target.take_profit;
+  const maxHoldBars = getMaxHoldBars(target);
 
   if (sl || tp) {
-    for (let i = entryIdx; i < rawCandles.value.length; i++) {
+    for (let i = entryIdx + 1; i < rawCandles.value.length; i++) {
       const c = rawCandles.value[i];
       const low = Number(c.low);
       const high = Number(c.high);
@@ -406,6 +424,22 @@ const resolveTradeExit = (target: InspectableSignal, entryIdx: number): {
           };
         }
       }
+
+      // Check max holding limit
+      if (i - entryIdx >= maxHoldBars) {
+        const exitPrice = Number(c.close);
+        const rawPnl = isLong
+          ? ((exitPrice - target.entry_price) / target.entry_price) * 100
+          : ((target.entry_price - exitPrice) / target.entry_price) * 100;
+        return {
+          isClosed: true,
+          exitIdx: i,
+          exitTime: Number(c.time),
+          exitPrice: exitPrice,
+          exitReason: 'TIME_CUTOFF',
+          pnlPct: Number(rawPnl.toFixed(2)),
+        };
+      }
     }
   }
 
@@ -437,7 +471,7 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
   if (props.tradesDetail && props.tradesDetail.length > 0) {
     for (const t of props.tradesDetail) {
       const entryPrice = Number(t.entry_price || (t as any).price || 0);
-      if (!entryPrice) continue;
+      if (!entryPrice || !isPriceCompatible(entryPrice)) continue;
       const isBuy = t.side === 'BUY' || t.side === 'LONG' || (t as any).action === 'BUY' || (t as any).action === 'LONG';
       const entryTime = Number(t.entry_time || (t as any).time || 0);
       const exitTime = Number(t.exit_time || (t as any).closed_at || 0);
@@ -472,6 +506,7 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
       const rawTime = s.time ? Number(s.time) : (s.timestamp ? Math.floor(s.timestamp / 1000) : 0);
       if (!rawTime || (!s.entry_price && !s.price)) continue;
       const entryPrice = Number(s.entry_price || s.price);
+      if (!isPriceCompatible(entryPrice)) continue;
       const isBuy = s.action === 'BUY' || s.action === 'LONG' || s.side === 'LONG' || s.side === 'BUY';
       const entryTime = rawTime;
       if (list.some((existing) => (s.id != null && existing.id === s.id) || Math.abs(existing.entry_time - entryTime) < 2)) continue;
@@ -507,51 +542,53 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
   if (props.latestSignal && (props.latestSignal.entry_price || props.latestSignal.price)) {
     const s = props.latestSignal;
     const entryPrice = Number(s.entry_price || s.price);
-    const isBuy = s.action === 'BUY' || s.action === 'LONG' || s.side === 'LONG' || s.side === 'BUY';
-    const rawTime = s.time
-      ? Number(s.time)
-      : (s.timestamp ? Math.floor(s.timestamp / 1000) : (rawCandles.value.length > 0 ? Number(rawCandles.value[rawCandles.value.length - 1].time) : 0));
-    const entryTime = rawTime;
-    const existingIdx = list.findIndex(
-      (existing) => (s.id != null && existing.id === s.id) || Math.abs(existing.entry_time - entryTime) < 2
-    );
-    const isClosed = Boolean(
-      s.exit_price != null ||
-      (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
-      s.status === 'COMPLETED' ||
-      s.status === 'CLOSED' ||
-      s.exit_time != null
-    );
-    const exitTime = s.exit_time
-      ? Number(s.exit_time)
-      : (isClosed ? ((s as any).closed_at || (s as any).exit_timestamp || undefined) : undefined);
+    if (isPriceCompatible(entryPrice)) {
+      const isBuy = s.action === 'BUY' || s.action === 'LONG' || s.side === 'LONG' || s.side === 'BUY';
+      const rawTime = s.time
+        ? Number(s.time)
+        : (s.timestamp ? Math.floor(s.timestamp / 1000) : (rawCandles.value.length > 0 ? Number(rawCandles.value[rawCandles.value.length - 1].time) : 0));
+      const entryTime = rawTime;
+      const existingIdx = list.findIndex(
+        (existing) => (s.id != null && existing.id === s.id) || Math.abs(existing.entry_time - entryTime) < 2
+      );
+      const isClosed = Boolean(
+        s.exit_price != null ||
+        (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
+        s.status === 'COMPLETED' ||
+        s.status === 'CLOSED' ||
+        s.exit_time != null
+      );
+      const exitTime = s.exit_time
+        ? Number(s.exit_time)
+        : (isClosed ? ((s as any).closed_at || (s as any).exit_timestamp || undefined) : undefined);
 
-    if (existingIdx !== -1) {
-      const existing = list[existingIdx];
-      const isStillClosed = !existing.isLiveActive || isClosed;
-      list[existingIdx] = {
-        ...existing,
-        exit_time: isStillClosed ? (existing.exit_time || exitTime) : undefined,
-        exit_price: isStillClosed ? (existing.exit_price ?? (s.exit_price != null ? Number(s.exit_price) : undefined)) : undefined,
-        exit_reason: isStillClosed ? (existing.exit_reason || s.exit_reason) : undefined,
-        pnl_pct: s.pnl_pct ?? existing.pnl_pct,
-        isLiveActive: !isStillClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
-      };
-    } else {
-      list.push({
-        id: s.id != null ? s.id : 'live-latest',
-        source: 'LIVE',
-        side: s.action || s.side || (isBuy ? 'LONG' : 'SHORT'),
-        entry_time: entryTime,
-        entry_price: entryPrice,
-        exit_time: exitTime,
-        exit_price: s.exit_price != null ? Number(s.exit_price) : undefined,
-        exit_reason: s.exit_reason,
-        pnl_pct: s.pnl_pct || 0,
-        stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
-        take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
-        isLiveActive: !isClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
-      });
+      if (existingIdx !== -1) {
+        const existing = list[existingIdx];
+        const isStillClosed = !existing.isLiveActive || isClosed;
+        list[existingIdx] = {
+          ...existing,
+          exit_time: isStillClosed ? (existing.exit_time || exitTime) : undefined,
+          exit_price: isStillClosed ? (existing.exit_price ?? (s.exit_price != null ? Number(s.exit_price) : undefined)) : undefined,
+          exit_reason: isStillClosed ? (existing.exit_reason || s.exit_reason) : undefined,
+          pnl_pct: s.pnl_pct ?? existing.pnl_pct,
+          isLiveActive: !isStillClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
+        };
+      } else {
+        list.push({
+          id: s.id != null ? s.id : 'live-latest',
+          source: 'LIVE',
+          side: s.action || s.side || (isBuy ? 'LONG' : 'SHORT'),
+          entry_time: entryTime,
+          entry_price: entryPrice,
+          exit_time: exitTime,
+          exit_price: s.exit_price != null ? Number(s.exit_price) : undefined,
+          exit_reason: s.exit_reason,
+          pnl_pct: s.pnl_pct || 0,
+          stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
+          take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
+          isLiveActive: !isClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
+        });
+      }
     }
   }
 
@@ -559,46 +596,48 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
   if (props.targetedSignal && (props.targetedSignal.entry_price || props.targetedSignal.price)) {
     const s = props.targetedSignal;
     const entryPrice = Number(s.entry_price || s.price);
-    const isBuy = s.action === 'BUY' || s.action === 'LONG' || (s as any).side === 'BUY' || (s as any).side === 'LONG';
-    const rawTime = s.time
-      ? Number(s.time)
-      : (s.timestamp ? Math.floor(s.timestamp / 1000) : (rawCandles.value.length > 0 ? Number(rawCandles.value[rawCandles.value.length - 1].time) : Math.floor(Date.now() / 1000)));
-    const entryTime = rawTime;
-    const existingIdx = list.findIndex(
-      (existing) => (s.id != null && String(existing.id) === String(s.id)) || Math.abs(existing.entry_time - entryTime) < 2
-    );
-    const existingIsClosed = existingIdx !== -1 && (!list[existingIdx].isLiveActive || list[existingIdx].exit_time != null || list[existingIdx].exit_price != null || (list[existingIdx].exit_reason && list[existingIdx].exit_reason !== 'ACTIVE_IN_POSITION'));
-    const isClosed = Boolean(
-      existingIsClosed ||
-      s.exit_price != null ||
-      (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
-      s.status === 'COMPLETED' ||
-      s.status === 'CLOSED' ||
-      s.exit_time != null
-    );
-    const existingExitTime = existingIdx !== -1 ? list[existingIdx].exit_time : undefined;
-    const exitTime = s.exit_time
-      ? Number(s.exit_time)
-      : (existingExitTime || (isClosed ? ((s as any).closed_at || (s as any).exit_timestamp || undefined) : undefined));
+    if (isPriceCompatible(entryPrice)) {
+      const isBuy = s.action === 'BUY' || s.action === 'LONG' || (s as any).side === 'BUY' || (s as any).side === 'LONG';
+      const rawTime = s.time
+        ? Number(s.time)
+        : (s.timestamp ? Math.floor(s.timestamp / 1000) : (rawCandles.value.length > 0 ? Number(rawCandles.value[rawCandles.value.length - 1].time) : Math.floor(Date.now() / 1000)));
+      const entryTime = rawTime;
+      const existingIdx = list.findIndex(
+        (existing) => (s.id != null && String(existing.id) === String(s.id)) || Math.abs(existing.entry_time - entryTime) < 2
+      );
+      const existingIsClosed = existingIdx !== -1 && (!list[existingIdx].isLiveActive || list[existingIdx].exit_time != null || list[existingIdx].exit_price != null || (list[existingIdx].exit_reason && list[existingIdx].exit_reason !== 'ACTIVE_IN_POSITION'));
+      const isClosed = Boolean(
+        existingIsClosed ||
+        s.exit_price != null ||
+        (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
+        s.status === 'COMPLETED' ||
+        s.status === 'CLOSED' ||
+        s.exit_time != null
+      );
+      const existingExitTime = existingIdx !== -1 ? list[existingIdx].exit_time : undefined;
+      const exitTime = s.exit_time
+        ? Number(s.exit_time)
+        : (existingExitTime || (isClosed ? ((s as any).closed_at || (s as any).exit_timestamp || undefined) : undefined));
 
-    const inspectable: InspectableSignal = {
-      id: s.id ?? (existingIdx !== -1 ? list[existingIdx].id : 'targeted-signal'),
-      source: existingIdx !== -1 ? list[existingIdx].source : 'LIVE',
-      side: s.action || (s as any).side || (isBuy ? 'LONG' : 'SHORT'),
-      entry_time: entryTime,
-      entry_price: entryPrice,
-      exit_time: exitTime,
-      exit_price: s.exit_price ?? (existingIdx !== -1 ? list[existingIdx].exit_price : undefined),
-      exit_reason: (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION' ? s.exit_reason : (existingIdx !== -1 ? list[existingIdx].exit_reason : undefined)),
-      pnl_pct: s.pnl_pct ?? (existingIdx !== -1 ? list[existingIdx].pnl_pct : 0),
-      stop_loss: s.stop_loss || (existingIdx !== -1 ? list[existingIdx].stop_loss : (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025)),
-      take_profit: s.take_profit || (existingIdx !== -1 ? list[existingIdx].take_profit : (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970)),
-      isLiveActive: !isClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
-    };
-    if (existingIdx !== -1) {
-      list[existingIdx] = { ...list[existingIdx], ...inspectable };
-    } else {
-      list.push(inspectable);
+      const inspectable: InspectableSignal = {
+        id: s.id ?? (existingIdx !== -1 ? list[existingIdx].id : 'targeted-signal'),
+        source: existingIdx !== -1 ? list[existingIdx].source : 'LIVE',
+        side: s.action || (s as any).side || (isBuy ? 'LONG' : 'SHORT'),
+        entry_time: entryTime,
+        entry_price: entryPrice,
+        exit_time: exitTime,
+        exit_price: s.exit_price ?? (existingIdx !== -1 ? list[existingIdx].exit_price : undefined),
+        exit_reason: (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION' ? s.exit_reason : (existingIdx !== -1 ? list[existingIdx].exit_reason : undefined)),
+        pnl_pct: s.pnl_pct ?? (existingIdx !== -1 ? list[existingIdx].pnl_pct : 0),
+        stop_loss: s.stop_loss || (existingIdx !== -1 ? list[existingIdx].stop_loss : (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025)),
+        take_profit: s.take_profit || (existingIdx !== -1 ? list[existingIdx].take_profit : (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970)),
+        isLiveActive: !isClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
+      };
+      if (existingIdx !== -1) {
+        list[existingIdx] = { ...list[existingIdx], ...inspectable };
+      } else {
+        list.push(inspectable);
+      }
     }
   }
 
@@ -661,7 +700,7 @@ const getYForPrice = (price: number): number => {
     const interpolatedY = 10 + (price - pTop) * slope;
     if (!isNaN(interpolatedY)) return interpolatedY;
   }
-  return price > (inspectedSignal.value?.entry_price || 0) ? -50 : containerH + 50;
+  return price > (inspectedSignal.value?.entry_price || 0) ? 10 : containerH - 10;
 };
 
 const updateBoxCoordinates = () => {
@@ -701,24 +740,24 @@ const updateBoxCoordinates = () => {
   }
 
   const tradeExit = resolveTradeExit(target, entryIdx);
-  const isTradeOpen = !tradeExit.isClosed && Boolean(target.isLiveActive);
+  const isTradeOpen = !tradeExit.isClosed && Boolean(target.isLiveActive) && target.source === 'LIVE';
 
   let x2Center: number | null = null;
   if (isTradeOpen) {
     const lastIdx = rawCandles.value.length - 1;
-    const lastCandleLocalTime = timeToLocal(Number(rawCandles.value[lastIdx].time));
-    let lastX = chart.timeScale().timeToCoordinate(lastCandleLocalTime as Time);
-    if (lastX === null) {
-      lastX = chart.timeScale().logicalToCoordinate(lastIdx as any);
+    const maxHoldBars = getMaxHoldBars(target);
+    // When open, project forward up to holding limit or at least 4 bars ahead of live candle
+    const targetFutureIdx = Math.max(lastIdx + 4, entryIdx + maxHoldBars);
+    let futureX = chart.timeScale().logicalToCoordinate(targetFutureIdx as any);
+    if (futureX === null && visRange) {
+      futureX = (targetFutureIdx - visRange.from) * barSpacing;
     }
-    if (lastX === null && visRange) {
-      lastX = (lastIdx - visRange.from) * barSpacing;
-    }
-    x2Center = lastX !== null ? (lastX + barSpacing * 4) : (containerW - 30);
+    x2Center = futureX !== null ? futureX : (containerW - 30);
   } else {
     // When closed, it is strictly capped at the exit candle!
-    const exitIdx = Math.max(entryIdx, tradeExit.exitIdx);
-    const exitCandleLocalTime = timeToLocal(Number(rawCandles.value[exitIdx].time));
+    const exitIdx = Math.max(entryIdx + 1, tradeExit.exitIdx);
+    const clampedExitIdx = Math.min(exitIdx, rawCandles.value.length - 1);
+    const exitCandleLocalTime = timeToLocal(Number(rawCandles.value[clampedExitIdx].time));
     x2Center = chart.timeScale().timeToCoordinate(exitCandleLocalTime as Time);
     if (x2Center === null) {
       x2Center = chart.timeScale().logicalToCoordinate(exitIdx as any);
@@ -873,12 +912,12 @@ const centerOnTrade = (trade: InspectableSignal) => {
     if (entryIdx < 0) return;
 
     const tradeExit = resolveTradeExit(trade, entryIdx);
-    const exitIdx = tradeExit.isClosed ? Math.max(entryIdx, tradeExit.exitIdx) : rawCandles.value.length - 1;
+    const maxHoldBars = getMaxHoldBars(trade);
+    const exitIdx = tradeExit.isClosed ? Math.max(entryIdx + 1, tradeExit.exitIdx) : Math.max(rawCandles.value.length - 1, entryIdx + maxHoldBars);
 
     // Use setVisibleLogicalRange: directly scroll to the exact bars with comfortable padding
     const fromLogical = Math.max(0, entryIdx - 20);
-    const toLogical = Math.min(rawCandles.value.length + 15, Math.max(entryIdx + 20, exitIdx + 20));
-
+    const toLogical = Math.min(rawCandles.value.length + 30, Math.max(entryIdx + 30, exitIdx + 10));
     chart.timeScale().setVisibleLogicalRange({
       from: fromLogical,
       to: toLogical,
@@ -1174,7 +1213,7 @@ const loadCandles = async (preserveViewport = false) => {
     const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
     const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
     const apiSym = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAUUSD' : selectedSymbol.value);
-    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=1500&mode=live`);
+    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=20000&mode=live`);
     const data = await res.json();
 
     if (data.data && data.data.length > 0) {
@@ -1256,11 +1295,13 @@ const applyMarkers = (markers: any[]) => {
     const firstTime = Number(rawCandles.value[0].time);
     const lastTime = Number(rawCandles.value[rawCandles.value.length - 1].time);
 
-    // Filter markers that fall strictly within the loaded candle timeline.
+    // Filter markers that fall strictly within the loaded candle timeline and asset price range.
     const validMarkers = markers.filter((m) => {
       if (!m || m.time === undefined || m.time === null) return false;
       const rawT = typeof m.time === 'number' && m.time > 2000000000 ? m.time / 1000 : Number(m.time);
-      return rawT >= firstTime && rawT <= lastTime;
+      if (rawT < firstTime || rawT > lastTime) return false;
+      if (m.price != null && !isPriceCompatible(Number(m.price))) return false;
+      return true;
     });
 
     const formatted = validMarkers.map((m) => {
