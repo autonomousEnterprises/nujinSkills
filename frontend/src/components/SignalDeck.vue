@@ -32,7 +32,18 @@
         :openPositionsCount="openPositions.length"
       />
 
-      <!-- ── 4. ACTIVE OPEN POSITIONS (MULTI-BOT PARALLEL) ── -->
+      <!-- ── 4. REALIZED EQUITY TRAJECTORY CHART ── -->
+      <SignalEquityChart
+        :signals="allSignals"
+        :selectedStratTab="selectedStratTab"
+        :cleanSelectedName="cleanSelectedName"
+        :liveStats="liveStats"
+        :managedStrategies="managedStrategies"
+        :selectedBacktestData="selectedBacktestData"
+        :activeBots="activeBots"
+      />
+
+      <!-- ── 5. ACTIVE OPEN POSITIONS (MULTI-BOT PARALLEL) ── -->
       <SignalPositionsGrid
         :openPositions="openPositions"
         :liveGoldPrice="liveGoldPrice"
@@ -44,7 +55,7 @@
         @inspectPosition="(pos) => emit('inspectSignal', pos)"
       />
 
-      <!-- ── 5. SIGNAL TELEMETRY & AUDIT FEED TABLE ── -->
+      <!-- ── 6. SIGNAL TELEMETRY & AUDIT FEED TABLE ── -->
       <SignalHistoryTable
         :allSignals="allSignals"
         :cleanSelectedName="cleanSelectedName"
@@ -62,6 +73,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import SignalHeader from './signal/SignalHeader.vue';
 import SignalScopeFilter from './signal/SignalScopeFilter.vue';
 import SignalPerformanceStats from './signal/SignalPerformanceStats.vue';
+import SignalEquityChart from './signal/SignalEquityChart.vue';
 import SignalPositionsGrid from './signal/SignalPositionsGrid.vue';
 import SignalHistoryTable from './signal/SignalHistoryTable.vue';
 import type { SignalData, WidgetData, ManagedStrategy, PortfolioSummary } from '../types';

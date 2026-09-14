@@ -95,6 +95,7 @@
           {{ (hoverPoint.val - 100) >= 0 ? '+' : '' }}{{ (hoverPoint.val - 100).toFixed(2) }}%
         </span>
         <span v-if="hoverPoint.dd > 0" class="text-error">DD: -{{ hoverPoint.dd.toFixed(2) }}%</span>
+        <span v-if="hoverPoint.timeFormatted" class="text-base-content/50 border-l border-base-content/10 pl-1.5">{{ hoverPoint.timeFormatted }}</span>
       </div>
     </div>
   </div>
@@ -138,7 +139,8 @@ const containerRef = ref<HTMLDivElement | null>(null);
 const containerWidth = ref(800);
 const hoverIdx = ref<number | null>(null);
 
-const gradId = computed(() => `${props.idPrefix}_grad_${Math.random().toString(36).substring(2, 7)}`);
+const uid = Math.random().toString(36).substring(2, 7);
+const gradId = computed(() => `${props.idPrefix}_grad_${uid}`);
 
 const points = computed(() => {
   if (!props.data || props.data.length < 2) {
@@ -184,6 +186,14 @@ const areaD = computed(() => {
   return `${pathD.value} L ${width} ${height} L 0 ${height} Z`;
 });
 
+const formatPointTime = (ts?: number) => {
+  if (!ts) return null;
+  const ms = ts < 1e11 ? ts * 1000 : ts;
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
 const hoverPoint = computed(() => {
   if (hoverIdx.value === null || hoverIdx.value < 0 || hoverIdx.value >= points.value.length) {
     return null;
@@ -193,7 +203,13 @@ const hoverPoint = computed(() => {
   const count = points.value.length;
   const x = (idx / Math.max(count - 1, 1)) * width;
   const y = height - ((pt.equity_pct - minEq.value) / rangeEq.value) * (height - 24) - 12;
-  return { x, y, val: pt.equity_pct, dd: pt.drawdown_pct || 0 };
+  return { 
+    x, 
+    y, 
+    val: pt.equity_pct, 
+    dd: pt.drawdown_pct || 0,
+    timeFormatted: formatPointTime(pt.time)
+  };
 });
 
 const hoverTooltipLeft = computed(() => {
