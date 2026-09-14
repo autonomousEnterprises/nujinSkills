@@ -139,6 +139,21 @@ export function useWebSocket() {
               signals.value = signals.value.map((s) =>
                 s.id === payload.id ? { ...s, ...payload } : s
               );
+              if (
+                latestSignal.value &&
+                (latestSignal.value.id === payload.id ||
+                  (payload.time && Math.abs(Number(latestSignal.value.time || 0) - Number(payload.time)) < 2))
+              ) {
+                latestSignal.value = {
+                  ...latestSignal.value,
+                  ...payload,
+                  status: 'CLOSED',
+                  exit_price: payload.exit_price,
+                  exit_time: payload.exit_time,
+                  exit_reason: payload.exit_reason,
+                  pnl_pct: payload.pnl_pct,
+                };
+              }
               break;
             }
             case 'SIGNALS_CLEARED': {

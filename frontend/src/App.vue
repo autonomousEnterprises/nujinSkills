@@ -247,6 +247,26 @@ watch(
   { immediate: true, deep: true }
 );
 
+// Keep targetedSignal synchronized when signals array updates (e.g. position closed)
+watch(
+  signals,
+  (newSignals) => {
+    if (targetedSignal.value && newSignals && newSignals.length > 0) {
+      const target = targetedSignal.value;
+      const targetTime = target.time || (target as any).timestamp;
+      const found = newSignals.find(
+        (s) =>
+          (target.id != null && s.id === target.id) ||
+          (targetTime && s.time && Math.abs(Number(s.time) - Number(targetTime)) < 2)
+      );
+      if (found) {
+        targetedSignal.value = { ...target, ...found };
+      }
+    }
+  },
+  { deep: true }
+);
+
 // Toast notification for newly discovered strategies
 const activeToast = ref<any>(null);
 let toastTimer: any = null;
