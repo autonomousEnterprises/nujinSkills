@@ -423,15 +423,21 @@ def fetch_real_binance_klines(symbol: str = "BTC/USDT", interval: str = "15m", c
 
 def sync_30d_candles(symbol: str = "BTC/USDT", output_path: str = "data/candles_15m.csv") -> str:
     """
-    Fetches 30 days of real market data and saves to output_path CSV.
+    Fetches extensive real market data (10,000+ candles) and merges with output_path CSV.
     """
-    candles = fetch_real_binance_klines(symbol=symbol, interval="15m", count=2880)
+    candles = fetch_real_binance_klines(symbol=symbol, interval="15m", count=10000)
     df = pd.DataFrame(candles)
     df.rename(columns={"time": "timestamp"}, inplace=True)
+    if os.path.exists(output_path):
+        try:
+            old_df = pd.read_csv(output_path)
+            df = pd.concat([old_df, df]).drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+        except Exception:
+            pass
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     df.to_csv(output_path, index=False)
-    logger.info(f"[DataManager] Updated {output_path} with {len(df)} 30-day real market candles")
+    logger.info(f"[DataManager] Updated {output_path} with {len(df)} candles")
     return output_path
 
 

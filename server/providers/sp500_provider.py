@@ -30,7 +30,7 @@ class Sp500Provider(BaseMarketDataProvider):
                 from server.data_manager import bridge_candles_to_now
                 df = pd.read_csv(self._csv_path)
                 df = bridge_candles_to_now(df, interval="1m", symbol=self.symbol)
-                records = df.tail(1500).to_dict(orient="records")
+                records = df.tail(20000).to_dict(orient="records")
                 self._candles = [
                     {
                         "time": int(r.get("timestamp", r.get("time", 0))),
@@ -109,7 +109,7 @@ class Sp500Provider(BaseMarketDataProvider):
                             "volume": 25.0
                         }
                         self._candles.append(new_bar)
-                        if len(self._candles) > 2000:
+                        if len(self._candles) > 20000:
                             self._candles.pop(0)
 
                         await self._notify_bar(last_c)

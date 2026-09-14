@@ -124,6 +124,7 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
 
     # 1. First priority: Check live in-memory warm candles from running bot/providers (< 2ms)
     from server.providers.base import ProviderRegistry
+    csv_path = "data/sp500_candles_1m.csv" if is_sp else ("data/xauusd_candles_1m.csv" if is_xau else "data/candles_15m.csv")
     try:
         provider = ProviderRegistry.get_provider(symbol, interval)
         if not provider.is_running:
@@ -134,6 +135,35 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
             c_list = xauusd_engine.candles_1m
             data = c_list[-count:] if (count and count < len(c_list)) else c_list
             return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
+
+        # Check if in-memory candles already have requested depth
+        if provider._candles and len(provider._candles) >= min(count, 10000):
+            c_list = provider._candles
+            data = c_list[-count:] if (count and count < len(c_list)) else c_list
+            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
+            
+        # If disk CSV has more historical candles than in-memory provider, backfill from disk
+        if os.path.exists(csv_path):
+            import pandas as pd
+            from server.data_manager import bridge_candles_to_now
+            df_disk = pd.read_csv(csv_path)
+            if len(df_disk) > len(provider._candles or []):
+                df_disk = bridge_candles_to_now(df_disk, interval=interval, symbol=symbol)
+                records = df_disk.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df_disk)) else df_disk.to_dict(orient="records")
+                data = [
+                    {
+                        "time": int(r.get("timestamp", r.get("time", 0))),
+                        "open": round(float(r["open"]), 2),
+                        "high": round(float(r["high"]), 2),
+                        "low": round(float(r["low"]), 2),
+                        "close": round(float(r["close"]), 2),
+                        "volume": round(float(r.get("volume", 10.0)), 4)
+                    }
+                    for r in records
+                ]
+                if provider:
+                    provider._candles = data
+                return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
 
         if provider._candles and len(provider._candles) >= 20:
             c_list = provider._candles

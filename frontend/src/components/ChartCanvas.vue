@@ -305,7 +305,13 @@ const findCandleIndex = (timeSec: number): number => {
   const firstT = Number(rawCandles.value[0].time);
   const lastT = Number(rawCandles.value[rawCandles.value.length - 1].time);
   if (timeSec >= lastT) return rawCandles.value.length - 1;
-  if (timeSec <= firstT) return 0;
+  if (timeSec <= firstT) {
+    const barDuration = rawCandles.value.length > 1 ? Math.max(60, Number(rawCandles.value[1].time) - firstT) : 900;
+    if (firstT - timeSec <= barDuration * 2) {
+      return 0;
+    }
+    return -1;
+  }
 
   let low = 0, high = rawCandles.value.length - 1;
   while (low <= high) {
