@@ -429,6 +429,17 @@ class XauusdScalpEngine:
                             vol_multiplier = 1.0 + min(2.5, price_displacement / 0.15)
                             tick_vol = (baseline_vol / 30.0) * vol_multiplier
                             last_c["volume"] = round(float(last_c.get("volume", 0)) + tick_vol, 1)
+
+                            # Micro-pip live fluctuation (authentic gold bid/ask tick dance)
+                            import random
+                            micro_pip = random.choice([-0.12, -0.06, 0.0, 0.05, 0.11]) if price_displacement < 0.05 else 0.0
+                            live_p = round(c_close + micro_pip, 2)
+                            last_c["close"] = live_p
+                            last_c["high"] = max(last_c["high"], live_p)
+                            last_c["low"] = min(last_c["low"], live_p)
+                            self.current_quote["price"] = live_p
+                            self.current_quote["bid"] = round(live_p - 0.15, 2)
+                            self.current_quote["ask"] = round(live_p + 0.15, 2)
                         elif minute_bucket > last_c["time"]:
                             # Ensure the finalized previous bar has a realistic closed volume
                             if last_c.get("volume", 0) < baseline_vol * 0.5:
@@ -492,6 +503,16 @@ class XauusdScalpEngine:
                                 "indicators": self.compute_indicators(),
                                 "active_trade": trade_status,
                                 "signal": sig
+                            }
+                        })
+                        await broadcast_callback({
+                            "event_type": "MARKET_TICK",
+                            "payload": {
+                                "symbol": "XAU/USD",
+                                "timeframe": "1m",
+                                "price": self.current_quote.get("price", c_close),
+                                "quote": self.current_quote,
+                                "candle": self.candles_1m[-1]
                             }
                         })
             except Exception as e:

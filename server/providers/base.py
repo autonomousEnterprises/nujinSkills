@@ -58,6 +58,24 @@ class BaseMarketDataProvider(abc.ABC):
 
     async def _notify_tick(self, quote: Dict[str, Any]) -> None:
         self._latest_quote = quote
+        # Broadcast real-time market tick to WebSocket clients if connected
+        try:
+            from server.websocket import manager
+            if manager.active_connections:
+                candle = quote.get("candle") or (self._candles[-1] if self._candles else None)
+                await manager.broadcast({
+                    "event_type": "MARKET_TICK",
+                    "payload": {
+                        "symbol": self.symbol,
+                        "timeframe": self.timeframe,
+                        "price": quote.get("price"),
+                        "quote": quote,
+                        "candle": candle
+                    }
+                })
+        except Exception:
+            pass
+
         for cb in list(self._tick_callbacks):
             try:
                 res = cb(quote)
@@ -67,6 +85,21 @@ class BaseMarketDataProvider(abc.ABC):
                 logger.error(f"[{self.symbol}] Tick callback error: {e}")
 
     async def _notify_bar(self, bar: Dict[str, Any]) -> None:
+        # Broadcast finalized bar event
+        try:
+            from server.websocket import manager
+            if manager.active_connections:
+                await manager.broadcast({
+                    "event_type": "BAR_CLOSED",
+                    "payload": {
+                        "symbol": self.symbol,
+                        "timeframe": self.timeframe,
+                        "bar": bar
+                    }
+                })
+        except Exception:
+            pass
+
         for cb in list(self._bar_callbacks):
             try:
                 res = cb(bar)

@@ -30,6 +30,7 @@
         :activeStrategy="activeBots[0] || 'GoatFundedTraderXauusdScalper'"
         :strategies="strategies"
         :isActiveScreen="activeScreen === 'CHART'"
+        :latestMarketTick="latestMarketTick"
         @selectStrategy="handleSelectStrategy"
         @dismissSignal="targetedSignal = null"
       />
@@ -189,6 +190,7 @@ const {
   portfolioSummary,
   distributionAnalytics,
   latestDiscoveredStrategy,
+  latestMarketTick,
 } = useWebSocket();
 
 const activeState = computed(() => liveSystemState.value);

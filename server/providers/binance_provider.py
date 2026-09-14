@@ -37,8 +37,10 @@ class BinanceSpotProvider(BaseMarketDataProvider):
             csv_path = "data/candles_15m.csv"
             if os.path.exists(csv_path):
                 try:
+                    from server.data_manager import bridge_candles_to_now
                     df = pd.read_csv(csv_path)
                     if len(df) > 0:
+                        df = bridge_candles_to_now(df, interval=self.timeframe, symbol=self.symbol)
                         self._candles = [
                             {
                                 "time": int(r.get("timestamp", r.get("time", 0))),
@@ -48,9 +50,9 @@ class BinanceSpotProvider(BaseMarketDataProvider):
                                 "close": round(float(r["close"]), 2),
                                 "volume": round(float(r.get("volume", 10.0)), 4)
                             }
-                            for r in df.tail(500).to_dict(orient="records")
+                            for r in df.tail(1500).to_dict(orient="records")
                         ]
-                        logger.info(f"[BinanceSpotProvider] Loaded {len(self._candles)} cached 15m candles from {csv_path}")
+                        logger.info(f"[BinanceSpotProvider] Loaded {len(self._candles)} bridged 15m candles from {csv_path}")
                 except Exception as e_csv:
                     logger.warning(f"[BinanceSpotProvider] Error reading cached CSV: {e_csv}")
 
@@ -127,9 +129,11 @@ class BinanceSpotProvider(BaseMarketDataProvider):
                             self._candles[-1] = bar
                         else:
                             self._candles.append(bar)
-                            if len(self._candles) > 1500:
+                            if len(self._candles) > 2000:
                                 self._candles.pop(0)
 
+                        quote["candle"] = bar
+                        quote["is_bar_closed"] = is_bar_closed
                         await self._notify_tick(quote)
 
                         if is_bar_closed:

@@ -121,6 +121,27 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
     is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500", "OPENING"])
     is_xau = any(k in symbol.upper() for k in ["XAU", "GOLD", "OANDA", "PAXG", "GC"])
     interval = "1m" if (is_xau or is_sp) else "15m"
+
+    # 1. First priority: Check live in-memory warm candles from running bot/providers (< 2ms)
+    from server.providers.base import ProviderRegistry
+    try:
+        provider = ProviderRegistry.get_provider(symbol, interval)
+        if not provider.is_running:
+            import asyncio
+            asyncio.create_task(provider.start())
+
+        if is_xau and xauusd_engine.candles_1m and len(xauusd_engine.candles_1m) >= 20:
+            c_list = xauusd_engine.candles_1m
+            data = c_list[-count:] if (count and count < len(c_list)) else c_list
+            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
+
+        if provider._candles and len(provider._candles) >= 20:
+            c_list = provider._candles
+            data = c_list[-count:] if (count and count < len(c_list)) else c_list
+            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
+    except Exception as e_warm:
+        logger.debug(f"[Candles] In-memory check note: {e_warm}")
+
     try:
         if is_sp:
             csv_path = "data/sp500_candles_1m.csv"
@@ -141,13 +162,19 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
                     }
                     for r in records
                 ]
+                if provider:
+                    provider._candles = data
             else:
                 raise FileNotFoundError(f"Dataset {csv_path} not found")
         elif is_xau:
             from server.data_manager import fetch_real_oanda_candles
             data = fetch_real_oanda_candles(interval=interval, count=count)
+            if provider:
+                provider._candles = data
         else:
             data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
+            if provider:
+                provider._candles = data
     except Exception as e:
         logger.error(f"[Candles] Failed to fetch real data for {symbol}: {e}")
         # Robust fallback to cached dataset with automatic bridging up to current time
@@ -759,6 +786,16 @@ async def startup_event():
     asyncio.create_task(cron_backtest_scheduler())
     logger.info("[NujinSkillsServer] Launching Strategy Auto-Discovery File Watcher...")
     asyncio.create_task(strategy_auto_discovery_watcher())
+
+    # Pre-warm real-time market data providers so live candles are immediately warm
+    from server.providers.base import ProviderRegistry
+    for sym, tf in [("BTC/USDT", "15m"), ("XAU/USD", "1m"), ("S&P 500 (ES)", "1m")]:
+        try:
+            p = ProviderRegistry.get_provider(sym, tf)
+            asyncio.create_task(p.start())
+            logger.info(f"[NujinSkillsServer] Market provider pre-warmed for {sym} ({tf})")
+        except Exception as e_p:
+            logger.warning(f"[NujinSkillsServer] Error warming provider for {sym}: {e_p}")
 
     # Automatically resume existing managed active strategies without running backtests
     try:

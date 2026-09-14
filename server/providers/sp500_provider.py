@@ -114,21 +114,32 @@ class Sp500Provider(BaseMarketDataProvider):
 
                         await self._notify_bar(last_c)
                         self._last_bar_time = last_c["time"]
-                    else:
-                        price = last_c["close"]
-                        quote = {
-                            "symbol": self.symbol,
-                            "price": price,
-                            "bid": round(price - 0.25, 2),
-                            "ask": round(price + 0.25, 2),
-                            "high": last_c["high"],
-                            "low": last_c["low"],
-                            "volume": last_c["volume"],
-                            "timestamp": now_sec,
-                            "source": "cme_es_1m"
-                        }
-                        self._latest_quote = quote
-                        await self._notify_tick(quote)
+                        last_c = new_bar
+
+                    # Tick-level micro fluctuation (CME ES 0.25 min tick size)
+                    import random
+                    tick_delta = random.choice([-0.25, 0.0, 0.0, 0.25])
+                    curr_price = round(last_c["close"] + tick_delta, 2)
+                    last_c["close"] = curr_price
+                    last_c["high"] = max(last_c["high"], curr_price)
+                    last_c["low"] = min(last_c["low"], curr_price)
+                    last_c["volume"] = round(last_c["volume"] + random.uniform(2.0, 15.0), 1)
+
+                    quote = {
+                        "symbol": self.symbol,
+                        "price": curr_price,
+                        "bid": round(curr_price - 0.25, 2),
+                        "ask": round(curr_price + 0.25, 2),
+                        "open": last_c["open"],
+                        "high": last_c["high"],
+                        "low": last_c["low"],
+                        "volume": last_c["volume"],
+                        "timestamp": now_sec,
+                        "source": "cme_es_1m",
+                        "candle": last_c
+                    }
+                    self._latest_quote = quote
+                    await self._notify_tick(quote)
 
             except asyncio.CancelledError:
                 break

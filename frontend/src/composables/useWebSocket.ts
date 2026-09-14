@@ -44,6 +44,22 @@ export interface DiscoveredStrategyPayload {
   timestamp?: number;
 }
 
+export interface MarketTickPayload {
+  symbol: string;
+  timeframe?: string;
+  price?: number;
+  quote?: any;
+  candle?: {
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume?: number;
+  };
+  is_bar_closed?: boolean;
+}
+
 export function useWebSocket() {
   const isConnected = ref(false);
   const widgetsMap = ref<Record<string, WidgetData>>({});
@@ -54,6 +70,7 @@ export function useWebSocket() {
   const portfolioSummary = ref<PortfolioSummary | null>(null);
   const distributionAnalytics = ref<DistributionAnalytics | null>(null);
   const latestDiscoveredStrategy = ref<DiscoveredStrategyPayload | null>(null);
+  const latestMarketTick = ref<MarketTickPayload | null>(null);
 
   const widgets = computed(() => Object.values(widgetsMap.value));
 
@@ -144,6 +161,22 @@ export function useWebSocket() {
               }
               if (payload?.distribution_analytics) {
                 distributionAnalytics.value = payload.distribution_analytics;
+              }
+              break;
+            }
+            case 'MARKET_TICK': {
+              latestMarketTick.value = payload;
+              break;
+            }
+            case 'XAUUSD_TICK': {
+              if (payload?.quote) {
+                latestMarketTick.value = {
+                  symbol: 'XAU/USD',
+                  timeframe: '1m',
+                  price: payload.quote.price,
+                  quote: payload.quote,
+                  candle: payload.quote.candle,
+                };
               }
               break;
             }
@@ -258,5 +291,6 @@ export function useWebSocket() {
     portfolioSummary,
     distributionAnalytics,
     latestDiscoveredStrategy,
+    latestMarketTick,
   };
 }

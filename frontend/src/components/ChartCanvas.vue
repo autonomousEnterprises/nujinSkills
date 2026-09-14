@@ -39,11 +39,11 @@
 
     <!-- ── Lightweight Charts Main Canvas Container ── -->
     <div class="relative flex-1 w-full h-full overflow-hidden" ref="chartContainerRef">
-      <!-- Loading indicator -->
-      <div v-if="loadingCandles" class="absolute inset-0 flex items-center justify-center bg-base-100/70 backdrop-blur-xs z-30">
+      <!-- Loading indicator (only shown if initial data has not loaded yet) -->
+      <div v-if="loadingCandles && rawCandles.length === 0" class="absolute inset-0 flex items-center justify-center bg-base-100/70 backdrop-blur-xs z-30">
         <div class="flex items-center gap-2 text-primary font-bold text-xs bg-base-300 px-4 py-2 rounded-box border border-base-content/10 shadow-xl">
           <span class="loading loading-spinner loading-sm" />
-          <span>SYNCING_HIGH_FREQUENCY_CANDLES...</span>
+          <span>CONNECTING_LIVE_STREAM...</span>
         </div>
       </div>
 
@@ -202,6 +202,7 @@ const props = withDefaults(
     activeStrategy?: string;
     strategies?: StrategyItem[];
     isActiveScreen?: boolean;
+    latestMarketTick?: any;
   }>(),
   {
     theme: 'dark',
@@ -1004,14 +1005,16 @@ const applyStrategyIndicators = () => {
 
 const loadCandles = async (preserveViewport = false) => {
   if (!candleSeries || !chart) return;
-  loadingCandles.value = true;
+  if (!preserveViewport && rawCandles.value.length === 0) {
+    loadingCandles.value = true;
+  }
 
   try {
     const savedRange = (preserveViewport && chart) ? chart.timeScale().getVisibleLogicalRange() : null;
     const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
     const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
     const apiSym = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAUUSD' : selectedSymbol.value);
-    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=20000&mode=live`);
+    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=1500&mode=live`);
     const data = await res.json();
 
     if (data.data && data.data.length > 0) {
@@ -1118,6 +1121,8 @@ const applyMarkers = (markers: any[]) => {
   }
 };
 
+let lastGapSyncTime = 0;
+
 const updateLiveCandle = (candleData: { time: number; open: number; high: number; low: number; close: number; volume?: number }) => {
   if (!candleSeries || !candleData || !candleData.time || !candleData.close || candleData.close <= 0) return;
   if (!rawCandles.value || rawCandles.value.length === 0) return;
@@ -1136,10 +1141,13 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
   const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES');
   const expectedStep = (isGold || isSp) ? 60 : 900;
 
-  // If a huge gap is detected (more than 3 bars missed), schedule background full sync
+  // If a significant gap is detected, trigger non-blocking debounced background reconciliation (max once per 30s)
+  const nowMs = Date.now();
   if (rawTime - lastTime > expectedStep * 3) {
-    loadCandles(true);
-    return;
+    if (nowMs - lastGapSyncTime > 30000) {
+      lastGapSyncTime = nowMs;
+      loadCandles(true);
+    }
   }
 
   const localTime = timeToLocal(rawTime) as Time;
@@ -1197,6 +1205,28 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
 
     // Keep indicators synchronized
     applyStrategyIndicators();
+  } else {
+    // Tick update for the latest active forming bar
+    lastCandle.high = Math.max(lastCandle.high, close);
+    lastCandle.low = Math.min(lastCandle.low, close);
+    lastCandle.close = close;
+    if (candleData.volume != null) lastCandle.volume = volume;
+
+    candleSeries.update({
+      time: timeToLocal(lastTime) as Time,
+      open: lastCandle.open,
+      high: lastCandle.high,
+      low: lastCandle.low,
+      close: lastCandle.close,
+    });
+
+    if (volumeSeries && lastCandle.volume != null) {
+      volumeSeries.update({
+        time: timeToLocal(lastTime) as Time,
+        value: lastCandle.volume,
+        color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
+      });
+    }
   }
 
   // Update HUD and Legend
@@ -1316,10 +1346,10 @@ const startLiveFeeds = () => {
     } catch {}
   }
 
-  // Periodic non-intrusive full candle reconciliation (every 60s)
+  // Periodic non-intrusive full candle reconciliation (every 120s)
   periodicSyncTimer = setInterval(() => {
     loadCandles(true);
-  }, 60000);
+  }, 120000);
 };
 
 const stopLiveFeeds = () => {
@@ -1337,6 +1367,41 @@ const stopLiveFeeds = () => {
   }
   isWsConnected.value = false;
 };
+
+// ── Real-Time WebSocket Telemetry Tick Listener (100% Synchronized with Trading Bot) ──
+watch(
+  () => props.latestMarketTick,
+  (tick) => {
+    if (!tick) return;
+    const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
+    const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
+    const isBtc = !isSp && !isGold;
+
+    const tickSym = (tick.symbol || '').toUpperCase();
+    const matches = (isSp && (tickSym.includes('SP') || tickSym.includes('ES') || tickSym.includes('US500'))) ||
+                    (isGold && (tickSym.includes('XAU') || tickSym.includes('GOLD'))) ||
+                    (isBtc && (tickSym.includes('BTC') || (!tickSym.includes('SP') && !tickSym.includes('XAU') && !tickSym.includes('ES'))));
+
+    if (!matches) return;
+
+    isWsConnected.value = true;
+    const p = Number(tick.price || tick.quote?.price || (tick.candle ? tick.candle.close : 0));
+    if (p > 0) {
+      if (lastLivePrice.value !== null && Math.abs(lastLivePrice.value - p) > 0.0001) {
+        priceFlash.value = p >= lastLivePrice.value ? 'up' : 'down';
+        setTimeout(() => { priceFlash.value = null; }, 500);
+      }
+      lastLivePrice.value = p;
+    }
+
+    if (tick.candle) {
+      updateLiveCandle(tick.candle);
+    } else if (tick.quote?.candle) {
+      updateLiveCandle(tick.quote.candle);
+    }
+  },
+  { deep: true, immediate: true }
+);
 
 // ── Watchers ──
 watch(selectedSymbol, () => {
