@@ -26,6 +26,7 @@ export interface SignalData {
   trailing_high?: number;
   timestamp?: number;
   entry_price?: number;
+  exit_time?: number;
 }
 
 export interface InspectableSignal {
@@ -67,4 +68,7 @@ export interface PositionBoxCoord {
   yBottom?: number;
   labelX?: number;
   labelY?: number;
+  yTpLabel?: number;
+  yEntryLabel?: number;
+  ySlLabel?: number;
 }

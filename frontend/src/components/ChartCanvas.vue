@@ -97,15 +97,17 @@
           <!-- Entry Price Pill Label -->
           <rect
             :x="getLabelX(box)"
-            :y="getClampedY(box.yEntry - 8)"
-            width="86"
-            height="17"
-            rx="3"
-            fill="rgba(56, 189, 248, 0.92)"
+            :y="box.yEntryLabel ?? getClampedY(box.yEntry - 9)"
+            width="92"
+            height="18"
+            rx="3.5"
+            fill="rgba(56, 189, 248, 0.95)"
+            stroke="#0284c7"
+            stroke-width="0.75"
           />
           <text
-            :x="getLabelX(box) + 43"
-            :y="getClampedY(box.yEntry - 8) + 12"
+            :x="getLabelX(box) + 46"
+            :y="(box.yEntryLabel ?? getClampedY(box.yEntry - 9)) + 12.5"
             fill="#041829"
             font-size="9"
             font-weight="bold"
@@ -118,15 +120,17 @@
           <!-- TP Pill Label -->
           <rect
             :x="getLabelX(box)"
-            :y="getClampedY(box.isLong ? box.yProfitTop + 2 : box.yProfitTop + box.profitHeight - 19)"
-            width="86"
-            height="17"
-            rx="3"
-            fill="rgba(38, 166, 154, 0.92)"
+            :y="box.yTpLabel ?? getClampedY(box.isLong ? box.yProfitTop + 2 : box.yProfitTop + box.profitHeight - 19)"
+            width="92"
+            height="18"
+            rx="3.5"
+            fill="rgba(38, 166, 154, 0.95)"
+            stroke="#0d9488"
+            stroke-width="0.75"
           />
           <text
-            :x="getLabelX(box) + 43"
-            :y="getClampedY(box.isLong ? box.yProfitTop + 2 : box.yProfitTop + box.profitHeight - 19) + 12"
+            :x="getLabelX(box) + 46"
+            :y="(box.yTpLabel ?? getClampedY(box.isLong ? box.yProfitTop + 2 : box.yProfitTop + box.profitHeight - 19)) + 12.5"
             fill="#ffffff"
             font-size="9"
             font-weight="bold"
@@ -139,15 +143,17 @@
           <!-- SL Pill Label -->
           <rect
             :x="getLabelX(box)"
-            :y="getClampedY(box.isLong ? box.yLossTop + box.lossHeight - 19 : box.yLossTop + 2)"
-            width="86"
-            height="17"
-            rx="3"
-            fill="rgba(239, 83, 80, 0.92)"
+            :y="box.ySlLabel ?? getClampedY(box.isLong ? box.yLossTop + box.lossHeight - 19 : box.yLossTop + 2)"
+            width="92"
+            height="18"
+            rx="3.5"
+            fill="rgba(239, 83, 80, 0.95)"
+            stroke="#dc2626"
+            stroke-width="0.75"
           />
           <text
-            :x="getLabelX(box) + 43"
-            :y="getClampedY(box.isLong ? box.yLossTop + box.lossHeight - 19 : box.yLossTop + 2) + 12"
+            :x="getLabelX(box) + 46"
+            :y="(box.ySlLabel ?? getClampedY(box.isLong ? box.yLossTop + box.lossHeight - 19 : box.yLossTop + 2)) + 12.5"
             fill="#ffffff"
             font-size="9"
             font-weight="bold"
@@ -308,52 +314,66 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
       const isBuy = s.action === 'BUY' || s.action === 'LONG';
       const entryTime = rawTime;
       if (list.some((existing) => Math.abs(existing.entry_time - entryTime) < 2)) continue;
+      const isClosed = Boolean(
+        s.exit_price ||
+        (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
+        s.status === 'COMPLETED' ||
+        s.status === 'CLOSED'
+      );
+      const exitTime = s.exit_time
+        ? Number(s.exit_time)
+        : (isClosed ? ((s as any).closed_at || (s as any).exit_timestamp || undefined) : undefined);
+
       list.push({
         id: s.id != null ? s.id : `live-${i}`,
         source: 'LIVE',
         side: s.action || 'LONG',
         entry_time: entryTime,
         entry_price: entryPrice,
-        exit_time: s.exit_price ? entryTime : undefined,
+        exit_time: exitTime,
         exit_price: s.exit_price,
         exit_reason: s.exit_reason,
         pnl_pct: s.pnl_pct || 0,
         stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
         take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
-        isLiveActive: s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION',
+        isLiveActive: !isClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
       });
     }
   }
 
   // 3. Latest signal if not present
   if (props.latestSignal && (props.latestSignal.entry_price || props.latestSignal.price)) {
-    const entryPrice = Number(props.latestSignal.entry_price || props.latestSignal.price);
-    const isBuy = props.latestSignal.action === 'BUY' || props.latestSignal.action === 'LONG';
-    const rawTime = props.latestSignal.time
-      ? Number(props.latestSignal.time)
-      : (props.latestSignal.timestamp ? Math.floor(props.latestSignal.timestamp / 1000) : (rawCandles.value.length > 0 ? Number(rawCandles.value[rawCandles.value.length - 1].time) : 0));
+    const s = props.latestSignal;
+    const entryPrice = Number(s.entry_price || s.price);
+    const isBuy = s.action === 'BUY' || s.action === 'LONG';
+    const rawTime = s.time
+      ? Number(s.time)
+      : (s.timestamp ? Math.floor(s.timestamp / 1000) : (rawCandles.value.length > 0 ? Number(rawCandles.value[rawCandles.value.length - 1].time) : 0));
     const entryTime = rawTime;
     const exists = list.some((existing) => Math.abs(existing.entry_time - entryTime) < 2);
     if (!exists) {
       const isClosed = Boolean(
-        props.latestSignal.exit_price ||
-        props.latestSignal.exit_reason ||
-        props.latestSignal.status === 'COMPLETED' ||
-        props.latestSignal.status === 'CLOSED'
+        s.exit_price ||
+        (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
+        s.status === 'COMPLETED' ||
+        s.status === 'CLOSED'
       );
+      const exitTime = s.exit_time
+        ? Number(s.exit_time)
+        : (isClosed ? ((s as any).closed_at || (s as any).exit_timestamp || undefined) : undefined);
       list.push({
         id: 'live-latest',
         source: 'LIVE',
-        side: props.latestSignal.action || 'LONG',
+        side: s.action || 'LONG',
         entry_time: entryTime,
         entry_price: entryPrice,
-        exit_time: props.latestSignal.exit_price ? entryTime : undefined,
-        exit_price: props.latestSignal.exit_price,
-        exit_reason: props.latestSignal.exit_reason,
-        pnl_pct: props.latestSignal.pnl_pct || 0,
-        stop_loss: props.latestSignal.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
-        take_profit: props.latestSignal.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
-        isLiveActive: !isClosed && props.latestSignal.status === 'ACTIVE_IN_POSITION',
+        exit_time: exitTime,
+        exit_price: s.exit_price,
+        exit_reason: s.exit_reason,
+        pnl_pct: s.pnl_pct || 0,
+        stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
+        take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
+        isLiveActive: !isClosed && s.status === 'ACTIVE_IN_POSITION',
       });
     }
   }
@@ -376,18 +396,23 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
       s.status === 'COMPLETED' ||
       s.status === 'CLOSED'
     );
+    const existingExitTime = existingIdx !== -1 ? list[existingIdx].exit_time : undefined;
+    const exitTime = s.exit_time
+      ? Number(s.exit_time)
+      : (existingExitTime || (isClosed ? ((s as any).closed_at || (s as any).exit_timestamp || undefined) : undefined));
+
     const inspectable: InspectableSignal = {
-      id: s.id ?? 'targeted-signal',
-      source: 'LIVE',
+      id: s.id ?? (existingIdx !== -1 ? list[existingIdx].id : 'targeted-signal'),
+      source: existingIdx !== -1 ? list[existingIdx].source : 'LIVE',
       side: s.action || (s as any).side || (isBuy ? 'LONG' : 'SHORT'),
       entry_time: entryTime,
       entry_price: entryPrice,
-      exit_time: s.exit_price ? entryTime : undefined,
-      exit_price: s.exit_price,
-      exit_reason: s.exit_reason,
-      pnl_pct: s.pnl_pct || 0,
-      stop_loss: s.stop_loss || (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025),
-      take_profit: s.take_profit || (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970),
+      exit_time: exitTime,
+      exit_price: s.exit_price ?? (existingIdx !== -1 ? list[existingIdx].exit_price : undefined),
+      exit_reason: s.exit_reason ?? (existingIdx !== -1 ? list[existingIdx].exit_reason : undefined),
+      pnl_pct: s.pnl_pct ?? (existingIdx !== -1 ? list[existingIdx].pnl_pct : 0),
+      stop_loss: s.stop_loss || (existingIdx !== -1 ? list[existingIdx].stop_loss : (isBuy ? entryPrice * 0.9975 : entryPrice * 1.0025)),
+      take_profit: s.take_profit || (existingIdx !== -1 ? list[existingIdx].take_profit : (isBuy ? entryPrice * 1.0030 : entryPrice * 0.9970)),
       isLiveActive: !isClosed && (s.status === 'ACTIVE_IN_POSITION' || s.exit_reason === 'ACTIVE_IN_POSITION'),
     };
     if (existingIdx !== -1) {
@@ -480,59 +505,80 @@ const updateBoxCoordinates = () => {
     ? (target.exit_time > 2000000000 ? target.exit_time / 1000 : target.exit_time) 
     : null;
 
-  const localEntryTime = timeToLocal(rawEntry);
-  const localExitTime = rawExit ? timeToLocal(rawExit) : null;
-
   const entryIdx = findCandleIndex(rawEntry);
   if (entryIdx < 0) {
     positionBoxes.value = [];
     return;
   }
+
+  // Calculate dynamic bar spacing and visible logical range
+  const barSpacing = chart.timeScale().options().barSpacing || 16;
+  const halfBar = Math.max(barSpacing / 2, 4);
+  const visRange = chart.timeScale().getVisibleLogicalRange();
+
   const entryCandleLocalTime = timeToLocal(Number(rawCandles.value[entryIdx].time));
-  let x1Raw = chart.timeScale().timeToCoordinate(entryCandleLocalTime as Time);
-  if (x1Raw === null) {
-    x1Raw = chart.timeScale().logicalToCoordinate(entryIdx as any);
+  let x1Center = chart.timeScale().timeToCoordinate(entryCandleLocalTime as Time);
+  if (x1Center === null) {
+    x1Center = chart.timeScale().logicalToCoordinate(entryIdx as any);
+  }
+  if (x1Center === null && visRange) {
+    x1Center = (entryIdx - visRange.from) * barSpacing;
   }
 
-  let x2Raw: number | null = null;
-  if (target.isLiveActive || !rawExit) {
+  let x2Center: number | null = null;
+  const isTradeOpen = target.isLiveActive || !rawExit;
+
+  if (isTradeOpen) {
     const lastIdx = rawCandles.value.length - 1;
     const lastCandleLocalTime = timeToLocal(Number(rawCandles.value[lastIdx].time));
-    const lastX = chart.timeScale().timeToCoordinate(lastCandleLocalTime as Time) 
-      ?? chart.timeScale().logicalToCoordinate(lastIdx as any);
-    x2Raw = lastX !== null ? lastX + 60 : containerW - 40;
+    let lastX = chart.timeScale().timeToCoordinate(lastCandleLocalTime as Time);
+    if (lastX === null) {
+      lastX = chart.timeScale().logicalToCoordinate(lastIdx as any);
+    }
+    if (lastX === null && visRange) {
+      lastX = (lastIdx - visRange.from) * barSpacing;
+    }
+    x2Center = lastX !== null ? (lastX + barSpacing * 4) : (containerW - 30);
   } else {
-    let exitIdx = findCandleIndex(rawExit);
+    let exitIdx = findCandleIndex(rawExit!);
     if (exitIdx < 0) {
-      if (rawExit >= Number(rawCandles.value[rawCandles.value.length - 1].time)) {
+      if (rawExit! >= Number(rawCandles.value[rawCandles.value.length - 1].time)) {
         exitIdx = rawCandles.value.length - 1;
       } else {
         exitIdx = Math.min(entryIdx + 5, rawCandles.value.length - 1);
       }
     }
+    if (exitIdx < entryIdx) exitIdx = entryIdx;
+
     const exitCandleLocalTime = timeToLocal(Number(rawCandles.value[exitIdx].time));
-    x2Raw = chart.timeScale().timeToCoordinate(exitCandleLocalTime as Time);
-    if (x2Raw === null) {
-      x2Raw = chart.timeScale().logicalToCoordinate(exitIdx as any);
+    x2Center = chart.timeScale().timeToCoordinate(exitCandleLocalTime as Time);
+    if (x2Center === null) {
+      x2Center = chart.timeScale().logicalToCoordinate(exitIdx as any);
+    }
+    if (x2Center === null && visRange) {
+      x2Center = (exitIdx - visRange.from) * barSpacing;
     }
   }
 
-  if (x1Raw === null && x2Raw === null) {
+  if (x1Center === null && x2Center === null) {
     positionBoxes.value = [];
     return;
   }
 
-  const startX = x1Raw !== null ? x1Raw : (x2Raw! - 80);
-  const endX = x2Raw !== null ? x2Raw : (x1Raw! + 80);
+  const startX = (x1Center !== null ? x1Center - halfBar : ((x2Center || 100) - barSpacing * 2));
+  const endX = isTradeOpen
+    ? (x2Center !== null ? x2Center : containerW - 30)
+    : (x2Center !== null ? x2Center + halfBar : startX + barSpacing);
+
   let leftX = Math.min(startX, endX);
   let rightX = Math.max(startX, endX);
   let width = rightX - leftX;
-  if (width < 32) {
-    width = 32;
+  if (width < halfBar * 2) {
+    width = halfBar * 2;
     rightX = leftX + width;
   }
 
-  if (rightX < -200 || leftX > containerW + 200) {
+  if (rightX < -500 || leftX > containerW + 500) {
     positionBoxes.value = [];
     return;
   }
@@ -556,6 +602,58 @@ const updateBoxCoordinates = () => {
     profitHeight = Math.max(yTP - yEntry, 2);
   }
 
+  // ── Smart Label Collision Prevention ──
+  const LABEL_H = 18;
+  const MIN_GAP = 3;
+  const STRIDE = LABEL_H + MIN_GAP;
+
+  let idealEntryY = yEntry - (LABEL_H / 2);
+  let idealTpY = isLong ? yTP : (yTP - LABEL_H);
+  let idealSlY = isLong ? (ySL - LABEL_H) : ySL;
+
+  // Clamp entry Y to visible chart interior
+  idealEntryY = Math.max(22, Math.min(containerH - 45, idealEntryY));
+
+  let yTpLabel: number;
+  let yEntryLabel: number = idealEntryY;
+  let ySlLabel: number;
+
+  if (isLong) {
+    // LONG: TP above Entry (smaller Y), SL below Entry (larger Y)
+    yTpLabel = Math.min(idealTpY, idealEntryY - STRIDE);
+    ySlLabel = Math.max(idealSlY, idealEntryY + STRIDE);
+
+    if (yTpLabel < 10) {
+      const shift = 10 - yTpLabel;
+      yTpLabel += shift;
+      yEntryLabel += shift;
+      ySlLabel += shift;
+    }
+    if (ySlLabel > containerH - 24) {
+      const shift = ySlLabel - (containerH - 24);
+      ySlLabel -= shift;
+      yEntryLabel -= shift;
+      yTpLabel -= shift;
+    }
+  } else {
+    // SHORT: SL above Entry (smaller Y), TP below Entry (larger Y)
+    ySlLabel = Math.min(idealSlY, idealEntryY - STRIDE);
+    yTpLabel = Math.max(idealTpY, idealEntryY + STRIDE);
+
+    if (ySlLabel < 10) {
+      const shift = 10 - ySlLabel;
+      ySlLabel += shift;
+      yEntryLabel += shift;
+      yTpLabel += shift;
+    }
+    if (yTpLabel > containerH - 24) {
+      const shift = yTpLabel - (containerH - 24);
+      yTpLabel -= shift;
+      yEntryLabel -= shift;
+      ySlLabel -= shift;
+    }
+  }
+
   positionBoxes.value = [
     {
       id: target.id,
@@ -571,22 +669,30 @@ const updateBoxCoordinates = () => {
       entryPrice: target.entry_price,
       pnlPct: target.pnl_pct || 0,
       isLong,
+      yTpLabel,
+      yEntryLabel,
+      ySlLabel,
     },
   ];
 };
 
 const getLabelX = (box: PositionBoxCoord) => {
-  const labelWidth = 86;
+  const labelWidth = 92;
   const containerW = chartContainerRef.value?.clientWidth || 800;
-  return Math.max(
-    box.x + 4,
-    Math.min(box.x + box.width - labelWidth - 4, containerW - labelWidth - 12)
-  );
+  if (box.width >= labelWidth + 12) {
+    return Math.max(box.x + 6, Math.min(box.x + box.width - labelWidth - 6, containerW - labelWidth - 10));
+  } else {
+    const rightAligned = box.x + box.width + 4;
+    if (rightAligned + labelWidth < containerW - 10) {
+      return rightAligned;
+    }
+    return Math.max(6, Math.min(box.x, containerW - labelWidth - 10));
+  }
 };
 
 const getClampedY = (y: number) => {
   const containerH = chartContainerRef.value?.clientHeight || 400;
-  return Math.max(12, Math.min(containerH - 24, y));
+  return Math.max(10, Math.min(containerH - 24, y));
 };
 
 // Center and zoom chart onto a specific trade jump
@@ -765,6 +871,47 @@ const initChart = () => {
           currentHudItems.value = indicatorCalculator.getHudItems(idx);
         }
       }
+    }
+  });
+
+  // Chart click handler: clicking on or near any trade entry/exit selects and inspects that trade
+  chart.subscribeClick((param) => {
+    if (!param.time || allInspectableSignals.value.length === 0) return;
+    const clickedTime = Number(param.time);
+    const clickedIdx = timeIndexMap.get(clickedTime) ?? findCandleIndex(clickedTime);
+    if (clickedIdx < 0) return;
+
+    let bestIdx = -1;
+    let minDistance = 5; // within 4 bars
+
+    for (let i = 0; i < allInspectableSignals.value.length; i++) {
+      const s = allInspectableSignals.value[i];
+      const sEntry = s.entry_time > 2000000000 ? s.entry_time / 1000 : s.entry_time;
+      const sEntryIdx = findCandleIndex(sEntry);
+      if (sEntryIdx >= 0) {
+        const dist = Math.abs(sEntryIdx - clickedIdx);
+        if (dist < minDistance) {
+          minDistance = dist;
+          bestIdx = i;
+        }
+      }
+      if (s.exit_time) {
+        const sExit = s.exit_time > 2000000000 ? s.exit_time / 1000 : s.exit_time;
+        const sExitIdx = findCandleIndex(sExit);
+        if (sExitIdx >= 0) {
+          const dist = Math.abs(sExitIdx - clickedIdx);
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestIdx = i;
+          }
+        }
+      }
+    }
+
+    if (bestIdx !== -1) {
+      isInspectingTrade.value = true;
+      selectedSignalIndex.value = bestIdx;
+      updateBoxCoordinates();
     }
   });
 

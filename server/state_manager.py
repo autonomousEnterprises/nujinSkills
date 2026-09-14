@@ -330,6 +330,7 @@ class SignalStore:
         target["status"] = "CLOSED"
         target["exit_price"] = exit_price
         target["exit_reason"] = exit_reason
+        target["exit_time"] = int(time.time())
         if pnl_pct is not None:
             target["pnl_pct"] = round(pnl_pct, 2)
         elif exit_price > 0 and target.get("price", 0) > 0:
