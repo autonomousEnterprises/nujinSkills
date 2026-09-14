@@ -50,6 +50,7 @@
         @inspectSignal="handleInspectSignal"
         @clearSignals="targetedSignal = null"
         @closePosition="(pos) => { if (targetedSignal?.id === pos.id) targetedSignal = null; }"
+        @refreshStrategies="pollStrategies"
       />
     </main>
 

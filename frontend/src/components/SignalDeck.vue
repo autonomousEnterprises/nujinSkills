@@ -102,6 +102,7 @@ const emit = defineEmits<{
   (e: 'inspectSignal', signal: SignalData): void;
   (e: 'clearSignals'): void;
   (e: 'closePosition', signal: SignalData): void;
+  (e: 'refreshStrategies'): void;
 }>();
 
 const fetchedSignals = ref<SignalData[]>([]);
@@ -140,7 +141,11 @@ const activeBots = computed(() => {
 
 const isRunning = computed(() => {
   if (activeBots.value.length > 0) return true;
-  return systemStatus.value?.status === 'ACTIVE_DEPLOYED' || systemStatus.value?.status === 'RUNNING';
+  return Boolean(
+    systemStatus.value?.bot_status?.is_running ||
+    systemStatus.value?.status === 'ACTIVE_DEPLOYED' ||
+    systemStatus.value?.status === 'RUNNING'
+  );
 });
 
 const stratOptions = computed(() => {
@@ -268,11 +273,12 @@ const handleDeployBot = async (strategyName?: string) => {
   const target = strategyName || (selectedStratTab.value !== 'ALL' ? selectedStratTab.value : cleanSelectedName.value);
   try {
     actionLoading.value = true;
-    await fetch('/api/strategy/activate', {
+    await fetch('/api/bot/deploy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategy_name: `${target}.py` }),
+      body: JSON.stringify({ strategy: target, strategy_name: `${target}.py`, mode: 'dry-run' }),
     });
+    emit('refreshStrategies');
     await fetchSignals();
   } catch (e) {
     console.error('Failed to activate bot:', e);
@@ -285,11 +291,12 @@ const handleStopBot = async (strategyName?: string) => {
   const target = strategyName || (selectedStratTab.value !== 'ALL' ? selectedStratTab.value : undefined);
   try {
     actionLoading.value = true;
-    await fetch('/api/strategy/deactivate', {
+    await fetch('/api/bot/stop', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(target ? { strategy_name: `${target}.py` } : {}),
+      body: JSON.stringify(target ? { strategy: target, strategy_name: `${target}.py` } : {}),
     });
+    emit('refreshStrategies');
     await fetchSignals();
   } catch (e) {
     console.error('Failed to deactivate bot:', e);

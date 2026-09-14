@@ -137,8 +137,11 @@ class StrategyEvaluator:
                     }
                 elif not is_l and not is_s:
                     return None
+            else:
+                pass
         except Exception as e_dyn:
-            logger.debug(f"[StrategyEvaluator] Dynamic evaluation fallback for {clean_name}: {e_dyn}")
+            logger.warning(f"[StrategyEvaluator] Error evaluating dynamic strategy {clean_name}: {e_dyn}")
+            return None
 
         if is_xau:
             # --- Goat Funded Trader XAUUSD Momentum Scalper Rules ---
@@ -199,7 +202,7 @@ class StrategyEvaluator:
                 "reasoning_md": f"Absorption wick ({curr_lw if is_long else curr_uw:.2%}) with volume surge Z-Score {curr_vz:.2f}."
             }
 
-        else:
+        elif "PropFirmVsa" in clean_name or "WickRejection" in clean_name:
             # --- Prop Firm VSA Wick Rejection Rules ---
             wick_thresh = 0.40
             vol_thresh = 1.0
@@ -225,6 +228,9 @@ class StrategyEvaluator:
                 "annotation": "VSA Wick Rejection",
                 "reasoning_md": f"Institutional wick rejection ({curr_lw if is_long else curr_uw:.2%}) absorbing aggressive market orders (Vol Z: {curr_vz:.2f})."
             }
+
+        else:
+            return None
 
 
 class NativeStrategyRunner:
@@ -288,6 +294,18 @@ class NativeStrategyRunner:
         if not self.is_running:
             return
 
+        # Lifecycle Guard: If strategy is deactivated, only monitor exit of active position, then stop
+        strat_record = strategy_registry.get(self.strategy_name)
+        if not strat_record or strat_record.get("status") != "ACTIVE_LIVE":
+            active_pos = signal_store.get_active(self.strategy_name)
+            if active_pos:
+                current_price = float(quote.get("price") or 0.0)
+                if current_price > 0:
+                    await self._evaluate_position_exit(active_pos, current_price)
+            else:
+                await self.stop()
+            return
+
         current_price = float(quote.get("price") or 0.0)
         if current_price <= 0:
             return
@@ -300,6 +318,13 @@ class NativeStrategyRunner:
     async def _on_market_bar(self, bar: Dict[str, Any]) -> None:
         """Called when a candle bar finalizes. Checks for new strategy entry signals."""
         if not self.is_running:
+            return
+
+        # Strict Lifecycle Guard: If strategy is no longer ACTIVE_LIVE, immediately halt runner
+        strat_record = strategy_registry.get(self.strategy_name)
+        if not strat_record or strat_record.get("status") != "ACTIVE_LIVE":
+            logger.info(f"[NativeStrategyRunner] Strategy '{self.strategy_name}' is not ACTIVE_LIVE (status: {strat_record.get('status') if strat_record else 'None'}). Halting runner.")
+            await self.stop()
             return
 
         bar_time = int(bar.get("time") or bar.get("timestamp") or 0)

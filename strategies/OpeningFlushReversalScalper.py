@@ -93,10 +93,17 @@ class OpeningFlushReversalScalper(IStrategy):
         # London Open (08:00 BST = 07:00 UTC): Reversal window 07:15 - 07:50 UTC
         if 'timestamp' in dataframe.columns:
             dt = pd.to_datetime(dataframe['timestamp'], unit='s', utc=True)
+        elif 'time' in dataframe.columns:
+            dt = pd.to_datetime(dataframe['time'], unit='s', utc=True)
+        elif isinstance(dataframe.index, pd.DatetimeIndex):
+            dt = dataframe.index.tz_convert('UTC') if dataframe.index.tz is not None else dataframe.index.tz_localize('UTC')
         else:
             dt = pd.to_datetime(dataframe.index, utc=True)
 
-        dataframe['time_min'] = dt.dt.hour * 60 + dt.dt.minute
+        if hasattr(dt, 'dt'):
+            dataframe['time_min'] = dt.dt.hour * 60 + dt.dt.minute
+        else:
+            dataframe['time_min'] = dt.hour * 60 + dt.minute
         us_reversal = (dataframe['time_min'] >= 825) & (dataframe['time_min'] <= 860)
         lon_reversal = (dataframe['time_min'] >= 435) & (dataframe['time_min'] <= 470)
         dataframe['is_reversal_window'] = us_reversal | lon_reversal

@@ -164,6 +164,22 @@ export function useWebSocket() {
               }
               break;
             }
+            case 'SIGNAL_DELETED': {
+              signals.value = signals.value.filter((s) => s.id !== payload.id);
+              if (latestSignal.value && latestSignal.value.id === payload.id) {
+                latestSignal.value = signals.value[0] || null;
+              }
+              break;
+            }
+            case 'SIGNALS_UPDATED': {
+              if (Array.isArray(payload)) {
+                signals.value = payload;
+              } else if (payload?.signals && Array.isArray(payload.signals)) {
+                signals.value = payload.signals;
+              }
+              latestSignal.value = signals.value[0] || null;
+              break;
+            }
             case 'STRATEGIES_UPDATED': {
               console.log('[WS] STRATEGIES_UPDATED received:', payload);
               if (Array.isArray(payload)) {

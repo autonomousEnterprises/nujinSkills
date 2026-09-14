@@ -4,13 +4,15 @@ import json
 import sys
 import urllib.request
 
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 def deploy_bot(strategy: str, mode: str, endpoint: str):
     url = f"{endpoint}/api/bot/deploy"
     data = json.dumps({"strategy": strategy, "mode": mode}).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     
     try:
-        with urllib.request.urlopen(req) as resp:
+        with opener.open(req) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             print(f"[BotControl] Strategy Deployment Request Result:")
             print(json.dumps(res, indent=2))
@@ -24,7 +26,7 @@ def stop_bot(endpoint: str, strategy: str = ""):
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
     
     try:
-        with urllib.request.urlopen(req) as resp:
+        with opener.open(req) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             print(f"[BotControl] Bot Termination Result:")
             print(json.dumps(res, indent=2))
@@ -34,7 +36,7 @@ def stop_bot(endpoint: str, strategy: str = ""):
 def check_status(endpoint: str):
     url = f"{endpoint}/api/bot/status"
     try:
-        with urllib.request.urlopen(url) as resp:
+        with opener.open(url) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             print(f"[BotControl] Active Bot Status:")
             print(json.dumps(res, indent=2))

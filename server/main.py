@@ -45,7 +45,8 @@ class EventEnvelope(BaseModel):
     payload: Dict[str, Any]
 
 class DeployBotRequest(BaseModel):
-    strategy: str
+    strategy: Optional[str] = None
+    strategy_name: Optional[str] = None
     mode: Optional[str] = "dry-run"
 
 class SelectStrategyRequest(BaseModel):
@@ -69,8 +70,12 @@ class CloseSignalRequest(BaseModel):
 class ClearSignalsRequest(BaseModel):
     strategy: Optional[str] = None
 
+class DeleteSignalRequest(BaseModel):
+    id: int
+
 class StopBotRequest(BaseModel):
     strategy: Optional[str] = None
+    strategy_name: Optional[str] = None
 
 class StartTradeRequest(BaseModel):
     side: str
@@ -275,6 +280,28 @@ async def clear_signals(req: Optional[ClearSignalsRequest] = None):
         }
     })
     return {"status": "SUCCESS", "message": f"Signals cleared{' for ' + strat if strat else ''}."}
+ 
+@app.post("/api/signals/delete")
+async def delete_signal_endpoint(req: DeleteSignalRequest):
+    sigs = signal_store.get_all()
+    remaining = [s for s in sigs if s.get("id") != req.id]
+    from server.state_manager import _write_json_locked
+    _write_json_locked(signal_store._path, remaining)
+    state_manager.patch({"signals_count": len(remaining)})
+    await manager.broadcast({"event_type": "SIGNAL_DELETED", "payload": {"id": req.id, "remaining": len(remaining)}})
+    await manager.broadcast({"event_type": "SIGNALS_UPDATED", "payload": remaining})
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    await manager.broadcast({
+        "event_type": "STRATEGIES_UPDATED",
+        "payload": {
+            "strategies": all_strats,
+            "portfolio_summary": portfolio,
+            "distribution_analytics": distribution
+        }
+    })
+    return {"status": "SUCCESS", "deleted_id": req.id, "total": len(remaining)}
 
 @app.post("/api/signals/close")
 @app.post("/api/strategy/close-position")
@@ -418,26 +445,70 @@ async def broadcast_event(envelope: EventEnvelope):
 
 @app.post("/api/bot/deploy")
 async def deploy_bot(req: DeployBotRequest):
-    logger.info(f"Activating & deploying strategy for system: {req.strategy}")
-    bt_result = run_real_backtest(req.strategy, save_as_active=True)
+    strat = req.strategy or req.strategy_name or "GoatFundedTraderXauusdScalper"
+    logger.info(f"Activating & deploying strategy for system: {strat}")
+    bt_result = run_real_backtest(strat, save_as_active=True)
     bot_supervisor.set_broadcast_callback(manager.broadcast)
-    res = bot_supervisor.deploy_strategy(req.strategy, req.mode)
+    res = bot_supervisor.deploy_strategy(strat, req.mode or "dry-run")
+    try:
+        strategy_registry.update_status(strat, "ACTIVE_LIVE")
+    except Exception as e_reg:
+        logger.warning(f"Error updating registry for {strat}: {e_reg}")
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
     await manager.broadcast({"event_type": "STATE_UPDATED", "payload": bt_result["state"]})
-    return {**res, "state": bt_result["state"]}
+    await manager.broadcast({
+        "event_type": "STRATEGIES_UPDATED",
+        "payload": {
+            "strategies": all_strats,
+            "portfolio_summary": portfolio,
+            "distribution_analytics": distribution
+        }
+    })
+    return {**res, "state": bt_result["state"], "strategies": all_strats}
 
 @app.post("/api/bot/stop")
 async def stop_bot(req: Optional[StopBotRequest] = None):
-    strat = req.strategy if req else None
+    strat = (req.strategy or req.strategy_name) if req else None
     res = bot_supervisor.stop_bot(strat)
     if strat:
-        state_manager.update_status(strat, "DEACTIVATED")
+        try:
+            strategy_registry.update_status(strat, "DEACTIVATED")
+        except Exception as e_s:
+            logger.warning(f"Error deactivating {strat}: {e_s}")
     else:
-        for s in state_manager.get().get("active_strategies", []):
-            state_manager.update_status(s, "DEACTIVATED")
-        state_manager.patch({"status": "STOPPED"})
+        all_active = [s["name"] for s in strategy_registry.get_all(sync=False) if s.get("status") == "ACTIVE_LIVE"]
+        active_state_strats = state_manager.get().get("active_strategies", [])
+        to_stop = set(all_active + active_state_strats + list(bot_supervisor.runners.keys()))
+        for s in to_stop:
+            try:
+                strategy_registry.update_status(s, "DEACTIVATED")
+            except Exception as e_s:
+                logger.warning(f"Error deactivating {s}: {e_s}")
+        state_manager.patch({"status": "STOPPED", "active_strategies": [], "active_strategy": ""})
     new_state = state_manager.get()
+    all_strats = strategy_registry.get_all(sync=False)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
     await manager.broadcast({"event_type": "STATE_UPDATED", "payload": new_state})
+    await manager.broadcast({
+        "event_type": "STRATEGIES_UPDATED",
+        "payload": {
+            "strategies": all_strats,
+            "portfolio_summary": portfolio,
+            "distribution_analytics": distribution
+        }
+    })
     return res
+
+@app.post("/api/strategy/activate")
+async def strategy_activate(req: DeployBotRequest):
+    return await deploy_bot(req)
+
+@app.post("/api/strategy/deactivate")
+async def strategy_deactivate(req: Optional[StopBotRequest] = None):
+    return await stop_bot(req)
 
 @app.get("/api/bot/status")
 async def get_bot_status():
@@ -843,6 +914,35 @@ async def startup_event():
 @app.get("/api/sp500/quote")
 async def get_sp500_quote():
     """Live S&P 500 / ES real-time quote, session filter status, indicators & active signal."""
+    # Check if currently in opening session window (US Open 13:30 - 14:30 UTC / 9:30 - 10:30 EST)
+    now_dt = datetime.now(timezone.utc)
+    is_us_open = (now_dt.weekday() < 5) and (
+        (now_dt.hour == 13 and now_dt.minute >= 30) or
+        (now_dt.hour == 14 and now_dt.minute <= 30)
+    )
+    is_london_open = (now_dt.weekday() < 5) and (
+        (now_dt.hour == 7 and now_dt.minute >= 0) or
+        (now_dt.hour == 8 and now_dt.minute <= 0)
+    )
+    session_active = is_us_open or is_london_open
+
+    # 1. Primary: In-memory live ProviderRegistry quote to eliminate double-feed flickering
+    from server.providers.base import ProviderRegistry
+    try:
+        provider = ProviderRegistry.get_provider("S&P 500 (ES)", "1m")
+        if provider and provider._latest_quote and provider._latest_quote.get("price"):
+            q = provider._latest_quote
+            return {
+                "quote": q,
+                "session": {
+                    "active": session_active,
+                    "name": "US RTH Open (9:30-10:15 EST)" if is_us_open else ("London Open (08:00 BST)" if is_london_open else "Closed / Off-Hours"),
+                    "is_us_open": is_us_open
+                }
+            }
+    except Exception as e_prov:
+        logger.debug(f"[SP500 Quote] Provider quote check: {e_prov}")
+
     csv_path = "data/sp500_candles_1m.csv"
     price = 7660.0
     open_p = 7661.0
@@ -869,18 +969,6 @@ async def get_sp500_quote():
                 chg = round(((price - prev_c) / prev_c) * 100.0, 2)
         except Exception as e:
             logger.warning(f"[SP500 Quote] Error reading quote: {e}")
-    
-    # Check if currently in opening session window (US Open 13:30 - 14:30 UTC / 9:30 - 10:30 EST)
-    now_dt = datetime.now(timezone.utc)
-    is_us_open = (now_dt.weekday() < 5) and (
-        (now_dt.hour == 13 and now_dt.minute >= 30) or
-        (now_dt.hour == 14 and now_dt.minute <= 30)
-    )
-    is_london_open = (now_dt.weekday() < 5) and (
-        (now_dt.hour == 7 and now_dt.minute >= 0) or
-        (now_dt.hour == 8 and now_dt.minute <= 0)
-    )
-    session_active = is_us_open or is_london_open
 
     return {
         "quote": {
