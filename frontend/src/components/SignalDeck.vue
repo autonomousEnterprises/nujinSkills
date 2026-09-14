@@ -37,6 +37,7 @@
         :openPositions="openPositions"
         :liveGoldPrice="liveGoldPrice"
         :liveBtcPrice="liveBtcPrice"
+        :liveSp500Price="liveSp500Price"
         :cleanSelectedName="cleanSelectedName"
         :actionLoading="actionLoading"
         @closePosition="handleClosePosition"
@@ -97,11 +98,13 @@ const actionLoading = ref(false);
 const systemStatus = ref<any>(null);
 const liveGoldPrice = ref<number | null>(null);
 const liveBtcPrice = ref<number | null>(null);
+const liveSp500Price = ref<number | null>(null);
 const selectedStratTab = ref<string>('ALL');
 
 let pollTimer: any = null;
 let btcWs: WebSocket | null = null;
 let priceTimer: any = null;
+let spPriceTimer: any = null;
 
 const cleanSelectedName = computed(() => (props.selectedStrategy || 'GoatFundedTraderXauusdScalper').replace('.py', ''));
 
@@ -305,13 +308,19 @@ const handleClearSignals = async () => {
 const handleClosePosition = async (pos: SignalData) => {
   try {
     actionLoading.value = true;
-    await fetch('/api/strategy/close-position', {
+    const isGold = (pos.pair || '').includes('XAU') || (pos.strategy || '').toLowerCase().includes('goat') || (pos.strategy || '').toLowerCase().includes('xau') || (pos.strategy || '').toLowerCase().includes('otad');
+    const isSp = (pos.pair || '').includes('SP') || (pos.pair || '').includes('ES') || (pos.strategy || '').toLowerCase().includes('opening') || (pos.strategy || '').toLowerCase().includes('sp500');
+    const spot = isGold ? liveGoldPrice.value : (isSp ? liveSp500Price.value : liveBtcPrice.value);
+    const exitPrice = spot || pos.price || 0.0;
+
+    await fetch('/api/signals/close', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: pos.id,
-        pair: pos.pair,
         strategy: pos.strategy,
+        exit_price: exitPrice,
+        exit_reason: 'MANUAL_CLOSE',
       }),
     });
     emit('closePosition', pos);
@@ -328,7 +337,19 @@ const fetchGoldPrice = async () => {
     const res = await fetch('/api/xauusd/quote');
     if (res.ok) {
       const data = await res.json();
-      if (data.price) liveGoldPrice.value = Number(data.price);
+      const p = data.price ?? data.quote?.price ?? data.quote?.bid;
+      if (p != null && !isNaN(Number(p))) liveGoldPrice.value = Number(p);
+    }
+  } catch {}
+};
+
+const fetchSp500Price = async () => {
+  try {
+    const res = await fetch('/api/sp500/quote');
+    if (res.ok) {
+      const data = await res.json();
+      const p = data.price ?? data.quote?.price ?? data.quote?.bid;
+      if (p != null && !isNaN(Number(p))) liveSp500Price.value = Number(p);
     }
   } catch {}
 };
@@ -348,14 +369,17 @@ const connectBtcWs = () => {
 onMounted(() => {
   fetchSignals();
   fetchGoldPrice();
+  fetchSp500Price();
   connectBtcWs();
   pollTimer = setInterval(fetchSignals, 4000);
   priceTimer = setInterval(fetchGoldPrice, 3000);
+  spPriceTimer = setInterval(fetchSp500Price, 3000);
 });
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
   if (priceTimer) clearInterval(priceTimer);
+  if (spPriceTimer) clearInterval(spPriceTimer);
   if (btcWs) btcWs.close();
 });
 </script>

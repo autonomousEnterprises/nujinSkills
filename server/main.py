@@ -62,7 +62,7 @@ class RunStrategyBacktestRequest(BaseModel):
 class CloseSignalRequest(BaseModel):
     id: Optional[int] = None
     strategy: Optional[str] = None
-    exit_price: float
+    exit_price: Optional[float] = None
     exit_reason: Optional[str] = "MANUAL_CLOSE"
     pnl_pct: Optional[float] = None
 
@@ -220,16 +220,33 @@ async def clear_signals(req: Optional[ClearSignalsRequest] = None):
     return {"status": "SUCCESS", "message": f"Signals cleared{' for ' + strat if strat else ''}."}
 
 @app.post("/api/signals/close")
+@app.post("/api/strategy/close-position")
 async def close_signal_position(req: CloseSignalRequest):
+    exit_p = req.exit_price
+    if not exit_p or exit_p <= 0:
+        active_strat = req.strategy or ""
+        if any(k in active_strat.lower() for k in ["xau", "gold", "goat"]):
+            exit_p = float(xauusd_engine.current_quote.get("price") or 0.0)
+        if not exit_p or exit_p <= 0:
+            active_sig = signal_store.get_active(req.strategy) if req.strategy else None
+            exit_p = float(active_sig.get("price") or 0.0) if active_sig else 0.0
+
     closed = signal_store.close_position(
         signal_id=req.id,
         strategy=req.strategy,
-        exit_price=req.exit_price,
+        exit_price=exit_p,
         exit_reason=req.exit_reason or "MANUAL_CLOSE",
         pnl_pct=req.pnl_pct
     )
     if not closed:
         raise HTTPException(status_code=404, detail="No active position found matching criteria")
+
+    # Dispatch Telegram notification for trade exit
+    try:
+        telegram_gateway.format_and_send_trade_close(closed)
+    except Exception as e_tg:
+        logger.warning(f"[Main] Telegram trade close alert failed: {e_tg}")
+
     await manager.broadcast({"event_type": "SIGNAL_CLOSED", "payload": closed})
 
     # Broadcast updated strategy live metrics & portfolio summary
@@ -245,6 +262,21 @@ async def close_signal_position(req: CloseSignalRequest):
         }
     })
     return {"status": "SUCCESS", "closed_signal": closed}
+
+@app.get("/api/status")
+async def get_system_status():
+    """Unified system status for cockpit telemetry and monitoring."""
+    curr_state = state_manager.get()
+    return {
+        "status": "ONLINE",
+        "timestamp": int(time.time()),
+        "active_strategy": curr_state.get("active_strategy", ""),
+        "active_strategies": bot_supervisor.active_strategies,
+        "bot_status": bot_supervisor.get_status(),
+        "telegram_configured": telegram_gateway.is_configured,
+        "signals_count": curr_state.get("signals_count", 0),
+        "open_positions_count": len(signal_store.get_active_signals())
+    }
 
 def play_system_alert(action: str = "SIGNAL"):
     """

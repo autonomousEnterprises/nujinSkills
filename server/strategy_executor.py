@@ -379,9 +379,9 @@ class NativeStrategyRunner:
         tp = float(pos.get("take_profit") or 0.0)
         sl = float(pos.get("stop_loss") or 0.0)
 
-        # Goat Funded Trader holding constraints
-        min_hold = 120 if "XAU" in self.symbol else 30
-        max_hold = 900 if "XAU" in self.symbol else 7200
+        # Holding constraints (from signal payload or defaults)
+        min_hold = int(pos.get("min_hold_seconds") or (120 if "XAU" in self.symbol else 30))
+        max_hold = int(pos.get("max_hold_seconds") or (900 if "XAU" in self.symbol else 7200))
 
         exit_reason: Optional[str] = None
 
@@ -391,14 +391,15 @@ class NativeStrategyRunner:
         elif not is_long and current_price >= sl:
             exit_reason = "STOP_LOSS"
 
-        # 2. Take Profit reached (allowed if min_hold satisfied)
-        elif elapsed_sec >= min_hold:
-            if is_long and current_price >= tp:
-                exit_reason = "TAKE_PROFIT"
-            elif not is_long and current_price <= tp:
-                exit_reason = "TAKE_PROFIT"
-            elif elapsed_sec >= max_hold:
-                exit_reason = "TIME_CUTOFF"
+        # 2. Take Profit reached (allowed once min_hold anti-arbitrage lock has passed)
+        elif is_long and current_price >= tp and elapsed_sec >= min_hold:
+            exit_reason = "TAKE_PROFIT"
+        elif not is_long and current_price <= tp and elapsed_sec >= min_hold:
+            exit_reason = "TAKE_PROFIT"
+
+        # 3. Maximum holding duration exceeded (scalp cutoff)
+        elif elapsed_sec >= max_hold:
+            exit_reason = "TIME_CUTOFF"
 
         if exit_reason:
             logger.info(f"[NativeStrategyRunner] 🏁 Closing position #{pos['id']} ({pos['strategy']}): {exit_reason} @ {current_price}")
@@ -410,17 +411,7 @@ class NativeStrategyRunner:
             )
             if closed:
                 # Dispatch Telegram alert for closed trade
-                pnl_str = f"{closed.get('pnl_pct', 0.0):+.2f}%"
-                icon = "🎯" if closed.get("pnl_pct", 0.0) > 0 else "🛑"
-                text = (
-                    f"{icon} *TRADE CLOSED: {closed.get('strategy')}*\n"
-                    f"━━━━━━━━━━━━━━━━━━━\n"
-                    f"📊 *Pair:* `{closed.get('pair')}`\n"
-                    f"📈 *Entry:* `{entry_price:.2f}` → *Exit:* `{current_price:.2f}`\n"
-                    f"💡 *Exit Reason:* `{exit_reason}`\n"
-                    f"💰 *Realized PnL:* `{pnl_str}` (Held: {elapsed_sec}s)\n"
-                )
-                telegram_gateway.send_message(text)
+                telegram_gateway.format_and_send_trade_close(closed)
 
                 # Broadcast to UI
                 if self.broadcast_callback:

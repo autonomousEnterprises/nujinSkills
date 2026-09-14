@@ -23,6 +23,12 @@
             {{ liveGoldPrice ? `$${liveGoldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—' }}
           </div>
         </div>
+        <div v-if="liveSp500Price" class="px-2.5 py-1 rounded-box bg-base-300 border border-base-content/10 text-right">
+          <div class="text-[9px] text-accent font-bold uppercase">📊 CME S&P 500</div>
+          <div class="text-xs font-bold font-mono text-accent">
+            ${{ liveSp500Price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+          </div>
+        </div>
         <div class="px-2.5 py-1 rounded-box bg-base-300 border border-base-content/10 text-right">
           <div class="text-[9px] text-info font-bold uppercase">🔵 BINANCE BTC/USDT</div>
           <div class="text-xs font-bold font-mono text-info">
@@ -44,8 +50,8 @@
         <!-- Card Header -->
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="badge badge-sm font-bold" :class="(pos.pair || '').includes('XAU') ? 'badge-warning' : 'badge-info'">
-              {{ pos.pair || ((pos.pair || '').includes('XAU') ? 'XAU/USD' : 'BTC/USDT') }}
+            <span class="badge badge-sm font-bold" :class="getAssetBadgeClass(pos)">
+              {{ getAssetDisplay(pos) }}
             </span>
             <span class="text-xs font-bold text-secondary font-mono">{{ pos.strategy || cleanSelectedName }}</span>
           </div>
@@ -64,20 +70,20 @@
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-base-100/60 p-2.5 rounded-box border border-base-content/10 text-xs">
           <div>
             <span class="text-[9px] text-base-content/50 uppercase block">Entry</span>
-            <span class="font-bold text-accent font-mono">${{ pos.price?.toLocaleString() }}</span>
+            <span class="font-bold text-accent font-mono">${{ pos.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
           </div>
           <div>
             <span class="text-[9px] text-base-content/50 uppercase block">Stop Loss</span>
-            <span class="font-bold text-error font-mono">${{ pos.stop_loss?.toLocaleString() || '—' }}</span>
+            <span class="font-bold text-error font-mono">${{ pos.stop_loss ? pos.stop_loss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—' }}</span>
           </div>
           <div>
             <span class="text-[9px] text-base-content/50 uppercase block">Take Profit</span>
-            <span class="font-bold text-success font-mono">${{ pos.take_profit?.toLocaleString() || '—' }}</span>
+            <span class="font-bold text-success font-mono">${{ pos.take_profit ? pos.take_profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—' }}</span>
           </div>
           <div>
             <span class="text-[9px] text-base-content/50 uppercase block">Live Spot</span>
-            <span class="font-bold font-mono" :class="(pos.pair || '').includes('XAU') ? 'text-warning' : 'text-info'">
-              ${{ getLiveSpot(pos) ? getLiveSpot(pos)?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—' }}
+            <span class="font-bold font-mono" :class="getSpotTextClass(pos)">
+              {{ getLiveSpot(pos) ? `$${getLiveSpot(pos)?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—' }}
             </span>
           </div>
         </div>
@@ -133,6 +139,7 @@ const props = defineProps<{
   openPositions: SignalData[];
   liveGoldPrice?: number | null;
   liveBtcPrice?: number | null;
+  liveSp500Price?: number | null;
   cleanSelectedName: string;
   actionLoading?: boolean;
 }>();
@@ -144,13 +151,42 @@ const emit = defineEmits<{
 
 const isShort = (pos: SignalData) => pos.action === 'SHORT' || pos.action === 'SELL';
 
+const getAssetDisplay = (pos: SignalData): string => {
+  if (pos.pair) return pos.pair;
+  const s = (pos.strategy || '').toLowerCase();
+  if (s.includes('xau') || s.includes('goat') || s.includes('gold') || s.includes('otad')) return 'XAU/USD';
+  if (s.includes('sp') || s.includes('es') || s.includes('opening') || s.includes('orderflow')) return 'S&P 500 (ES)';
+  return 'BTC/USDT';
+};
+
+const getAssetBadgeClass = (pos: SignalData): string => {
+  const sym = getAssetDisplay(pos);
+  if (sym.includes('XAU')) return 'badge-warning';
+  if (sym.includes('SP') || sym.includes('ES')) return 'badge-accent';
+  return 'badge-info';
+};
+
+const getSpotTextClass = (pos: SignalData): string => {
+  const sym = getAssetDisplay(pos);
+  if (sym.includes('XAU')) return 'text-warning';
+  if (sym.includes('SP') || sym.includes('ES')) return 'text-accent';
+  return 'text-info';
+};
+
 const getLiveSpot = (pos: SignalData): number | null => {
-  const isGold = (pos.pair || '').includes('XAU') || (pos.strategy || '').toLowerCase().includes('xau');
-  return isGold ? props.liveGoldPrice ?? null : props.liveBtcPrice ?? null;
+  const p = (pos.pair || '').toUpperCase();
+  const s = (pos.strategy || '').toLowerCase();
+  if (p.includes('XAU') || p.includes('GOLD') || s.includes('xau') || s.includes('goat') || s.includes('gold') || s.includes('otad')) {
+    return props.liveGoldPrice ?? null;
+  }
+  if (p.includes('SP') || p.includes('ES') || s.includes('sp500') || s.includes('cme') || s.includes('opening') || s.includes('orderflow')) {
+    return props.liveSp500Price ?? null;
+  }
+  return props.liveBtcPrice ?? props.liveGoldPrice ?? null;
 };
 
 const calculateFloatingPnl = (pos: SignalData): number => {
-  if (pos.pnl_pct !== undefined && pos.pnl_pct !== 0) return pos.pnl_pct;
+  if (pos.status === 'CLOSED' && pos.pnl_pct !== undefined && pos.pnl_pct !== 0) return pos.pnl_pct;
   const spot = getLiveSpot(pos);
   if (!spot || !pos.price) return 0;
   const entry = pos.price;

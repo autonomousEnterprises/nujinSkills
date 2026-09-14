@@ -278,6 +278,7 @@ const isInspectingTrade = ref<boolean>(false);
 
 let binanceWs: WebSocket | null = null;
 let oandaTimer: any = null;
+let periodicSyncTimer: any = null;
 let resizeObserver: ResizeObserver | null = null;
 
 // ── Inspectable Trades & Jumps Logic ──
@@ -1001,11 +1002,12 @@ const applyStrategyIndicators = () => {
   currentHudItems.value = indicatorCalculator.getHudItems(lastIdx);
 };
 
-const loadCandles = async () => {
+const loadCandles = async (preserveViewport = false) => {
   if (!candleSeries || !chart) return;
   loadingCandles.value = true;
 
   try {
+    const savedRange = (preserveViewport && chart) ? chart.timeScale().getVisibleLogicalRange() : null;
     const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
     const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
     const apiSym = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAUUSD' : selectedSymbol.value);
@@ -1050,6 +1052,12 @@ const loadCandles = async () => {
         applyMarkers(props.tradeMarkers);
       }
 
+      if (preserveViewport && savedRange) {
+        chart.timeScale().setVisibleLogicalRange(savedRange);
+        redrawTradeBoxes();
+        return;
+      }
+
       // If a targeted signal is set, prioritize finding and centering on it
       let targetIdx = -1;
       if (props.targetedSignal) {
@@ -1086,8 +1094,6 @@ const applyMarkers = (markers: any[]) => {
     const lastTime = Number(rawCandles.value[rawCandles.value.length - 1].time);
 
     // Filter markers that fall strictly within the loaded candle timeline.
-    // Lightweight Charts clamps out-of-bounds timestamps to the first or last bar,
-    // which previously caused all earlier backtest trades to pile into an erroneous vertical stack on the first candle.
     const validMarkers = markers.filter((m) => {
       if (!m || m.time === undefined || m.time === null) return false;
       const rawT = typeof m.time === 'number' && m.time > 2000000000 ? m.time / 1000 : Number(m.time);
@@ -1105,13 +1111,106 @@ const applyMarkers = (markers: any[]) => {
       };
     });
 
-    // Lightweight charts strictly requires markers to be sorted by time ascending
     formatted.sort((a, b) => Number(a.time) - Number(b.time));
-
     candleSeries.setMarkers(formatted);
   } catch (e) {
     console.warn('[ChartCanvas] Error applying markers:', e);
   }
+};
+
+const updateLiveCandle = (candleData: { time: number; open: number; high: number; low: number; close: number; volume?: number }) => {
+  if (!candleSeries || !candleData || !candleData.time || !candleData.close || candleData.close <= 0) return;
+  if (!rawCandles.value || rawCandles.value.length === 0) return;
+
+  const rawTime = Number(candleData.time);
+  const open = Number(candleData.open || candleData.close);
+  const high = Math.max(Number(candleData.high || candleData.close), open, Number(candleData.close));
+  const low = Math.min(Number(candleData.low || candleData.close), open, Number(candleData.close));
+  const close = Number(candleData.close);
+  const volume = Number(candleData.volume || 10);
+
+  const lastCandle = rawCandles.value[rawCandles.value.length - 1];
+  const lastTime = Number(lastCandle.time);
+
+  const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
+  const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES');
+  const expectedStep = (isGold || isSp) ? 60 : 900;
+
+  // If a huge gap is detected (more than 3 bars missed), schedule background full sync
+  if (rawTime - lastTime > expectedStep * 3) {
+    loadCandles(true);
+    return;
+  }
+
+  const localTime = timeToLocal(rawTime) as Time;
+
+  if (rawTime === lastTime) {
+    // In-place update of current forming candle
+    lastCandle.high = Math.max(lastCandle.high, high);
+    lastCandle.low = Math.min(lastCandle.low, low);
+    lastCandle.close = close;
+    if (candleData.volume != null) lastCandle.volume = volume;
+
+    candleSeries.update({
+      time: localTime,
+      open: lastCandle.open,
+      high: lastCandle.high,
+      low: lastCandle.low,
+      close: lastCandle.close,
+    });
+
+    if (volumeSeries && lastCandle.volume != null) {
+      volumeSeries.update({
+        time: localTime,
+        value: lastCandle.volume,
+        color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
+      });
+    }
+  } else if (rawTime > lastTime) {
+    // Brand new bar started!
+    const newBar = {
+      time: rawTime,
+      open: open,
+      high: high,
+      low: low,
+      close: close,
+      volume: volume,
+    };
+    rawCandles.value.push(newBar);
+    timeIndexMap.set(rawTime, rawCandles.value.length - 1);
+
+    candleSeries.update({
+      time: localTime,
+      open: newBar.open,
+      high: newBar.high,
+      low: newBar.low,
+      close: newBar.close,
+    });
+
+    if (volumeSeries) {
+      volumeSeries.update({
+        time: localTime,
+        value: newBar.volume,
+        color: newBar.close >= newBar.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
+      });
+    }
+
+    // Keep indicators synchronized
+    applyStrategyIndicators();
+  }
+
+  // Update HUD and Legend
+  legendData.value = {
+    open: rawTime === lastTime ? lastCandle.open : open,
+    high: rawTime === lastTime ? lastCandle.high : high,
+    low: rawTime === lastTime ? lastCandle.low : low,
+    close: close,
+    volume: rawTime === lastTime ? lastCandle.volume : volume,
+    changePct: open ? ((close - open) / open) * 100 : 0,
+  };
+
+  // Redraw trade boxes so live trades follow the new bar
+  redrawTradeBoxes();
 };
 
 // Live price streams
@@ -1134,6 +1233,16 @@ const startLiveFeeds = () => {
             }
             lastLivePrice.value = p;
           }
+          const q = data.quote;
+          const barBucket = Math.floor((q.timestamp || Date.now() / 1000) / 60) * 60;
+          updateLiveCandle({
+            time: barBucket,
+            open: q.open ?? p,
+            high: q.high ?? p,
+            low: q.low ?? p,
+            close: p,
+            volume: q.volume ?? 100
+          });
         }
       } catch {}
     };
@@ -1155,6 +1264,21 @@ const startLiveFeeds = () => {
             lastLivePrice.value = p;
           }
         }
+        if (data?.quote?.candle) {
+          updateLiveCandle(data.quote.candle);
+        } else if (data?.quote?.price) {
+          const p = parseFloat(data.quote.price);
+          const nowSec = data.quote.timestamp ? Number(data.quote.timestamp) : Math.floor(Date.now() / 1000);
+          const barBucket = Math.floor(nowSec / 60) * 60;
+          updateLiveCandle({
+            time: barBucket,
+            open: p,
+            high: p,
+            low: p,
+            close: p,
+            volume: 20
+          });
+        }
       } catch {}
     };
     pollOanda();
@@ -1166,25 +1290,46 @@ const startLiveFeeds = () => {
       binanceWs.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg?.k?.c) {
-            const p = parseFloat(msg.k.c);
-            if (lastLivePrice.value !== null) {
-              priceFlash.value = p >= lastLivePrice.value ? 'up' : 'down';
-              setTimeout(() => { priceFlash.value = null; }, 500);
+          if (msg?.k) {
+            const k = msg.k;
+            const p = parseFloat(k.c);
+            if (!isNaN(p) && p > 0) {
+              if (lastLivePrice.value !== null) {
+                priceFlash.value = p >= lastLivePrice.value ? 'up' : 'down';
+                setTimeout(() => { priceFlash.value = null; }, 500);
+              }
+              lastLivePrice.value = p;
             }
-            lastLivePrice.value = p;
+            const barTimeSec = Math.floor(k.t / 1000);
+            updateLiveCandle({
+              time: barTimeSec,
+              open: parseFloat(k.o),
+              high: parseFloat(k.h),
+              low: parseFloat(k.l),
+              close: p,
+              volume: parseFloat(k.v)
+            });
           }
         } catch {}
       };
       binanceWs.onclose = () => { isWsConnected.value = false; };
     } catch {}
   }
+
+  // Periodic non-intrusive full candle reconciliation (every 60s)
+  periodicSyncTimer = setInterval(() => {
+    loadCandles(true);
+  }, 60000);
 };
 
 const stopLiveFeeds = () => {
   if (oandaTimer) {
     clearInterval(oandaTimer);
     oandaTimer = null;
+  }
+  if (periodicSyncTimer) {
+    clearInterval(periodicSyncTimer);
+    periodicSyncTimer = null;
   }
   if (binanceWs) {
     binanceWs.close();

@@ -98,6 +98,9 @@ class ProviderRegistry:
         if any(g in upper_sym for g in ["XAU", "GOLD", "OANDA"]):
             from server.providers.oanda_gold_provider import OandaGoldProvider
             provider = OandaGoldProvider(symbol="XAU/USD", timeframe=timeframe)
+        elif any(s in upper_sym for s in ["SP", "ES", "S&P", "US500", "OPENING"]):
+            from server.providers.sp500_provider import Sp500Provider
+            provider = Sp500Provider(symbol="S&P 500 (ES)", timeframe=timeframe)
         else:
             # Default crypto provider: Binance
             from server.providers.binance_provider import BinanceSpotProvider
