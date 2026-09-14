@@ -61,6 +61,7 @@ export interface PositionBoxCoord {
   side?: string;
   isProfit?: boolean;
   isLiveActive?: boolean;
+  isLiveOpen?: boolean;
   source?: 'LIVE' | 'BACKTEST';
   x1?: number;
   x2?: number;

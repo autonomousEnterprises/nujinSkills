@@ -170,7 +170,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { createChart, ColorType, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { createChart, ColorType, LineStyle, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import ChartTopBar from './chart/ChartTopBar.vue';
 import ChartHudBar from './chart/ChartHudBar.vue';
 import {
@@ -641,19 +641,20 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
     }
   }
 
-  // 5. Final pass: scan candles for any signal marked isLiveActive to verify if SL or TP was already hit
+  // 5. For historical backtest signals without explicit exit times, resolve exit from candles
   if (rawCandles.value && rawCandles.value.length > 0) {
     for (let i = 0; i < list.length; i++) {
       const sig = list[i];
+      if (sig.source === 'LIVE') continue; // Live bot trades are strictly governed by live bot status
       const rawEntry = sig.entry_time > 2000000000 ? sig.entry_time / 1000 : sig.entry_time;
       const eIdx = findCandleIndex(rawEntry);
-      if (eIdx >= 0) {
+      if (eIdx >= 0 && (!sig.exit_time || !sig.exit_price)) {
         const exitRes = resolveTradeExit(sig, eIdx);
         if (exitRes.isClosed) {
           sig.isLiveActive = false;
           sig.exit_time = sig.exit_time || exitRes.exitTime;
           sig.exit_price = sig.exit_price ?? exitRes.exitPrice;
-          sig.exit_reason = sig.exit_reason && sig.exit_reason !== 'ACTIVE_IN_POSITION' ? sig.exit_reason : exitRes.exitReason;
+          sig.exit_reason = sig.exit_reason || exitRes.exitReason;
           if (exitRes.pnlPct !== undefined && !sig.pnl_pct) {
             sig.pnl_pct = exitRes.pnlPct;
           }
@@ -666,6 +667,16 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
   return list;
 });
 
+const isTargetTradeOpen = (target: InspectableSignal | null | undefined): boolean => {
+  if (!target) return false;
+  if (target.source === 'BACKTEST') return false;
+  if (target.status === 'CLOSED' || target.status === 'COMPLETED') return false;
+  if (target.exit_price != null && target.exit_price > 0) return false;
+  if (target.exit_reason && target.exit_reason !== 'ACTIVE_IN_POSITION') return false;
+  if (target.exit_time && target.exit_time > 0 && target.status !== 'ACTIVE_IN_POSITION') return false;
+  return true;
+};
+
 const selectedSignalIndex = ref<number>(0);
 const inspectedSignal = computed<InspectableSignal | null>(() => {
   if (allInspectableSignals.value.length === 0) return null;
@@ -673,7 +684,7 @@ const inspectedSignal = computed<InspectableSignal | null>(() => {
   return allInspectableSignals.value[idx] || null;
 });
 
-const hasActiveLiveTrade = computed(() => allInspectableSignals.value.some((s) => s.isLiveActive));
+const hasActiveLiveTrade = computed(() => allInspectableSignals.value.some((s) => isTargetTradeOpen(s)));
 
 const tradeRiskReward = computed(() => {
   if (!inspectedSignal.value) return null;
@@ -684,6 +695,71 @@ const tradeRiskReward = computed(() => {
   if (risk <= 0) return null;
   return `1:${(reward / risk).toFixed(1)}`;
 });
+
+// ── Native Price Scale / Price Axis Markings ──
+let activePriceLines: any[] = [];
+
+const clearPriceLines = () => {
+  if (!candleSeries) return;
+  for (const pl of activePriceLines) {
+    try {
+      candleSeries.removePriceLine(pl);
+    } catch {}
+  }
+  activePriceLines = [];
+};
+
+const syncPriceAxisLines = (target: InspectableSignal | null | undefined) => {
+  clearPriceLines();
+  if (!candleSeries || !target || !target.entry_price) return;
+  try {
+    // 1. Entry price line marked on price axis
+    if (target.entry_price) {
+      const plEntry = candleSeries.createPriceLine({
+        price: target.entry_price,
+        color: '#38bdf8',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'ENTRY',
+      });
+      activePriceLines.push(plEntry);
+    }
+
+    // 2. Take Profit price line marked on price axis
+    if (target.take_profit) {
+      const plTp = candleSeries.createPriceLine({
+        price: target.take_profit,
+        color: '#26a69a',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'TP',
+      });
+      activePriceLines.push(plTp);
+    }
+
+    // 3. Stop Loss price line marked on price axis
+    if (target.stop_loss) {
+      const plSl = candleSeries.createPriceLine({
+        price: target.stop_loss,
+        color: '#ef5350',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'SL',
+      });
+      activePriceLines.push(plSl);
+    }
+  } catch (e) {
+    console.warn('[ChartCanvas] Failed to sync price lines on price axis:', e);
+  }
+};
+
+watch(inspectedSignal, (newSignal) => {
+  syncPriceAxisLines(newSignal);
+  nextTick(() => updateBoxCoordinates());
+}, { immediate: true });
 
 // ── Precision Coordinate Helper Functions for SVG Trade Boxes ──
 const getYForPrice = (price: number): number => {
@@ -706,12 +782,14 @@ const getYForPrice = (price: number): number => {
 const updateBoxCoordinates = () => {
   if (!isInspectingTrade.value && !props.targetedSignal) {
     positionBoxes.value = [];
+    clearPriceLines();
     return;
   }
 
   const target = inspectedSignal.value;
   if (!target || !target.entry_price || !chart || !candleSeries || !chartContainerRef.value || rawCandles.value.length === 0) {
     positionBoxes.value = [];
+    clearPriceLines();
     return;
   }
 
@@ -722,8 +800,12 @@ const updateBoxCoordinates = () => {
   const entryIdx = findCandleIndex(rawEntry);
   if (entryIdx < 0) {
     positionBoxes.value = [];
+    clearPriceLines();
     return;
   }
+
+  // Always synchronize price axis labels
+  syncPriceAxisLines(target);
 
   // Calculate dynamic bar spacing and visible logical range
   const barSpacing = chart.timeScale().options().barSpacing || 16;
@@ -739,51 +821,41 @@ const updateBoxCoordinates = () => {
     x1Center = (entryIdx - visRange.from) * barSpacing;
   }
 
-  const tradeExit = resolveTradeExit(target, entryIdx);
-  const isTradeOpen = !tradeExit.isClosed && Boolean(target.isLiveActive) && target.source === 'LIVE';
+  const isTradeOpen = isTargetTradeOpen(target);
 
-  let x2Center: number | null = null;
-  if (isTradeOpen) {
-    const lastIdx = rawCandles.value.length - 1;
-    const maxHoldBars = getMaxHoldBars(target);
-    // When open, project forward up to holding limit or at least 4 bars ahead of live candle
-    const targetFutureIdx = Math.max(lastIdx + 4, entryIdx + maxHoldBars);
-    let futureX = chart.timeScale().logicalToCoordinate(targetFutureIdx as any);
-    if (futureX === null && visRange) {
-      futureX = (targetFutureIdx - visRange.from) * barSpacing;
-    }
-    x2Center = futureX !== null ? futureX : (containerW - 30);
+  let startX: number;
+  let endX: number;
+
+  if (x1Center !== null) {
+    startX = x1Center - halfBar;
+  } else if (visRange && entryIdx < visRange.from) {
+    startX = -10;
   } else {
-    // When closed, it is strictly capped at the exit candle!
+    startX = 0;
+  }
+
+  if (isTradeOpen) {
+    // Live open trades: extend the box to the right infinitely across the canvas into price axis
+    endX = containerW;
+  } else {
+    // Closed trades: strictly from entry candle to exit candle logically wise!
+    const tradeExit = resolveTradeExit(target, entryIdx);
     const exitIdx = Math.max(entryIdx + 1, tradeExit.exitIdx);
     const clampedExitIdx = Math.min(exitIdx, rawCandles.value.length - 1);
     const exitCandleLocalTime = timeToLocal(Number(rawCandles.value[clampedExitIdx].time));
-    x2Center = chart.timeScale().timeToCoordinate(exitCandleLocalTime as Time);
-    if (x2Center === null) {
-      x2Center = chart.timeScale().logicalToCoordinate(exitIdx as any);
+    let x2 = chart.timeScale().timeToCoordinate(exitCandleLocalTime as Time);
+    if (x2 === null) {
+      x2 = chart.timeScale().logicalToCoordinate(exitIdx as any);
     }
-    if (x2Center === null && visRange) {
-      x2Center = (exitIdx - visRange.from) * barSpacing;
+    if (x2 === null && visRange) {
+      x2 = (exitIdx - visRange.from) * barSpacing;
     }
+    endX = x2 !== null ? x2 + halfBar : startX + barSpacing * 2;
   }
-
-  if (x1Center === null && x2Center === null) {
-    positionBoxes.value = [];
-    return;
-  }
-
-  const startX = (x1Center !== null ? x1Center - halfBar : ((x2Center || 100) - barSpacing * 2));
-  const endX = isTradeOpen
-    ? (x2Center !== null ? x2Center : containerW - 30)
-    : (x2Center !== null ? x2Center + halfBar : startX + barSpacing);
 
   let leftX = Math.min(startX, endX);
   let rightX = Math.max(startX, endX);
-  let width = rightX - leftX;
-  if (width < halfBar * 2) {
-    width = halfBar * 2;
-    rightX = leftX + width;
-  }
+  let width = Math.max(rightX - leftX, halfBar * 2);
 
   if (rightX < -500 || leftX > containerW + 500) {
     positionBoxes.value = [];
@@ -876,6 +948,7 @@ const updateBoxCoordinates = () => {
       entryPrice: target.entry_price,
       pnlPct: target.pnl_pct || 0,
       isLong,
+      isLiveOpen: isTradeOpen,
       yTpLabel,
       yEntryLabel,
       ySlLabel,
@@ -886,6 +959,13 @@ const updateBoxCoordinates = () => {
 const getLabelX = (box: PositionBoxCoord) => {
   const labelWidth = 92;
   const containerW = chartContainerRef.value?.clientWidth || 800;
+  if (box.isLiveOpen) {
+    // For live open trade extending to the right:
+    // Place label right next to entry candle if in view, or comfortably clamped
+    const offsetFromEntry = box.x + 14;
+    return Math.max(8, Math.min(containerW - labelWidth - 75, offsetFromEntry));
+  }
+  // Closed trade: position near the right edge of the closed box
   if (box.width >= labelWidth + 12) {
     return Math.max(box.x + 6, Math.min(box.x + box.width - labelWidth - 6, containerW - labelWidth - 10));
   } else {
@@ -911,19 +991,22 @@ const centerOnTrade = (trade: InspectableSignal) => {
     const entryIdx = findCandleIndex(rawEntry);
     if (entryIdx < 0) return;
 
-    const tradeExit = resolveTradeExit(trade, entryIdx);
-    const maxHoldBars = getMaxHoldBars(trade);
-    const exitIdx = tradeExit.isClosed ? Math.max(entryIdx + 1, tradeExit.exitIdx) : Math.max(rawCandles.value.length - 1, entryIdx + maxHoldBars);
+    const isOpen = isTargetTradeOpen(trade);
+    const fromLogical = Math.max(0, entryIdx - 15);
+    const toLogical = isOpen
+      ? Math.max(rawCandles.value.length + 15, entryIdx + 25)
+      : Math.min(rawCandles.value.length + 10, Math.max(entryIdx + 25, resolveTradeExit(trade, entryIdx).exitIdx + 15));
 
-    // Use setVisibleLogicalRange: directly scroll to the exact bars with comfortable padding
-    const fromLogical = Math.max(0, entryIdx - 20);
-    const toLogical = Math.min(rawCandles.value.length + 30, Math.max(entryIdx + 30, exitIdx + 10));
     chart.timeScale().setVisibleLogicalRange({
       from: fromLogical,
       to: toLogical,
     });
     chart.priceScale('right').applyOptions({ autoScale: true });
 
+    nextTick(() => {
+      syncPriceAxisLines(trade);
+      updateBoxCoordinates();
+    });
     requestAnimationFrame(() => {
       updateBoxCoordinates();
     });
@@ -985,6 +1068,7 @@ const jumpToActive = () => {
 const dismissInspection = () => {
   isInspectingTrade.value = false;
   positionBoxes.value = [];
+  clearPriceLines();
   emit('dismissSignal');
 };
 
@@ -1715,6 +1799,7 @@ watch(() => props.targetedSignal, (newTarget) => {
   } else {
     isInspectingTrade.value = false;
     positionBoxes.value = [];
+    clearPriceLines();
   }
 }, { deep: true, immediate: true });
 
@@ -1751,6 +1836,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopLiveFeeds();
+  clearPriceLines();
   window.removeEventListener('keydown', handleKeyDown);
   if (chartContainerRef.value) {
     chartContainerRef.value.removeEventListener('wheel', updateBoxCoordinates);
