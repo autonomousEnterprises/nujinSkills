@@ -24,42 +24,86 @@ class TelegramGateway:
         
     @property
     def is_configured(self) -> bool:
-        return bool(self.bot_token and self.chat_id)
+        return bool(self.bot_token and (self.chat_id or os.environ.get("TELEGRAM_CHAT_ID")))
 
-    def send_message(self, text: str, parse_mode: Optional[str] = "HTML") -> bool:
-        if not self.is_configured:
+    def get_chat_ids(self) -> list[str]:
+        raw = self.chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+        ids = []
+        for part in raw.split(","):
+            part = part.strip()
+            if part and part not in ids:
+                ids.append(part)
+        return ids
+
+    def discover_all_users(self) -> list[str]:
+        """Discovers any active Telegram chat IDs via getUpdates and merges with configured IDs."""
+        users = list(self.get_chat_ids())
+        if not self.bot_token:
+            return users
+        try:
+            resp = requests.get(f"https://api.telegram.org/bot{self.bot_token}/getUpdates", timeout=6)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("ok"):
+                    for item in data.get("result", []):
+                        msg = item.get("message") or item.get("channel_post") or item.get("my_chat_member", {}).get("chat")
+                        cid = None
+                        if msg and "chat" in msg and "id" in msg["chat"]:
+                            cid = str(msg["chat"]["id"])
+                        elif "chat" in item and "id" in item["chat"]:
+                            cid = str(item["chat"]["id"])
+                        if cid and cid not in users:
+                            users.append(cid)
+        except Exception as e:
+            logger.warning(f"[TelegramGateway] User discovery encountered error: {e}")
+        return users
+
+    def send_message(self, text: str, parse_mode: Optional[str] = "HTML", target_chat_id: Optional[str] = None) -> bool:
+        if not self.bot_token:
             logger.info(f"[Telegram Off-line / Log Only]\n{text}")
             return False
-            
-        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        payload = {
-            "chat_id": self.chat_id,
-            "text": text,
-        }
-        if parse_mode:
-            payload["parse_mode"] = parse_mode
 
-        try:
-            resp = requests.post(url, json=payload, timeout=8)
-            if resp.status_code == 200:
-                return True
-            
-            logger.warning(f"[TelegramGateway] Dispatch returned {resp.status_code}: {resp.text}")
-            # Resilient fallback: If entity parsing fails (e.g. 400 Bad Request), retry as unformatted plain text
-            if parse_mode is not None and resp.status_code == 400:
-                logger.info("[TelegramGateway] Retrying message delivery in unformatted plaintext fallback mode...")
-                # Strip basic html tags for raw text fallback
-                clean_text = text.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "").replace("<i>", "").replace("</i>", "")
-                fallback_payload = {"chat_id": self.chat_id, "text": clean_text}
-                retry_resp = requests.post(url, json=fallback_payload, timeout=8)
-                if retry_resp.status_code == 200:
-                    logger.info("[TelegramGateway] Plaintext fallback delivered successfully.")
-                    return True
-                logger.error(f"[TelegramGateway] Plaintext retry also failed: {retry_resp.status_code} - {retry_resp.text}")
+        targets = [target_chat_id] if target_chat_id else self.get_chat_ids()
+        if not targets:
+            targets = self.discover_all_users()
+
+        if not targets:
+            logger.info(f"[Telegram Off-line / Log Only]\n{text}")
             return False
-        except Exception as e:
-            logger.error(f"Failed to dispatch Telegram message: {e}")
-            return False
+
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        any_success = False
+
+        for cid in targets:
+            payload = {
+                "chat_id": cid,
+                "text": text,
+            }
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+
+            try:
+                resp = requests.post(url, json=payload, timeout=8)
+                if resp.status_code == 200:
+                    any_success = True
+                    continue
+
+                logger.warning(f"[TelegramGateway] Dispatch to {cid} returned {resp.status_code}: {resp.text}")
+                # Resilient fallback: If entity parsing fails (e.g. 400 Bad Request), retry as unformatted plain text
+                if parse_mode is not None and resp.status_code == 400:
+                    logger.info(f"[TelegramGateway] Retrying message delivery to {cid} in unformatted plaintext fallback mode...")
+                    clean_text = text.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "").replace("<i>", "").replace("</i>", "")
+                    fallback_payload = {"chat_id": cid, "text": clean_text}
+                    retry_resp = requests.post(url, json=fallback_payload, timeout=8)
+                    if retry_resp.status_code == 200:
+                        logger.info(f"[TelegramGateway] Plaintext fallback delivered successfully to {cid}.")
+                        any_success = True
+                        continue
+                    logger.error(f"[TelegramGateway] Plaintext retry failed for {cid}: {retry_resp.status_code} - {retry_resp.text}")
+            except Exception as e:
+                logger.error(f"Failed to dispatch Telegram message to {cid}: {e}")
+
+        return any_success
 
     def format_and_send_signal(self, payload: Dict[str, Any]) -> bool:
         action = payload.get("action", "BUY").upper()
