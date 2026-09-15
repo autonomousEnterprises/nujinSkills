@@ -20,8 +20,8 @@
     <!-- F1 — TradingView Live Chart Canvas -->
     <main class="w-full flex-1 relative overflow-hidden" v-show="activeScreen === 'CHART'">
       <ChartCanvas
-        :latestSignal="latestSignal"
-        :signals="signals"
+        :latestSignal="latestSignalForSelectedStrategy"
+        :signals="signalsForSelectedStrategy"
         :targetedSignal="targetedSignal"
         :theme="theme"
         :selectedStrategy="selectedStrategy"
@@ -241,16 +241,39 @@ const currentStrategyBacktest = computed(() => {
     (s: any) => (s.name || '').replace('.py', '').toLowerCase() === currClean
   );
   if (m && m.latest_backtest) {
+    const isLive = Boolean(activeState.value?.active_strategy && (activeState.value.active_strategy.replace('.py', '').toLowerCase() === currClean));
     return {
       strategy: m.name,
       summary: m.latest_backtest,
       falsification_gates: m.falsification_gates,
       equity_curve: m.backtest_equity_curve || [],
       thesis_props: m.thesis_props,
+      trade_markers: m.trade_markers || (isLive ? activeState.value?.trade_markers : []) || [],
+      trades_detail: m.trades_detail || (isLive ? activeState.value?.trades_detail : []) || [],
       drift_history: m.cron_config?.drift_history || []
     };
   }
   return null;
+});
+
+const signalsForSelectedStrategy = computed(() => {
+  const currClean = (selectedStrategy.value || '').replace('.py', '').toLowerCase();
+  if (!currClean) return [];
+  return (signals.value || []).filter((s: any) => {
+    const sStrat = (s.strategy || s.strategy_name || (s.bot ? s.bot.strategy : '') || '').replace('.py', '').toLowerCase();
+    if (sStrat) return sStrat === currClean;
+    const text = ((s.annotation || '') + ' ' + (s.reasoning_md || '')).toLowerCase();
+    return text.includes(currClean);
+  });
+});
+
+const latestSignalForSelectedStrategy = computed(() => {
+  if (!latestSignal.value) return null;
+  const currClean = (selectedStrategy.value || '').replace('.py', '').toLowerCase();
+  const sStrat = (latestSignal.value.strategy || latestSignal.value.strategy_name || '').replace('.py', '').toLowerCase();
+  if (sStrat && sStrat === currClean) return latestSignal.value;
+  const text = ((latestSignal.value.annotation || '') + ' ' + (latestSignal.value.reasoning_md || '')).toLowerCase();
+  return text.includes(currClean) ? latestSignal.value : null;
 });
 
 const isLiveStrategySelected = computed(() => {

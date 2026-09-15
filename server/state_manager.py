@@ -911,6 +911,8 @@ class StrategyRegistry:
                 }
                 s["backtest_equity_curve"] = compact_eq
                 s["falsification_gates"] = gates
+                s["trade_markers"] = bt_result.get("trade_markers", [])
+                s["trades_detail"] = bt_result.get("trades_detail", [])
                 s["updated_at"] = now_iso
 
                 cron_cfg = s.setdefault("cron_config", {"enabled": False, "interval": "24h", "last_run": "", "drift_history": []})

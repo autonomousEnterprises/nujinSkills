@@ -255,6 +255,16 @@ let indicatorCalculator: {
 
 const cleanStrategyName = computed(() => (props.selectedStrategy || props.activeStrategy || 'OpeningFlushReversalScalper').replace('.py', ''));
 
+const isSignalForCurrentStrategy = (s: any): boolean => {
+  if (!s) return false;
+  const current = cleanStrategyName.value.toLowerCase();
+  if (!current) return true;
+  const sStrat = (s.strategy || s.strategy_name || (s.bot ? s.bot.strategy : '') || '').replace('.py', '').toLowerCase();
+  if (sStrat) return sStrat === current;
+  const text = ((s.annotation || '') + ' ' + (s.reasoning_md || '')).toLowerCase();
+  return text.includes(current);
+};
+
 const resolveStrategySymbol = (stratName?: string): string => {
   if (!stratName) return 'XAU/USD';
   const clean = stratName.replace('.py', '');
@@ -558,6 +568,7 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
   if (props.signals && props.signals.length > 0) {
     for (let i = 0; i < props.signals.length; i++) {
       const s = props.signals[i];
+      if (!isSignalForCurrentStrategy(s)) continue;
       const rawTime = s.time ? Number(s.time) : (s.timestamp ? Math.floor(s.timestamp / 1000) : 0);
       if (!rawTime || (!s.entry_price && !s.price)) continue;
       const entryPrice = Number(s.entry_price || s.price);
@@ -594,7 +605,7 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
   }
 
   // 3. Latest signal if not already present
-  if (props.latestSignal && (props.latestSignal.entry_price || props.latestSignal.price)) {
+  if (props.latestSignal && isSignalForCurrentStrategy(props.latestSignal) && (props.latestSignal.entry_price || props.latestSignal.price)) {
     const s = props.latestSignal;
     const entryPrice = Number(s.entry_price || s.price);
     if (isPriceCompatible(entryPrice)) {
@@ -734,6 +745,7 @@ const allChartMarkers = computed(() => {
   // 2. Real Live Signals from SignalStore (both active and past closed)
   const sigList = props.signals || [];
   for (const s of sigList) {
+    if (!isSignalForCurrentStrategy(s)) continue;
     const rawTime = s.time ? Number(s.time) : (s.timestamp ? Math.floor(s.timestamp / 1000) : 0);
     const entryPrice = Number(s.entry_price || s.price || 0);
     if (!rawTime || !entryPrice || !isPriceCompatible(entryPrice)) continue;
@@ -780,7 +792,7 @@ const allChartMarkers = computed(() => {
   }
 
   // 3. Latest signal if active and not already included
-  if (props.latestSignal && (props.latestSignal.entry_price || props.latestSignal.price)) {
+  if (props.latestSignal && isSignalForCurrentStrategy(props.latestSignal) && (props.latestSignal.entry_price || props.latestSignal.price)) {
     const s = props.latestSignal;
     const rawTime = s.time ? Number(s.time) : (s.timestamp ? Math.floor(s.timestamp / 1000) : 0);
     const entryPrice = Number(s.entry_price || s.price || 0);
@@ -1122,15 +1134,16 @@ const getLabelX = (box: PositionBoxCoord) => {
     const offsetFromEntry = box.x + 14;
     return Math.max(8, Math.min(containerW - labelWidth - 75, offsetFromEntry));
   }
-  // Closed trade: position near the right edge of the closed box
-  if (box.width >= labelWidth + 12) {
-    return Math.max(box.x + 6, Math.min(box.x + box.width - labelWidth - 6, containerW - labelWidth - 10));
+  // Closed trade: position at the left (entry) side of the trade box (+8px).
+  // This completely avoids collision with the exit marker arrow and pnl text rendered at the right edge of the box.
+  if (box.width >= labelWidth + 16) {
+    return Math.max(8, Math.min(box.x + 8, containerW - labelWidth - 10));
   } else {
-    const rightAligned = box.x + box.width + 4;
-    if (rightAligned + labelWidth < containerW - 10) {
-      return rightAligned;
+    // Narrow box: place to the left of the entry candle if there is space, otherwise offset slightly
+    if (box.x - labelWidth - 8 >= 8) {
+      return box.x - labelWidth - 8;
     }
-    return Math.max(6, Math.min(box.x, containerW - labelWidth - 10));
+    return Math.max(8, Math.min(box.x + 8, containerW - labelWidth - 10));
   }
 };
 

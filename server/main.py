@@ -577,6 +577,11 @@ async def select_and_run_strategy(req: SelectStrategyRequest):
             "invalidation": "Stop-loss triggered beyond structural extreme",
             "target_profile": strat_record.get("target_profile", f"{clean_name} Profile")
         }
+        curr_sys_state = state_manager.get()
+        is_active_sys = (clean_name == curr_sys_state.get("active_strategy"))
+        trade_markers = strat_record.get("trade_markers") or (curr_sys_state.get("trade_markers", []) if is_active_sys else [])
+        trades_detail = strat_record.get("trades_detail") or (curr_sys_state.get("trades_detail", []) if is_active_sys else [])
+        
         result = {
             "strategy": clean_name,
             "symbol": symbol,
@@ -585,6 +590,8 @@ async def select_and_run_strategy(req: SelectStrategyRequest):
             "falsification_gates": gates,
             "equity_curve": eq,
             "thesis_props": thesis_props,
+            "trade_markers": trade_markers,
+            "trades_detail": trades_detail,
             "drift_history": strat_record.get("cron_config", {}).get("drift_history", []),
             "strategy_record": strat_record
         }
