@@ -74,7 +74,7 @@ def load_strategy_instance(strategy_name: str) -> Optional[Any]:
         logger.error(f"[BacktestEngine] Failed to load strategy instance for '{clean_name}': {e}")
     return None
 
-def resolve_strategy_metadata(strategy_name: str) -> Dict[str, Any]:
+def resolve_strategy_metadata(strategy_name: str, timeframe_override: Optional[str] = None) -> dict:
     """
     Resolves strategy metadata dynamically using data/strategies.json and data/state.json
     as the Single Source of Truth.
@@ -98,7 +98,12 @@ def resolve_strategy_metadata(strategy_name: str) -> Dict[str, Any]:
              ("S&P 500 (ES)" if any(k in clean_name.upper() for k in ["SP500", "SPX", "ES", "FLUSH"]) else \
              ("XAU/USD" if any(k in clean_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else "BTC/USDT"))
 
-    timeframe = (strat_record.get("timeframe") if strat_record else None) or \
+    strat_inst = load_strategy_instance(clean_name)
+    strat_inst_timeframe = getattr(strat_inst, "timeframe", None) if strat_inst else None
+
+    timeframe = timeframe_override or \
+                strat_inst_timeframe or \
+                (strat_record.get("timeframe") if strat_record else None) or \
                 (curr_state.get("timeframe") if is_active_sys else None) or \
                 ("1m" if any(k in symbol.upper() for k in ["XAU", "SP", "ES", "S&P"]) else "15m")
 
@@ -128,7 +133,7 @@ def resolve_strategy_metadata(strategy_name: str) -> Dict[str, Any]:
         "strat_record": strat_record or {}
     }
 
-def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> dict:
+def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, timeframe_override: Optional[str] = None) -> dict:
     """
     Executes real quantitative dual-directional (LONG & SHORT) backtest and DSR cynic audit.
     Zero hardcoded strategy logic: dynamically evaluates strategy definitions and rules
@@ -141,7 +146,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
     clean_name = strategy_name.replace(".py", "")
     logger.info(f"[BacktestEngine] Running dynamic quantitative backtest for strategy: {clean_name} (save_as_active={save_as_active})")
 
-    meta = resolve_strategy_metadata(clean_name)
+    meta = resolve_strategy_metadata(clean_name, timeframe_override=timeframe_override)
     symbol = meta["symbol"]
     timeframe = meta["timeframe"]
     thesis_props = meta["thesis_props"]
@@ -156,13 +161,27 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
     is_gold = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper())
     is_sp500 = any(k in symbol.upper() for k in ["SP", "ES", "US500", "S&P"])
     if is_gold:
-        candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")
-        if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
-            try:
-                sync_xauusd_scalp_candles(output_path=candles_file)
-            except Exception as e_sync:
-                logger.warning(f"[BacktestEngine] Sync XAUUSD candles warning: {e_sync}")
-        cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_1m.csv", "--output", "data/features.csv"]
+        if timeframe == "5m":
+            candles_file = os.path.join(data_dir, "xauusd_candles_5m.csv")
+            if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
+                if os.path.exists(os.path.join(data_dir, "xauusd_candles_1m.csv")):
+                    df_1m = pd.read_csv(os.path.join(data_dir, "xauusd_candles_1m.csv"))
+                    df_1m['dt'] = pd.to_datetime(df_1m['timestamp'], unit='s', utc=True)
+                    df_1m = df_1m.set_index('dt').sort_index()
+                    resampled = df_1m.resample('5min', label='left', closed='left').agg({
+                        'timestamp': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                    }).dropna().reset_index(drop=True)
+                    resampled['timestamp'] = resampled['timestamp'].astype(int)
+                    resampled.to_csv(candles_file, index=False)
+            cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_5m.csv", "--output", "data/features.csv"]
+        else:
+            candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")
+            if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
+                try:
+                    sync_xauusd_scalp_candles(output_path=candles_file)
+                except Exception as e_sync:
+                    logger.warning(f"[BacktestEngine] Sync XAUUSD candles warning: {e_sync}")
+            cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_1m.csv", "--output", "data/features.csv"]
     elif is_sp500:
         candles_file = os.path.join(data_dir, "sp500_candles_1m.csv")
         cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/sp500_candles_1m.csv", "--output", "data/features.csv"]

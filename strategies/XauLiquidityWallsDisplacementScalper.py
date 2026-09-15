@@ -21,7 +21,7 @@ except ImportError:
 
 class XauLiquidityWallsDisplacementScalper(IStrategy):
     INTERFACE_VERSION = 3
-    timeframe = "1m"
+    timeframe = "5m"
     can_short = True
 
     # 2:1 RRR targets
