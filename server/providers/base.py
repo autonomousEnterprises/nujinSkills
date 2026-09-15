@@ -117,27 +117,39 @@ class ProviderRegistry:
     _providers: Dict[str, BaseMarketDataProvider] = {}
 
     @classmethod
+    def canonical_symbol(cls, symbol: str) -> str:
+        upper_sym = (symbol or "").upper()
+        if any(s in upper_sym for s in ["SP", "ES", "S&P", "US500", "OPENING"]):
+            return "S&P 500 (ES)"
+        elif any(g in upper_sym for g in ["XAU", "GOLD", "OANDA", "PAXG", "GC"]):
+            return "XAU/USD"
+        elif "BTC" in upper_sym:
+            return "BTC/USDT"
+        return symbol or "XAU/USD"
+
+    @classmethod
     def get_provider_key(cls, symbol: str, timeframe: str) -> str:
-        clean_sym = symbol.replace("/", "").replace(":", "").upper()
+        canon = cls.canonical_symbol(symbol)
+        clean_sym = canon.replace("/", "").replace(":", "").upper()
         return f"{clean_sym}:{timeframe}"
 
     @classmethod
     def get_provider(cls, symbol: str, timeframe: str = "1m") -> BaseMarketDataProvider:
-        key = cls.get_provider_key(symbol, timeframe)
+        canon = cls.canonical_symbol(symbol)
+        key = cls.get_provider_key(canon, timeframe)
         if key in cls._providers:
             return cls._providers[key]
 
-        upper_sym = symbol.upper()
-        if any(g in upper_sym for g in ["XAU", "GOLD", "OANDA"]):
+        if canon == "XAU/USD":
             from server.providers.oanda_gold_provider import OandaGoldProvider
             provider = OandaGoldProvider(symbol="XAU/USD", timeframe=timeframe)
-        elif any(s in upper_sym for s in ["SP", "ES", "S&P", "US500", "OPENING"]):
+        elif canon == "S&P 500 (ES)":
             from server.providers.sp500_provider import Sp500Provider
             provider = Sp500Provider(symbol="S&P 500 (ES)", timeframe=timeframe)
         else:
             # Default crypto provider: Binance
             from server.providers.binance_provider import BinanceSpotProvider
-            provider = BinanceSpotProvider(symbol=symbol, timeframe=timeframe)
+            provider = BinanceSpotProvider(symbol=canon, timeframe=timeframe)
 
         cls._providers[key] = provider
         return provider

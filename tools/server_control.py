@@ -43,7 +43,9 @@ def start_server(host: str, port: int, daemon: bool):
         python_bin, "-m", "uvicorn", "server.main:app",
         "--host", host,
         "--port", str(port),
-        "--reload"
+        "--reload",
+        "--reload-dir", "server",
+        "--reload-dir", "strategies"
     ]
     
     print(f"[ServerControl] Launching Telemetry Server & Telegram Gateway on {host}:{port} with {python_bin}...")

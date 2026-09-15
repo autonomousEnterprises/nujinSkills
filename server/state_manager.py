@@ -102,7 +102,7 @@ def _read_json_locked(path: str, default: Any) -> Any:
 def _write_json_locked(path: str, data: Any) -> None:
     """Write JSON to a file under an exclusive lock (atomic tmp-then-rename)."""
     _ensure_dir(path)
-    tmp_path = path + ".tmp"
+    tmp_path = f"{path}.{os.getpid()}.{time.time_ns()}.tmp"
     try:
         with open(tmp_path, "w") as f:
             fcntl.flock(f, fcntl.LOCK_EX)
@@ -116,7 +116,10 @@ def _write_json_locked(path: str, data: Any) -> None:
     except Exception as e:
         logger.error(f"[StateManager] Write failed for {path}: {e}")
         if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
         raise
 
 

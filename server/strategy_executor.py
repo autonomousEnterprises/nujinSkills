@@ -102,64 +102,75 @@ class StrategyEvaluator:
         bar_ts = int(curr_bar.get("time", curr_bar.get("timestamp", 0)))
         is_xau = "XAU" in symbol.upper() or "GOLD" in symbol.upper() or "GOAT" in clean_name.upper()
 
-        # 1. Attempt dynamic evaluation via strategy class
+        # Dynamic evaluation via strategy class Single Source of Truth
         try:
             from server.backtest_engine import load_strategy_instance
             strat_inst = load_strategy_instance(clean_name)
-            if strat_inst:
-                df_dyn = strat_inst.populate_indicators(df.copy(), {})
-                df_dyn = strat_inst.populate_entry_trend(df_dyn, {})
-                last_row = df_dyn.iloc[-1]
-                is_l = bool(last_row.get("enter_long", 0) == 1)
-                is_s = bool(last_row.get("enter_short", 0) == 1) if getattr(strat_inst, "can_short", True) else False
-                if is_l or is_s:
-                    side = "BUY" if is_l else "SELL"
-                    stoploss_pct = abs(float(getattr(strat_inst, "stoploss", -0.02)))
-                    minimal_roi = getattr(strat_inst, "minimal_roi", {})
-                    roi_0 = float(minimal_roi.get("0", minimal_roi.get(0, 0.035))) if minimal_roi else (stoploss_pct * 1.5)
-                    atr_sl = getattr(strat_inst, "atr_sl_mult", None)
-                    atr_tp = getattr(strat_inst, "atr_tp_mult", None)
-                    atr_v = float(df_dyn['atr_14'].iloc[-1]) if ('atr_14' in df_dyn.columns and not np.isnan(df_dyn['atr_14'].iloc[-1])) else curr_p * 0.005
-                    sl = round(curr_p - atr_sl * atr_v if is_l else curr_p + atr_sl * atr_v, 2) if atr_sl else round(curr_p * (1.0 - stoploss_pct) if is_l else curr_p * (1.0 + stoploss_pct), 2)
-                    tp = round(curr_p + atr_tp * atr_v if is_l else curr_p - atr_tp * atr_v, 2) if atr_tp else round(curr_p * (1.0 + roi_0) if is_l else curr_p * (1.0 - roi_0), 2)
-                    return {
-                        "strategy": clean_name,
-                        "pair": symbol,
-                        "action": side,
-                        "price": curr_p,
-                        "time": bar_ts if bar_ts > 0 else int(time.time()),
-                        "stop_loss": sl,
-                        "take_profit": tp,
-                        "min_hold_seconds": 120 if is_xau else 60,
-                        "max_hold_seconds": 900 if is_xau else 5400,
-                        "annotation": f"{clean_name} Signal",
-                        "reasoning_md": f"Dynamic signal triggered by {clean_name} at price ${curr_p:,.2f}."
-                    }
-                elif not is_l and not is_s:
-                    return None
-            else:
-                pass
-        except Exception as e_dyn:
-            logger.warning(f"[StrategyEvaluator] Error evaluating dynamic strategy {clean_name}: {e_dyn}")
-            return None
-
-        if is_xau:
-            # --- Goat Funded Trader XAUUSD Momentum Scalper Rules ---
-            session = StrategyEvaluator.is_session_active(clean_name, timestamp=bar_ts if bar_ts > 0 else None)
-            # Entry condition: Session active, Breakout 15m extreme, EMA momentum expansion, Volume surge
-            is_long = session["is_active"] and (curr_p > curr_hh15) and (curr_e9 > curr_e21) and (curr_vz > 0.4)
-            is_short = session["is_active"] and (curr_p < curr_ll15) and (curr_e9 < curr_e21) and (curr_vz > 0.4)
-
-            if not is_long and not is_short:
+            if not strat_inst:
+                logger.warning(f"[StrategyEvaluator] Strategy '{clean_name}' class could not be loaded from strategies/{clean_name}.py. No signal.")
                 return None
 
-            side = "BUY" if is_long else "SELL"
-            # Hard risk bounds aligned with BacktestEngine: 0.25% stop loss, 0.30% take profit
-            sl = round(curr_p * (1.0 - 0.0025), 2) if is_long else round(curr_p * (1.0 + 0.0025), 2)
-            tp = round(curr_p * (1.0 + 0.0030), 2) if is_long else round(curr_p * (1.0 - 0.0030), 2)
+            df_dyn = strat_inst.populate_indicators(df.copy(), {})
+            df_dyn = strat_inst.populate_entry_trend(df_dyn, {})
+            last_row = df_dyn.iloc[-1]
 
-            annotation = f"GFT Momentum Breakout ({session['session_name']})"
-            reasoning = f"Price ({curr_p}) broke {'15m High' if is_long else '15m Low'} with EMA ribbon expansion (9 > 21) and Volume Z-Score {curr_vz:.2f}."
+            is_l = bool(last_row.get("enter_long", 0) == 1)
+            is_s = bool(last_row.get("enter_short", 0) == 1) if getattr(strat_inst, "can_short", True) else False
+
+            # Prevent simultaneous long/short whipsaw
+            if is_l and is_s:
+                is_s = False
+
+            if not is_l and not is_s:
+                return None
+
+            side = "BUY" if is_l else "SELL"
+            stoploss_pct = abs(float(getattr(strat_inst, "stoploss", -0.02)))
+            minimal_roi = getattr(strat_inst, "minimal_roi", {})
+            roi_0 = float(minimal_roi.get("0", minimal_roi.get(0, 0.035 if not is_xau else 0.005))) if minimal_roi else (stoploss_pct * 1.5)
+            atr_sl = getattr(strat_inst, "atr_sl_mult", None)
+            atr_tp = getattr(strat_inst, "atr_tp_mult", None)
+            atr_v = float(df_dyn['atr_14'].iloc[-1]) if ('atr_14' in df_dyn.columns and not np.isnan(df_dyn['atr_14'].iloc[-1])) else (curr_p * 0.005)
+
+            # 1. Structural or Dynamic Stop Loss
+            if "structural_sl" in last_row and not np.isnan(last_row["structural_sl"]):
+                sl = round(float(last_row["structural_sl"]), 2)
+            elif atr_sl is not None and atr_v > 0:
+                sl = round(curr_p - atr_sl * atr_v if is_l else curr_p + atr_sl * atr_v, 2)
+            else:
+                sl = round(curr_p * (1.0 - stoploss_pct) if is_l else curr_p * (1.0 + stoploss_pct), 2)
+
+            # 2. Structural or Dynamic Take Profit
+            if "structural_tp" in last_row and not np.isnan(last_row["structural_tp"]):
+                tp = round(float(last_row["structural_tp"]), 2)
+            elif atr_tp is not None and atr_v > 0:
+                tp = round(curr_p + atr_tp * atr_v if is_l else curr_p - atr_tp * atr_v, 2)
+            elif minimal_roi:
+                tp = round(curr_p * (1.0 + roi_0) if is_l else curr_p * (1.0 - roi_0), 2)
+            else:
+                tp = round(curr_p * (1.0 + stoploss_pct * 1.5) if is_l else curr_p * (1.0 - stoploss_pct * 1.5), 2)
+
+            # 3. Strict Quantitative Sanity Bounds (Universal Risk Enforcement)
+            if is_l:
+                if sl >= curr_p or tp <= curr_p:
+                    logger.error(f"[StrategyEvaluator] REJECTED inverted LONG signal for {clean_name}: Price={curr_p}, SL={sl}, TP={tp}")
+                    return None
+            else:
+                if sl <= curr_p or tp >= curr_p:
+                    logger.error(f"[StrategyEvaluator] REJECTED inverted SHORT signal for {clean_name}: Price={curr_p}, SL={sl}, TP={tp}")
+                    return None
+
+            is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500"])
+            if is_sp and abs(sl - curr_p) > 50.0:
+                logger.error(f"[StrategyEvaluator] REJECTED excessive S&P stop loss ({abs(sl - curr_p):.2f} pts > 50 pts) for {clean_name}")
+                return None
+            if is_xau and abs(sl - curr_p) > 25.0:
+                logger.error(f"[StrategyEvaluator] REJECTED excessive Gold stop loss (${abs(sl - curr_p):.2f} > $25) for {clean_name}")
+                return None
+
+            bar_sec = 60 if ("1m" in symbol or is_xau or is_sp) else 900
+            min_bars = getattr(strat_inst, "min_bars", getattr(strat_inst, "min_hold_bars", 2 if is_xau else 1))
+            max_bars = getattr(strat_inst, "max_bars", 15 if is_xau else 12)
 
             return {
                 "strategy": clean_name,
@@ -169,67 +180,13 @@ class StrategyEvaluator:
                 "time": bar_ts if bar_ts > 0 else int(time.time()),
                 "stop_loss": sl,
                 "take_profit": tp,
-                "min_hold_seconds": 120, # 2-min anti-arbitrage lock
-                "max_hold_seconds": 900, # 15-min scalp cutoff
-                "annotation": annotation,
-                "reasoning_md": reasoning
+                "min_hold_seconds": min_bars * bar_sec,
+                "max_hold_seconds": max_bars * bar_sec,
+                "annotation": f"{clean_name} Signal",
+                "reasoning_md": f"Systematic signal generated by {clean_name} ({side} @ ${curr_p:,.2f}) with SL: ${sl:,.2f}, TP: ${tp:,.2f}."
             }
-
-        elif "TrapFade" in clean_name:
-            # --- Asian Liquidity Sweep Fade Rules ---
-            wick_thresh = 0.38
-            vol_thresh = 0.8
-            is_long = (curr_lw > wick_thresh) and (curr_vz > vol_thresh)
-            is_short = (curr_uw > wick_thresh) and (curr_vz > vol_thresh)
-
-            if not is_long and not is_short:
-                return None
-
-            side = "BUY" if is_long else "SELL"
-            sl = round(curr_p * 0.98, 2) if is_long else round(curr_p * 1.02, 2)
-            tp = round(curr_p * 1.035, 2) if is_long else round(curr_p * 0.965, 2)
-
-            return {
-                "strategy": clean_name,
-                "pair": symbol,
-                "action": side,
-                "price": curr_p,
-                "stop_loss": sl,
-                "take_profit": tp,
-                "min_hold_seconds": 60,
-                "max_hold_seconds": 7200,
-                "annotation": "Asian Liquidity Sweep Fade",
-                "reasoning_md": f"Absorption wick ({curr_lw if is_long else curr_uw:.2%}) with volume surge Z-Score {curr_vz:.2f}."
-            }
-
-        elif "PropFirmVsa" in clean_name or "WickRejection" in clean_name:
-            # --- Prop Firm VSA Wick Rejection Rules ---
-            wick_thresh = 0.40
-            vol_thresh = 1.0
-            is_long = (curr_lw > wick_thresh) and (curr_vz > vol_thresh)
-            is_short = (curr_uw > wick_thresh) and (curr_vz > vol_thresh)
-
-            if not is_long and not is_short:
-                return None
-
-            side = "BUY" if is_long else "SELL"
-            sl = round(curr_p * 0.975, 2) if is_long else round(curr_p * 1.025, 2)
-            tp = round(curr_p * 1.040, 2) if is_long else round(curr_p * 0.960, 2)
-
-            return {
-                "strategy": clean_name,
-                "pair": symbol,
-                "action": side,
-                "price": curr_p,
-                "stop_loss": sl,
-                "take_profit": tp,
-                "min_hold_seconds": 60,
-                "max_hold_seconds": 5400,
-                "annotation": "VSA Wick Rejection",
-                "reasoning_md": f"Institutional wick rejection ({curr_lw if is_long else curr_uw:.2%}) absorbing aggressive market orders (Vol Z: {curr_vz:.2f})."
-            }
-
-        else:
+        except Exception as e_dyn:
+            logger.warning(f"[StrategyEvaluator] Error evaluating dynamic strategy {clean_name}: {e_dyn}")
             return None
 
 
@@ -246,25 +203,10 @@ class NativeStrategyRunner:
         self.is_running = False
 
         # Dynamically retrieve symbol and timeframe from Single Source of Truth
-        strat_record = strategy_registry.get(self.strategy_name)
-        curr_state = state_manager.get()
-        if strat_record and strat_record.get("symbol"):
-            self.symbol = strat_record["symbol"]
-            self.timeframe = strat_record.get("timeframe", "15m")
-        elif curr_state.get("active_strategy") == self.strategy_name and curr_state.get("symbol"):
-            self.symbol = curr_state["symbol"]
-            self.timeframe = curr_state.get("timeframe", "15m")
-        else:
-            lower = self.strategy_name.lower()
-            if "xau" in lower or "gold" in lower or "goat" in lower:
-                self.symbol = "XAU/USD"
-                self.timeframe = "1m"
-            elif "eth" in lower:
-                self.symbol = "ETH/USDT"
-                self.timeframe = "15m"
-            else:
-                self.symbol = "BTC/USDT"
-                self.timeframe = "15m"
+        from server.backtest_engine import resolve_strategy_metadata
+        meta = resolve_strategy_metadata(self.strategy_name)
+        self.symbol = meta["symbol"]
+        self.timeframe = meta["timeframe"]
 
         self.provider: BaseMarketDataProvider = ProviderRegistry.get_provider(self.symbol, self.timeframe)
         self._last_evaluated_bar_time: int = 0

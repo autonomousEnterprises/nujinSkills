@@ -83,11 +83,12 @@ class GoatFundedTraderXauusdScalper(IStrategy):
         vol_std = volume.rolling(20).std().replace(0, 1e-6)
         dataframe['volume_zscore'] = (volume - vol_mean) / vol_std
 
-        # 5. Session Filter (London 07:30-10:30 UTC & NY 12:45-16:30 UTC)
+        # 5. Session Filter (London 07:30-10:30 UTC & NY 12:45-16:30 UTC, Monday-Friday only)
         if 'timestamp' in dataframe.columns:
             ts = pd.to_datetime(dataframe['timestamp'], unit='s', utc=True)
             minute_of_day = ts.dt.hour * 60 + ts.dt.minute
-            dataframe['session_valid'] = (
+            is_weekday = ts.dt.weekday < 5
+            dataframe['session_valid'] = is_weekday & (
                 ((minute_of_day >= 450) & (minute_of_day <= 630)) | # London: 07:30 to 10:30 UTC
                 ((minute_of_day >= 765) & (minute_of_day <= 990))   # NY: 12:45 to 16:30 UTC
             )

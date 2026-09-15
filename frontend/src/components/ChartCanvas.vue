@@ -252,21 +252,46 @@ let indicatorCalculator: {
 } | null = null;
 
 const cleanStrategyName = computed(() => (props.selectedStrategy || props.activeStrategy || 'OpeningFlushReversalScalper').replace('.py', ''));
-const isGoldStrategy = computed(() => {
-  const s = cleanStrategyName.value.toLowerCase();
-  return s.includes('xau') || s.includes('gold') || s.includes('goat');
-});
-const isSpStrategy = computed(() => {
-  const s = cleanStrategyName.value.toLowerCase();
-  return s.includes('sp500') || s.includes('openingflush') || s.includes('es') || s.includes('reversal');
-});
+
+const resolveStrategySymbol = (stratName?: string): string => {
+  if (!stratName) return 'XAU/USD';
+  const clean = stratName.replace('.py', '');
+  // 1. Prioritize canonical metadata from props.strategies if available
+  if (props.strategies && props.strategies.length > 0) {
+    const match = props.strategies.find((st) =>
+      st.name === clean || st.name === stratName || st.file === stratName || st.file === `${clean}.py` || st.id === stratName
+    );
+    if (match && match.symbol) {
+      const sym = match.symbol.toUpperCase();
+      if (sym.includes('SP') || sym.includes('ES') || sym.includes('S&P') || sym.includes('US500')) return 'S&P 500 (ES)';
+      if (sym.includes('XAU') || sym.includes('GOLD')) return 'XAU/USD';
+      if (sym.includes('BTC')) return 'BTC/USDT';
+      return match.symbol;
+    }
+  }
+  // 2. Canonical mapping for known strategies
+  const s = clean.toLowerCase();
+  if (s.includes('sp500') || s.includes('openingflush') || s.includes('orderflow') || s.includes('reversal') || s.includes('es')) {
+    return 'S&P 500 (ES)';
+  }
+  if (s.includes('xau') || s.includes('gold') || s.includes('goat') || s.includes('propfirmatrhybridscalperxauusd')) {
+    return 'XAU/USD';
+  }
+  if (s.includes('btc') || s.includes('asian') || s.includes('trapfade') || s.includes('vsa') || s.includes('propfirmatrhybridscalper')) {
+    return 'BTC/USDT';
+  }
+  return 'XAU/USD';
+};
+
+const selectedSymbol = ref(resolveStrategySymbol(props.selectedStrategy || props.activeStrategy));
+const isGoldStrategy = computed(() => selectedSymbol.value === 'XAU/USD');
+const isSpStrategy = computed(() => selectedSymbol.value === 'S&P 500 (ES)');
+const isBtcStrategy = computed(() => selectedSymbol.value === 'BTC/USDT');
 
 const formatPrice = (p: number | undefined | null) => {
   if (p == null || isNaN(p)) return '–';
   return (isGoldStrategy.value || isSpStrategy.value) ? p.toFixed(2) : p.toFixed(1);
 };
-
-const selectedSymbol = ref(isSpStrategy.value ? 'S&P 500 (ES)' : (isGoldStrategy.value ? 'XAU/USD' : 'BTC/USDT'));
 const isWsConnected = ref(false);
 const lastLivePrice = ref<number | null>(null);
 const priceFlash = ref<'up' | 'down' | null>(null);
@@ -770,19 +795,21 @@ watch(inspectedSignal, (newSignal) => {
 // ── Precision Coordinate Helper Functions for SVG Trade Boxes ──
 const getYForPrice = (price: number): number => {
   if (!candleSeries || !chartContainerRef.value) return 0;
+  const containerH = chartContainerRef.value.clientHeight || 400;
   const directY = candleSeries.priceToCoordinate(price);
   if (directY !== null && !isNaN(directY)) {
-    return directY;
+    return Math.max(-100, Math.min(containerH + 100, directY));
   }
-  const containerH = chartContainerRef.value.clientHeight || 400;
   const pTop = candleSeries.coordinateToPrice(10);
   const pBottom = candleSeries.coordinateToPrice(containerH - 10);
   if (pTop !== null && pBottom !== null && pTop !== pBottom) {
     const slope = (containerH - 20) / (pBottom - pTop);
     const interpolatedY = 10 + (price - pTop) * slope;
-    if (!isNaN(interpolatedY)) return interpolatedY;
+    if (!isNaN(interpolatedY)) {
+      return Math.max(-100, Math.min(containerH + 100, interpolatedY));
+    }
   }
-  return price > (inspectedSignal.value?.entry_price || 0) ? 10 : containerH - 10;
+  return price > (inspectedSignal.value?.entry_price || 0) ? -50 : containerH + 50;
 };
 
 const updateBoxCoordinates = () => {
@@ -794,6 +821,23 @@ const updateBoxCoordinates = () => {
 
   const target = inspectedSignal.value;
   if (!target || !target.entry_price || !chart || !candleSeries || !chartContainerRef.value || rawCandles.value.length === 0) {
+    positionBoxes.value = [];
+    clearPriceLines();
+    return;
+  }
+
+  // Cross-asset compatibility guard: Discard box if inspected signal price is incompatible with loaded candle series
+  if (!isPriceCompatible(target.entry_price)) {
+    positionBoxes.value = [];
+    clearPriceLines();
+    return;
+  }
+
+  // Sanity check: Ensure SL & TP are within realistic quantitative bounds (max 8% stop loss, 15% take profit)
+  // Prevents distorted skyscraper boxes from drawing if corrupted or legacy signals exist
+  const slDistPct = Math.abs(target.stop_loss - target.entry_price) / target.entry_price;
+  const tpDistPct = Math.abs(target.take_profit - target.entry_price) / target.entry_price;
+  if (slDistPct > 0.08 || tpDistPct > 0.15) {
     positionBoxes.value = [];
     clearPriceLines();
     return;
@@ -1384,26 +1428,112 @@ const applyMarkers = (markers: any[]) => {
   try {
     const firstTime = Number(rawCandles.value[0].time);
     const lastTime = Number(rawCandles.value[rawCandles.value.length - 1].time);
+    const barStep = rawCandles.value.length > 1
+      ? Math.max(30, Number(rawCandles.value[1].time) - firstTime)
+      : 60;
 
     // Filter markers that fall strictly within the loaded candle timeline and asset price range.
-    const validMarkers = markers.filter((m) => {
+    const validMarkers = (markers || []).filter((m) => {
       if (!m || m.time === undefined || m.time === null) return false;
       const rawT = typeof m.time === 'number' && m.time > 2000000000 ? m.time / 1000 : Number(m.time);
-      if (rawT < firstTime || rawT > lastTime) return false;
+      if (rawT < firstTime - barStep || rawT > lastTime + barStep) return false;
       if (m.price != null && !isPriceCompatible(Number(m.price))) return false;
       return true;
     });
 
-    const formatted = validMarkers.map((m) => {
+    // Bucket markers strictly by existing candle timestamps to prevent off-market snapping & vertical stacking
+    interface CandleBucket {
+      barTime: Time;
+      above: any[];
+      below: any[];
+    }
+    const bucketMap = new Map<number, CandleBucket>();
+
+    for (const m of validMarkers) {
       const rawT = typeof m.time === 'number' && m.time > 2000000000 ? m.time / 1000 : Number(m.time);
-      return {
-        time: timeToLocal(rawT) as Time,
-        position: m.position || (m.action === 'BUY' ? 'belowBar' : 'aboveBar'),
-        color: m.color || (m.action === 'BUY' ? '#26a69a' : '#ef5350'),
-        shape: m.shape || (m.action === 'BUY' ? 'arrowUp' : 'arrowDown'),
-        text: m.text || m.action || 'SIGNAL',
-      };
-    });
+      const cIdx = findCandleIndex(rawT);
+      if (cIdx < 0 || cIdx >= rawCandles.value.length) continue;
+      const candle = rawCandles.value[cIdx];
+      const candleTime = Number(candle.time);
+
+      // Strict off-market gap protection: If distance between marker and closest candle > 2.5 bars,
+      // it occurred during a closed-market weekend/holiday gap. Do NOT snap onto open market candle!
+      if (Math.abs(candleTime - rawT) > barStep * 2.5) {
+        continue;
+      }
+
+      const localTime = timeToLocal(candleTime) as Time;
+      const localKey = Number(localTime);
+      if (!bucketMap.has(localKey)) {
+        bucketMap.set(localKey, { barTime: localTime, above: [], below: [] });
+      }
+
+      const bucket = bucketMap.get(localKey)!;
+      const isBuyOrLong = m.action === 'BUY' || m.side === 'LONG' || m.side === 'BUY' || m.shape === 'arrowUp';
+      const isExit = (m.text && typeof m.text === 'string' && m.text.includes('EXIT')) || m.action === 'EXIT';
+
+      let pos: 'aboveBar' | 'belowBar';
+      if (m.position) {
+        pos = m.position;
+      } else if (isExit) {
+        pos = isBuyOrLong ? 'belowBar' : 'aboveBar';
+      } else {
+        pos = isBuyOrLong ? 'belowBar' : 'aboveBar';
+      }
+
+      if (pos === 'belowBar') {
+        bucket.below.push(m);
+      } else {
+        bucket.above.push(m);
+      }
+    }
+
+    const formatted: any[] = [];
+    for (const [, bucket] of bucketMap) {
+      // 1. Below bar markers: Max 1 marker below bar
+      if (bucket.below.length === 1) {
+        const m = bucket.below[0];
+        formatted.push({
+          time: bucket.barTime,
+          position: 'belowBar',
+          color: m.color || '#26a69a',
+          shape: m.shape || 'arrowUp',
+          text: m.text || m.action || 'BUY',
+        });
+      } else if (bucket.below.length > 1) {
+        const firstM = bucket.below[0];
+        const count = bucket.below.length;
+        formatted.push({
+          time: bucket.barTime,
+          position: 'belowBar',
+          color: firstM.color || '#26a69a',
+          shape: 'arrowUp',
+          text: `[BT] ${count} Trades`,
+        });
+      }
+
+      // 2. Above bar markers: Max 1 marker above bar
+      if (bucket.above.length === 1) {
+        const m = bucket.above[0];
+        formatted.push({
+          time: bucket.barTime,
+          position: 'aboveBar',
+          color: m.color || '#ef5350',
+          shape: m.shape || 'arrowDown',
+          text: m.text || m.action || 'SHORT',
+        });
+      } else if (bucket.above.length > 1) {
+        const firstM = bucket.above[0];
+        const count = bucket.above.length;
+        formatted.push({
+          time: bucket.barTime,
+          position: 'aboveBar',
+          color: firstM.color || '#ef5350',
+          shape: 'arrowDown',
+          text: `[BT] ${count} Trades`,
+        });
+      }
+    }
 
     formatted.sort((a, b) => Number(a.time) - Number(b.time));
     candleSeries.setMarkers(formatted);
@@ -1697,16 +1827,20 @@ watch(
 // ── Watchers ──
 watch(selectedSymbol, () => {
   stopLiveFeeds();
+  // Reset inspection state if current inspected signal is not for this symbol
+  if (inspectedSignal.value && !isPriceCompatible(inspectedSignal.value.entry_price)) {
+    isInspectingTrade.value = false;
+    selectedSignalIndex.value = 0;
+    positionBoxes.value = [];
+    clearPriceLines();
+  }
   loadCandles();
   startLiveFeeds();
 });
 
 watch(() => props.selectedStrategy, (newStrat) => {
   if (newStrat) {
-    const s = newStrat.toLowerCase();
-    const isSp = s.includes('sp') || s.includes('es') || s.includes('opening');
-    const isGold = s.includes('xau') || s.includes('gold') || s.includes('goat');
-    const newSymbol = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAU/USD' : 'BTC/USDT');
+    const newSymbol = resolveStrategySymbol(newStrat);
     if (selectedSymbol.value !== newSymbol) {
       selectedSymbol.value = newSymbol;
     } else {
@@ -1759,12 +1893,6 @@ watch(() => selectedSignalIndex.value, (newIdx) => {
   if (isInspectingTrade.value && allInspectableSignals.value[newIdx]) {
     centerOnTrade(allInspectableSignals.value[newIdx]);
   }
-  nextTick(() => {
-    updateBoxCoordinates();
-  });
-});
-
-watch(inspectedSignal, () => {
   nextTick(() => {
     updateBoxCoordinates();
   });

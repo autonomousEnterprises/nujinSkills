@@ -310,6 +310,13 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
             side = "LONG" if is_long else "SHORT"
             entry_time = bar_time
 
+            # Weekend closure safeguard for traditional markets
+            if (is_gold or is_sp500) and entry_time > 0:
+                dt_b = datetime.fromtimestamp(entry_time, tz=timezone.utc)
+                if (dt_b.weekday() == 5) or (dt_b.weekday() == 4 and dt_b.hour >= 21) or (dt_b.weekday() == 6 and dt_b.hour < 22):
+                    i += 1
+                    continue
+
             # Dynamic entry price calculation (Limit order vs Market order)
             if 'atr_lower_band' in c and is_long and not np.isnan(c['atr_lower_band']):
                 lower_band = float(c['atr_lower_band'])
@@ -337,6 +344,14 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
                 take_profit = round(entry_price * (1.0 + roi_0) if side == "LONG" else entry_price * (1.0 - roi_0), 2)
             else:
                 take_profit = round(entry_price * (1.0 + stoploss_pct * 1.5) if side == "LONG" else entry_price * (1.0 - stoploss_pct * 1.5), 2)
+
+            # Strict Quantitative Risk Sanity Check
+            if side == "LONG" and (stop_loss >= entry_price or take_profit <= entry_price):
+                i += 1
+                continue
+            elif side == "SHORT" and (stop_loss <= entry_price or take_profit >= entry_price):
+                i += 1
+                continue
 
             # Sequential exit resolution
             exit_idx = i + 1

@@ -99,13 +99,20 @@ class GoatLondonOpenOtadScalper(IStrategy):
 
         # 5. London Open Session Window (07:00 to 09:30 UTC -> 420 to 570 minutes from midnight)
         if 'timestamp' in dataframe.columns:
-            dt = pd.to_datetime(dataframe['timestamp'], unit='s', utc=True)
+            raw_ts = dataframe['timestamp']
+        elif 'time' in dataframe.columns:
+            raw_ts = dataframe['time']
         else:
-            dt = pd.to_datetime(dataframe.index, utc=True)
+            raw_ts = dataframe.index
+
+        if isinstance(raw_ts, pd.Series):
+            dt = pd.to_datetime(raw_ts, unit='s' if pd.api.types.is_numeric_dtype(raw_ts) else None, utc=True)
+        else:
+            dt = pd.Series(pd.to_datetime(raw_ts, utc=True), index=dataframe.index)
 
         dataframe['date'] = dt.dt.date
         dataframe['minute_of_day'] = dt.dt.hour * 60 + dt.dt.minute
-        dataframe['is_london_open'] = (dataframe['minute_of_day'] >= 420) & (dataframe['minute_of_day'] <= 570)
+        dataframe['is_london_open'] = (dt.dt.weekday < 5) & (dataframe['minute_of_day'] >= 420) & (dataframe['minute_of_day'] <= 570)
 
         # 6. Asian Session High / Low Reference Range (00:00 - 06:30 UTC -> 0 to 390 min)
         asian_mask = (dataframe['minute_of_day'] >= 0) & (dataframe['minute_of_day'] <= 390)

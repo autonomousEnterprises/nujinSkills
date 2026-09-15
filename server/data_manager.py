@@ -158,6 +158,27 @@ def bridge_candles_to_now(df: pd.DataFrame, interval: str = "1m", symbol: str = 
         np.random.seed(int(last_ts) % 100000)
 
         while curr_ts <= now_ts:
+            dt_curr = datetime.fromtimestamp(curr_ts, tz=timezone.utc)
+            # Weekend closure for traditional assets (Gold & S&P 500 futures)
+            # Friday >= 21:00 UTC, Saturday all day, Sunday < 22:00 UTC
+            if (is_gold or is_sp):
+                is_closed = (dt_curr.weekday() == 4 and dt_curr.hour >= 21) or \
+                            (dt_curr.weekday() == 5) or \
+                            (dt_curr.weekday() == 6 and dt_curr.hour < 22)
+                if is_closed:
+                    days_ahead = (6 - dt_curr.weekday()) % 7
+                    if dt_curr.weekday() == 6:
+                        target_dt = dt_curr.replace(hour=22, minute=0, second=0, microsecond=0)
+                    else:
+                        target_dt = (dt_curr + pd.Timedelta(days=days_ahead)).replace(hour=22, minute=0, second=0, microsecond=0)
+                    next_ts = int(target_dt.timestamp())
+                    if next_ts > curr_ts:
+                        curr_ts = next_ts
+                        continue
+                    else:
+                        curr_ts += step_sec
+                        continue
+
             # Micro random walk (~0.01% per bar)
             pct_change = float(np.random.normal(0.0, vol_std))
             open_p = curr_price

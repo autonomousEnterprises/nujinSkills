@@ -102,10 +102,12 @@ class OpeningFlushReversalScalper(IStrategy):
 
         if hasattr(dt, 'dt'):
             dataframe['time_min'] = dt.dt.hour * 60 + dt.dt.minute
+            is_weekday = dt.dt.weekday < 5
         else:
             dataframe['time_min'] = dt.hour * 60 + dt.minute
-        us_reversal = (dataframe['time_min'] >= 825) & (dataframe['time_min'] <= 860)
-        lon_reversal = (dataframe['time_min'] >= 435) & (dataframe['time_min'] <= 470)
+            is_weekday = dt.weekday < 5
+        us_reversal = is_weekday & (dataframe['time_min'] >= 825) & (dataframe['time_min'] <= 860)
+        lon_reversal = is_weekday & (dataframe['time_min'] >= 435) & (dataframe['time_min'] <= 470)
         dataframe['is_reversal_window'] = us_reversal | lon_reversal
 
         # 4. Factor 1: Pre-Market Support & Resistance (120-bar lookback shifted by 20 bars)

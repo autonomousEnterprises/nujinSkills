@@ -99,10 +99,12 @@ class OrderFlowImbalanceScalper(IStrategy):
         if 'timestamp' in dataframe.columns:
             dt = pd.to_datetime(dataframe['timestamp'], unit='s', utc=True)
             time_min = dt.dt.hour * 60 + dt.dt.minute
+            is_weekday = dt.dt.weekday < 5
         else:
             time_min = pd.Series(900, index=dataframe.index)
+            is_weekday = pd.Series(True, index=dataframe.index)
 
-        dataframe['is_rth_active'] = (time_min >= 825) & (time_min <= 1185)
+        dataframe['is_rth_active'] = is_weekday & (time_min >= 825) & (time_min <= 1185)
 
         # 5. Local Rolling Extremes (15-bar lookback)
         dataframe['rolling_low_15'] = low.shift(1).rolling(15).min()

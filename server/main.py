@@ -136,7 +136,7 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
             import asyncio
             asyncio.create_task(provider.start())
 
-        if is_xau and xauusd_engine.candles_1m and len(xauusd_engine.candles_1m) >= 20:
+        if is_xau and xauusd_engine.candles_1m and len(xauusd_engine.candles_1m) >= min(count, 10000):
             c_list = xauusd_engine.candles_1m
             data = c_list[-count:] if (count and count < len(c_list)) else c_list
             return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
@@ -168,6 +168,8 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
                 ]
                 if provider:
                     provider._candles = data
+                if is_xau:
+                    xauusd_engine.candles_1m = data
                 return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
 
         if provider._candles and len(provider._candles) >= 20:
