@@ -8,6 +8,7 @@
       :activeStrategy="activeStrategy"
       :isGoldStrategy="isGoldStrategy"
       :isSpStrategy="isSpStrategy"
+      :selectedTimeframe="selectedTimeframe"
       :allInspectableSignals="allInspectableSignals"
       :selectedSignalIndex="selectedSignalIndex"
       :inspectedSignal="inspectedSignal"
@@ -284,7 +285,29 @@ const resolveStrategySymbol = (stratName?: string): string => {
   return 'XAU/USD';
 };
 
+const resolveStrategyTimeframe = (stratName?: string): string => {
+  if (!stratName) return '1m';
+  const clean = stratName.replace('.py', '');
+  if (props.strategies && props.strategies.length > 0) {
+    const match = props.strategies.find((st) =>
+      st.name === clean || st.name === stratName || st.file === stratName || st.file === `${clean}.py` || st.id === stratName
+    );
+    if (match && match.timeframe) {
+      return match.timeframe;
+    }
+  }
+  const s = clean.toLowerCase();
+  if (s.includes('displacement') || s.includes('liquiditywalls') || s.includes('walls')) {
+    return '5m';
+  }
+  if (s.includes('sp500') || s.includes('openingflush')) return '1m';
+  if (s.includes('btc') || s.includes('asian') || s.includes('macro')) return '15m';
+  if (s.includes('xau') || s.includes('gold') || s.includes('goat')) return '1m';
+  return '1m';
+};
+
 const selectedSymbol = ref(resolveStrategySymbol(props.selectedStrategy || props.activeStrategy));
+const selectedTimeframe = ref(resolveStrategyTimeframe(props.selectedStrategy || props.activeStrategy));
 const isGoldStrategy = computed(() => selectedSymbol.value === 'XAU/USD');
 const isSpStrategy = computed(() => selectedSymbol.value === 'S&P 500 (ES)');
 const isBtcStrategy = computed(() => selectedSymbol.value === 'BTC/USDT');
@@ -1446,7 +1469,7 @@ const loadCandles = async (preserveViewport = false) => {
     const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
     const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
     const apiSym = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAUUSD' : selectedSymbol.value);
-    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&count=20000&mode=live`);
+    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&timeframe=${encodeURIComponent(selectedTimeframe.value)}&strategy=${encodeURIComponent(cleanStrategyName.value)}&count=20000&mode=live`);
     const data = await res.json();
 
     if (data.data && data.data.length > 0) {
@@ -1836,12 +1859,13 @@ const startLiveFeeds = () => {
             lastLivePrice.value = p;
           }
         }
-        if (data?.quote?.candle) {
+        if (selectedTimeframe.value === '1m' && data?.quote?.candle) {
           updateLiveCandle(data.quote.candle);
         } else if (data?.quote?.price) {
           const p = parseFloat(data.quote.price);
           const nowSec = data.quote.timestamp ? Number(data.quote.timestamp) : Math.floor(Date.now() / 1000);
-          const barBucket = Math.floor(nowSec / 60) * 60;
+          const barStep = selectedTimeframe.value === '5m' ? 300 : (selectedTimeframe.value === '15m' ? 900 : 60);
+          const barBucket = Math.floor(nowSec / barStep) * barStep;
           updateLiveCandle({
             time: barBucket,
             open: p,
@@ -1962,10 +1986,24 @@ watch(selectedSymbol, () => {
 watch(() => props.selectedStrategy, (newStrat) => {
   if (newStrat) {
     const newSymbol = resolveStrategySymbol(newStrat);
-    if (selectedSymbol.value !== newSymbol) {
+    const newTimeframe = resolveStrategyTimeframe(newStrat);
+    const symbolChanged = selectedSymbol.value !== newSymbol;
+    const timeframeChanged = selectedTimeframe.value !== newTimeframe;
+
+    if (symbolChanged || timeframeChanged) {
       selectedSymbol.value = newSymbol;
+      selectedTimeframe.value = newTimeframe;
+      stopLiveFeeds();
+      if (inspectedSignal.value && !isPriceCompatible(inspectedSignal.value.entry_price)) {
+        isInspectingTrade.value = false;
+        selectedSignalIndex.value = 0;
+        positionBoxes.value = [];
+        clearPriceLines();
+      }
+      loadCandles();
+      startLiveFeeds();
     } else {
-      // Same symbol: immediately update dedicated visual indicators on existing candles
+      // Same symbol and timeframe: immediately update dedicated visual indicators on existing candles
       applyStrategyIndicators();
       nextTick(() => {
         if (props.targetedSignal) {

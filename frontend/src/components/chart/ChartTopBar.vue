@@ -22,6 +22,7 @@
                 <span class="truncate font-mono">{{ strat.name.replace('.py', '') }}</span>
               </div>
               <div class="flex items-center gap-1 shrink-0">
+                <span class="badge badge-xs badge-neutral text-[9px] font-mono opacity-80">{{ strat.timeframe || '1m' }}</span>
                 <span v-if="strat.name === activeStrategy" class="badge badge-xs badge-success text-[9px] font-bold">BOT</span>
                 <span v-if="strat.name === selectedStrategy" class="text-primary font-bold ml-1">✓</span>
               </div>
@@ -33,7 +34,9 @@
       <!-- Symbol / Asset Tag -->
       <div class="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-base-300/80 border border-base-content/10 text-[11px] font-bold">
         <span>{{ isSpStrategy ? '🟢 S&P 500' : (isGoldStrategy ? '🟡 XAU/USD' : '🔵 BTC/USDT') }}</span>
-        <span class="text-[9px] opacity-60 uppercase">{{ isSpStrategy ? 'CME ES 1m' : (isGoldStrategy ? 'Spot 1m' : 'Binance 15m') }}</span>
+        <span class="text-[9px] opacity-75 uppercase font-mono px-1 py-0.5 rounded bg-base-100/60 border border-base-content/10">
+          {{ isSpStrategy ? 'CME ES' : (isGoldStrategy ? 'Spot' : 'Binance') }} {{ selectedTimeframe || '1m' }}
+        </span>
       </div>
     </div>
 
@@ -342,6 +345,7 @@ const props = defineProps<{
   activeStrategy: string;
   isGoldStrategy: boolean;
   isSpStrategy?: boolean;
+  selectedTimeframe?: string;
   allInspectableSignals: InspectableSignal[];
   selectedSignalIndex: number;
   inspectedSignal?: InspectableSignal | null;

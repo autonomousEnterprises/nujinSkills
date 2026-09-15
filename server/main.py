@@ -112,31 +112,72 @@ async def get_system_status():
     }
 
 @app.get("/api/candles")
-async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: str = "live"):
+async def get_candles(
+    symbol: Optional[str] = None, 
+    count: int = 20000, 
+    mode: str = "live",
+    timeframe: Optional[str] = None,
+    strategy: Optional[str] = None
+):
     """
     Returns real OHLCV candles from CME / Binance / OANDA public APIs or local cache bridged to current time.
-    Auto-detects symbol and timeframe based on active strategy (S&P 500 1m vs XAU/USD 1m vs BTC/USDT 15m).
+    Auto-detects symbol and timeframe based on selected strategy (e.g. 5m vs 1m vs 15m).
     """
+    if strategy and not timeframe:
+        clean_strat = strategy.replace(".py", "")
+        rec = strategy_registry.get(clean_strat)
+        if rec and rec.get("timeframe"):
+            timeframe = rec.get("timeframe")
+        if not symbol and rec and rec.get("symbol"):
+            symbol = rec.get("symbol")
+
     if not symbol:
-        active_strat = state_manager.get().get("active_strategy", "OpeningFlushReversalScalper")
-        is_sp = any(k in active_strat.upper() for k in ["SP", "ES", "OPENING"])
-        is_gold = any(k in active_strat.upper() for k in ["XAU", "GOAT"])
-        symbol = "S&P 500 (ES)" if is_sp else ("XAU/USD" if is_gold else "BTC/USDT")
+        active_strat = strategy or state_manager.get().get("active_strategy", "OpeningFlushReversalScalper")
+        clean_active = active_strat.replace(".py", "")
+        rec = strategy_registry.get(clean_active)
+        if rec and rec.get("symbol"):
+            symbol = rec.get("symbol")
+        else:
+            is_sp = any(k in active_strat.upper() for k in ["SP", "ES", "OPENING"])
+            is_gold = any(k in active_strat.upper() for k in ["XAU", "GOAT", "DISPLACEMENT"])
+            symbol = "S&P 500 (ES)" if is_sp else ("XAU/USD" if is_gold else "BTC/USDT")
 
     is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500", "OPENING"])
     is_xau = any(k in symbol.upper() for k in ["XAU", "GOLD", "OANDA", "GC"])
-    interval = "1m" if (is_xau or is_sp) else "15m"
+    interval = timeframe or ("1m" if (is_xau or is_sp) else "15m")
 
     # 1. First priority: Check live in-memory warm candles from running bot/providers (< 2ms)
     from server.providers.base import ProviderRegistry
-    csv_path = "data/sp500_candles_1m.csv" if is_sp else ("data/xauusd_candles_1m.csv" if is_xau else "data/candles_15m.csv")
+    if is_sp:
+        csv_path = "data/sp500_candles_1m.csv"
+    elif is_xau:
+        if interval == "5m":
+            csv_path = "data/xauusd_candles_5m.csv"
+            if not os.path.exists(csv_path) and os.path.exists("data/xauusd_candles_1m.csv"):
+                import pandas as pd
+                df_1m = pd.read_csv("data/xauusd_candles_1m.csv")
+                df_1m['dt'] = pd.to_datetime(df_1m['timestamp'], unit='s', utc=True)
+                df_1m = df_1m.set_index('dt').sort_index()
+                resampled = df_1m.resample('5min', label='left', closed='left').agg({
+                    'timestamp': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                }).dropna().reset_index(drop=True)
+                resampled['timestamp'] = resampled['timestamp'].astype(int)
+                resampled.to_csv(csv_path, index=False)
+        else:
+            csv_path = "data/xauusd_candles_1m.csv"
+    else:
+        if interval == "5m" and os.path.exists("data/btc_candles_5m.csv"):
+            csv_path = "data/btc_candles_5m.csv"
+        else:
+            csv_path = "data/candles_15m.csv"
+
     try:
         provider = ProviderRegistry.get_provider(symbol, interval)
         if not provider.is_running:
             import asyncio
             asyncio.create_task(provider.start())
 
-        if is_xau and xauusd_engine.candles_1m and len(xauusd_engine.candles_1m) >= min(count, 10000):
+        if is_xau and interval == "1m" and xauusd_engine.candles_1m and len(xauusd_engine.candles_1m) >= min(count, 10000):
             c_list = xauusd_engine.candles_1m
             data = c_list[-count:] if (count and count < len(c_list)) else c_list
             return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
@@ -168,7 +209,7 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
                 ]
                 if provider:
                     provider._candles = data
-                if is_xau:
+                if is_xau and interval == "1m":
                     xauusd_engine.candles_1m = data
                 return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
 
@@ -215,7 +256,6 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
     except Exception as e:
         logger.error(f"[Candles] Failed to fetch real data for {symbol}: {e}")
         # Robust fallback to cached dataset with automatic bridging up to current time
-        csv_path = "data/sp500_candles_1m.csv" if is_sp else ("data/xauusd_candles_1m.csv" if is_xau else "data/candles_15m.csv")
         if os.path.exists(csv_path):
             try:
                 import pandas as pd
