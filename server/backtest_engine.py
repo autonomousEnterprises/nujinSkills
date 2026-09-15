@@ -52,10 +52,14 @@ def load_strategy_instance(strategy_name: str) -> Optional[Any]:
         return None
 
     try:
-        spec = importlib.util.spec_from_file_location(f"edge_strategy_{clean_name}", strat_path)
+        mod_name = f"edge_strategy_{clean_name}"
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+        spec = importlib.util.spec_from_file_location(mod_name, strat_path)
         if not spec or not spec.loader:
             return None
         mod = importlib.util.module_from_spec(spec)
+        sys.modules[mod_name] = mod
         spec.loader.exec_module(mod)
 
         # Locate strategy class in module
@@ -318,7 +322,9 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
                     continue
 
             # Dynamic entry price calculation (Limit order vs Market order)
-            if 'atr_lower_band' in c and is_long and not np.isnan(c['atr_lower_band']):
+            if 'custom_entry_price' in c and not np.isnan(c['custom_entry_price']):
+                entry_price = round(float(c['custom_entry_price']), 2)
+            elif 'atr_lower_band' in c and is_long and not np.isnan(c['atr_lower_band']):
                 lower_band = float(c['atr_lower_band'])
                 entry_price = round(curr_close if (is_gold or is_sp500) else lower_band, 2)
             else:

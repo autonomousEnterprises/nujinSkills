@@ -518,7 +518,39 @@ async def get_bot_status():
 
 @app.post("/api/strategies/select")
 async def select_and_run_strategy(req: SelectStrategyRequest):
-    logger.info(f"Strategy backtest preview requested: {req.strategy}")
+    logger.info(f"Strategy selected for inspection: {req.strategy}")
+    clean_name = req.strategy.replace(".py", "")
+    strat_record = strategy_registry.get(clean_name)
+    
+    # Return existing audited backtest if present to prevent unwanted re-runs and drift pollution
+    if strat_record and strat_record.get("latest_backtest") and strat_record.get("latest_backtest", {}).get("trades", 0) > 0:
+        logger.info(f"[SelectStrategy] Returning cached audited backtest for {clean_name}")
+        summary = strat_record.get("latest_backtest", {})
+        gates = strat_record.get("falsification_gates", {})
+        eq = strat_record.get("backtest_equity_curve", [])
+        symbol = strat_record.get("symbol", "XAU/USD")
+        timeframe = strat_record.get("timeframe", "1m")
+        thesis = strat_record.get("thesis", f"Autonomous Alpha Model: {clean_name}")
+        thesis_props = {
+            "thesis": thesis,
+            "counterparty": "Trapped breakout liquidity / volatility expansion",
+            "invalidation": "Stop-loss triggered beyond structural extreme",
+            "target_profile": strat_record.get("target_profile", f"{clean_name} Profile")
+        }
+        result = {
+            "strategy": clean_name,
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "summary": summary,
+            "falsification_gates": gates,
+            "equity_curve": eq,
+            "thesis_props": thesis_props,
+            "drift_history": strat_record.get("cron_config", {}).get("drift_history", []),
+            "strategy_record": strat_record
+        }
+        await manager.broadcast({"event_type": "BACKTEST_UPDATED", "payload": result})
+        return result
+
     result = run_real_backtest(req.strategy, save_as_active=False)
     await manager.broadcast({"event_type": "BACKTEST_UPDATED", "payload": result})
     return result

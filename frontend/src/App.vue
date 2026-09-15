@@ -43,7 +43,7 @@
         :signals="signals"
         :theme="theme"
         :selectedStrategy="selectedStrategy"
-        :selectedBacktestData="selectedBacktestData"
+        :selectedBacktestData="currentStrategyBacktest"
         :activeState="activeState"
         :managedStrategies="managedStrategies"
         :portfolioSummary="portfolioSummary"
@@ -59,7 +59,7 @@
       <BacktestDeck
         :theme="theme"
         :selectedStrategy="selectedStrategy"
-        :selectedBacktestData="selectedBacktestData"
+        :selectedBacktestData="currentStrategyBacktest"
         :activeState="activeState"
         :strategies="strategies"
         :managedStrategies="managedStrategies"
@@ -229,11 +229,26 @@ const fetchStrategies = async () => {
 };
 
 const currentStrategyBacktest = computed(() => {
-  if (!selectedBacktestData.value) return null;
+  if (selectedBacktestData.value) {
+    const currClean = selectedStrategy.value.replace('.py', '').toLowerCase();
+    const backtestStrat = (selectedBacktestData.value.strategy || '').replace('.py', '').toLowerCase();
+    if (backtestStrat && currClean && backtestStrat === currClean) {
+      return selectedBacktestData.value;
+    }
+  }
   const currClean = selectedStrategy.value.replace('.py', '').toLowerCase();
-  const backtestStrat = (selectedBacktestData.value.strategy || '').replace('.py', '').toLowerCase();
-  if (backtestStrat && currClean && backtestStrat === currClean) {
-    return selectedBacktestData.value;
+  const m = managedStrategies.value.find(
+    (s: any) => (s.name || '').replace('.py', '').toLowerCase() === currClean
+  );
+  if (m && m.latest_backtest) {
+    return {
+      strategy: m.name,
+      summary: m.latest_backtest,
+      falsification_gates: m.falsification_gates,
+      equity_curve: m.backtest_equity_curve || [],
+      thesis_props: m.thesis_props,
+      drift_history: m.cron_config?.drift_history || []
+    };
   }
   return null;
 });
@@ -427,7 +442,7 @@ const handleTriggerCron = async () => {
 };
 
 const handleNavigateToBacktest = (stratName: string) => {
-  handleSelectStrategy(stratName);
+  selectedStrategy.value = stratName;
   activeScreen.value = 'BACKTEST';
 };
 
