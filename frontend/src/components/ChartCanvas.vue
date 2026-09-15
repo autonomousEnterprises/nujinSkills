@@ -20,6 +20,7 @@
       @nextJump="nextJump"
       @jumpToIndex="jumpToIndex"
       @jumpToLatest="jumpToLatest"
+      @jumpToNow="jumpToNow"
       @jumpToActive="jumpToActive"
     />
 
@@ -1106,6 +1107,21 @@ const jumpToLatest = () => {
   if (allInspectableSignals.value.length > 0) {
     jumpToIndex(allInspectableSignals.value.length - 1);
   }
+};
+
+const jumpToNow = () => {
+  if (!chart) return;
+  dismissInspection();
+  if (rawCandles.value && rawCandles.value.length > 0) {
+    const totalBars = rawCandles.value.length;
+    const windowBars = 80;
+    chart.timeScale().setVisibleLogicalRange({
+      from: Math.max(0, totalBars - windowBars),
+      to: totalBars + 8,
+    });
+  }
+  chart.timeScale().scrollToRealTime();
+  chart.priceScale('right').applyOptions({ autoScale: true });
 };
 
 const jumpToActive = () => {

@@ -263,13 +263,23 @@
           </button>
         </div>
 
-        <!-- Quick Jump: Latest Trade -->
+        <!-- Quick Jump: Latest Trade Signal -->
         <button
           @click="emit('jumpToLatest')"
           class="btn btn-xs btn-ghost border border-base-content/15 text-[10px] uppercase font-bold tracking-wider hover:bg-base-200 hidden md:inline-flex"
-          title="Jump view to most recent trade"
+          title="Jump view to most recent trade signal"
         >
           Latest
+        </button>
+
+        <!-- Quick Jump: Now (Live Price Bar) -->
+        <button
+          @click="emit('jumpToNow')"
+          class="btn btn-xs btn-ghost border border-primary/30 text-primary text-[10px] uppercase font-bold tracking-wider hover:bg-primary/10 gap-1 inline-flex"
+          title="Jump view to the latest live price bar [Now]"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+          Now
         </button>
 
         <!-- Quick Jump: Active Live Trade (pulsing if active) -->
@@ -337,6 +347,7 @@ const emit = defineEmits<{
   (e: 'nextJump'): void;
   (e: 'jumpToIndex', idx: number): void;
   (e: 'jumpToLatest'): void;
+  (e: 'jumpToNow'): void;
   (e: 'jumpToActive'): void;
 }>();
 

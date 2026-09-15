@@ -118,20 +118,40 @@ class TelegramGateway:
 
         icon = "🟢" if action in ("BUY", "LONG") else "🔴"
         local_time_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-        # Numbers formatted on dedicated lines for 1-tap select & copy into MT4/MT5/cTrader
-        text = (
-            f"{icon} <b>{action} {pair}</b>{strat_tag} — EdgeMiner Signal\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"⏰ <b>Time:</b> <code>{local_time_str}</code>\n\n"
-            f"📈 <b>Entry:</b>\n"
-            f"<code>{price:.2f}</code>\n\n"
-            f"🛡️ <b>Stop Loss:</b>\n"
-            f"<code>{stop_loss:.2f}</code>\n\n"
-            f"🎯 <b>Take Profit:</b>\n"
-            f"<code>{take_profit:.2f}</code>\n\n"
-            f"💡 <i>{annotation}</i>\n"
-            f"🧠 {reasoning}"
-        )
+        lines = [
+            f"{icon} <b>{action} {pair}</b>{strat_tag} — EdgeMiner Signal",
+            "━━━━━━━━━━━━━━━━━━━",
+            f"⏰ <b>Time:</b> <code>{local_time_str}</code>\n",
+            "📈 <b>Entry:</b>",
+            f"<code>{price:.2f}</code>\n"
+        ]
+
+        if stop_loss > 0:
+            lines.extend([
+                "🛡️ <b>Stop Loss:</b>",
+                f"<code>{stop_loss:.2f}</code>\n"
+            ])
+
+        if take_profit > 0:
+            lines.extend([
+                "🎯 <b>Take Profit:</b>",
+                f"<code>{take_profit:.2f}</code>\n"
+            ])
+
+        # If both SL and TP are specified by the strategy, display exact Risk/Reward
+        if price > 0 and stop_loss > 0 and take_profit > 0:
+            risk = abs(price - stop_loss)
+            reward = abs(take_profit - price)
+            if risk > 0:
+                rr = reward / risk
+                lines.append(f"⚖️ <b>Risk/Reward:</b> <code>1 : {rr:.2f}</code>\n")
+
+        if annotation and annotation != "Edge Triggered":
+            lines.append(f"💡 <i>{annotation}</i>")
+        if reasoning:
+            lines.append(f"🧠 {reasoning}")
+
+        text = "\n".join(lines)
         return self.send_message(text, parse_mode="HTML")
 
     def format_and_send_trade_close(self, payload: Dict[str, Any]) -> bool:

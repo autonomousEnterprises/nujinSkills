@@ -149,7 +149,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False) -> 
     returns_file = os.path.join(data_dir, "candidate_returns.json")
 
     # 1. Resolve Candle Dataset and Sync if Needed
-    is_gold = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper()) or ("PAXG" in symbol.upper())
+    is_gold = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper())
     is_sp500 = any(k in symbol.upper() for k in ["SP", "ES", "US500", "S&P"])
     if is_gold:
         candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")

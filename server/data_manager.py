@@ -18,7 +18,7 @@ import websockets
 def resolve_market_symbol(symbol: str) -> str:
     """Maps user symbol to institutional exchange symbol."""
     upper = symbol.replace("/", "").replace("-", "").replace(":", "").replace(" ", "").replace("&", "").upper()
-    if upper in ("XAUUSD", "GOLD", "XAU", "OANDA", "XAU_USD", "OANDAXAUUSD", "GC=F", "GC", "PAXG", "PAXGUSD"):
+    if upper in ("XAUUSD", "GOLD", "XAU", "OANDA", "XAU_USD", "OANDAXAUUSD", "GC=F", "GC"):
         return "OANDA:XAUUSD"
     if any(k in upper for k in ["SP500", "SPX", "ES", "US500", "SPY"]):
         return "CME_MINI:ES1!"
@@ -35,7 +35,7 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
         "symbols": {"tickers": ["OANDA:XAUUSD"]},
         "columns": ["close", "open", "high", "low", "bid", "ask", "change", "volume"]
     }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EdgeMiner/1.0"})
+    req = urllib.request.Request(url, data=payload, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             d = json.loads(r.read().decode("utf-8"))
@@ -324,7 +324,7 @@ def fetch_real_comex_gold_candles(interval: str = "1m", count: int = 2880) -> Li
     else:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval={interval}&range=3mo"
 
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EdgeMiner/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
     with urllib.request.urlopen(req, timeout=12) as resp:
         data = json.loads(resp.read().decode("utf-8"))
 

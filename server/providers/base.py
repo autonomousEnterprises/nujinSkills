@@ -121,7 +121,7 @@ class ProviderRegistry:
         upper_sym = (symbol or "").upper()
         if any(s in upper_sym for s in ["SP", "ES", "S&P", "US500", "OPENING"]):
             return "S&P 500 (ES)"
-        elif any(g in upper_sym for g in ["XAU", "GOLD", "OANDA", "PAXG", "GC"]):
+        elif any(g in upper_sym for g in ["XAU", "GOLD", "OANDA", "GC"]):
             return "XAU/USD"
         elif "BTC" in upper_sym:
             return "BTC/USDT"

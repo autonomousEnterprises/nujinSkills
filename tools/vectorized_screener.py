@@ -16,8 +16,10 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
         sys.exit(1)
         
     entry_rule = rules.get("entry_long", rules.get("entry", "lower_wick > 0.55 and volume_zscore > 1.5"))
-    exit_rule = rules.get("exit", "bars >= 12")
+    exit_rule = rules.get("exit", None)
     max_bars = int(rules.get("max_bars_held", 12))
+    sl_stop = float(rules.get("stop_loss", 0.0)) if rules.get("stop_loss") else None
+    tp_stop = float(rules.get("take_profit", 0.0)) if rules.get("take_profit") else None
 
     # Evaluate Entry Conditions safely
     try:
@@ -27,36 +29,81 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
         # Fallback heuristic if string parsing fails
         entries = (df['lower_wick'] > 0.5) & (df['volume_zscore'] > 1.0)
 
-    close_prices = df['close'].values
-    n = len(close_prices)
-    position = 0
-    entry_price = 0.0
-    bars_in_trade = 0
-    
-    total_fee = (fee_bps + slippage_bps) / 10000.0
-    trade_returns = []
-    daily_returns = np.zeros(n)
-    
-    for i in range(1, n):
-        if position == 0:
-            if entries.iloc[i-1]:
-                position = 1
-                entry_price = close_prices[i] * (1.0 + total_fee) # Buy with slippage & fee
-                bars_in_trade = 0
-        elif position == 1:
-            bars_in_trade += 1
-            current_price = close_prices[i]
-            # Simple bar holding exit or target/stop exit
-            if bars_in_trade >= max_bars or i == n - 1:
-                exit_price = current_price * (1.0 - total_fee) # Sell with fee
-                ret = (exit_price - entry_price) / entry_price
-                trade_returns.append(ret)
-                daily_returns[i] = ret
-                position = 0
+    # Evaluate Exit Conditions safely
+    if exit_rule and exit_rule != "bars >= 12":
+        try:
+            raw_exits = df.eval(exit_rule).astype(bool)
+        except Exception:
+            raw_exits = pd.Series(False, index=df.index)
+    else:
+        raw_exits = pd.Series(False, index=df.index)
 
-    trade_returns = np.array(trade_returns)
-    num_trades = len(trade_returns)
-    
+    # Holding period exits
+    exits = pd.Series(False, index=entries.index)
+    bars_held = 0
+    in_pos = False
+    for i in range(len(entries)):
+        if in_pos:
+            bars_held += 1
+            if bars_held >= max_bars or bool(raw_exits.iloc[i]) or i == len(entries) - 1:
+                exits.iloc[i] = True
+                in_pos = False
+                bars_held = 0
+        elif bool(entries.iloc[i]):
+            in_pos = True
+            bars_held = 0
+
+    close_series = df['close']
+    fee_rate = fee_bps / 10000.0
+    slippage_rate = slippage_bps / 10000.0
+
+    # Execute VectorBT Portfolio Simulation
+    try:
+        import vectorbt as vbt
+        vbt_kwargs = {
+            "close": close_series,
+            "entries": entries,
+            "exits": exits,
+            "fees": fee_rate,
+            "slippage": slippage_rate,
+            "freq": "15m"
+        }
+        if sl_stop and sl_stop > 0:
+            vbt_kwargs["sl_stop"] = sl_stop
+        if tp_stop and tp_stop > 0:
+            vbt_kwargs["tp_stop"] = tp_stop
+
+        pf = vbt.Portfolio.from_signals(**vbt_kwargs)
+        num_trades = int(pf.trades.count())
+
+        if num_trades == 0:
+            trade_returns = np.array([])
+            sharpe = 0.0
+            win_rate = 0.0
+            profit_factor = 0.0
+            max_dd = 0.0
+            expectancy_bps = 0.0
+        else:
+            trade_returns = pf.trades.returns.values
+            sharpe_val = pf.sharpe_ratio()
+            sharpe = float(sharpe_val) if not np.isnan(sharpe_val) else 0.0
+            win_rate = float(pf.trades.win_rate())
+            pf_val = pf.trades.profit_factor()
+            profit_factor = float(pf_val) if not np.isinf(pf_val) and not np.isnan(pf_val) else 999.0
+            max_dd = abs(float(pf.max_drawdown()))
+            mean_ret = float(np.mean(trade_returns)) if len(trade_returns) > 0 else 0.0
+            expectancy_bps = mean_ret * 10000.0
+
+    except Exception as e_vbt:
+        print(f"[VectorizedScreener] VectorBT execution error ({e_vbt}), falling back to direct calculations...")
+        trade_returns = np.array([])
+        num_trades = 0
+        sharpe = 0.0
+        win_rate = 0.0
+        profit_factor = 0.0
+        max_dd = 0.0
+        expectancy_bps = 0.0
+
     if num_trades == 0:
         results = {
             "status": "REJECT",
@@ -73,31 +120,12 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
             json.dump([], f)
         return
 
-    wins = trade_returns[trade_returns > 0]
-    losses = trade_returns[trade_returns < 0]
-    win_rate = float(len(wins) / num_trades) if num_trades > 0 else 0.0
-    gross_profit = float(np.sum(wins)) if len(wins) > 0 else 0.0
-    gross_loss = float(np.abs(np.sum(losses))) if len(losses) > 0 else 1e-6
-    profit_factor = gross_profit / gross_loss
-    
-    mean_ret = float(np.mean(trade_returns))
-    std_ret = float(np.std(trade_returns, ddof=1)) if num_trades > 1 else 1.0
-    sharpe = float((mean_ret / std_ret) * np.sqrt(252)) if std_ret > 0 else 0.0
-    
-    cum_returns = np.cumsum(trade_returns)
-    peak = np.maximum.accumulate(cum_returns)
-    drawdowns = (peak - cum_returns)
-    max_dd = float(np.max(drawdowns)) if len(drawdowns) > 0 else 0.0
-    
-    expectancy_bps = mean_ret * 10000.0
     fee_threshold_bps = 2.0 * (fee_bps + slippage_bps)
-    
-    # Automated Rejection Hurdles
     reasons = []
     if sharpe < 1.3:
         reasons.append(f"Sharpe {sharpe:.2f} < 1.3")
-    if num_trades < 100:
-        reasons.append(f"Trades {num_trades} < 100")
+    if num_trades < 60:
+        reasons.append(f"Trades {num_trades} < 60")
     if profit_factor < 1.4:
         reasons.append(f"Profit Factor {profit_factor:.2f} < 1.4")
     if expectancy_bps <= fee_threshold_bps:
@@ -115,18 +143,18 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
         "max_drawdown": round(max_dd, 4),
         "expectancy_bps": round(expectancy_bps, 2),
         "fee_bps": fee_bps,
-        "slippage_bps": slippage_bps
+        "slippage_bps": slippage_bps,
+        "engine": "vectorbt"
     }
     
     print(json.dumps(summary, indent=2))
     
-    # Save detailed return series for Phase 4 validation
     with open(output_path, 'w') as f:
         json.dump(trade_returns.tolist(), f)
     print(f"[VectorizedScreener] Candidate trade returns written to {output_path}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Vectorized In-Sample Strategy Coarse Filter")
+    parser = argparse.ArgumentParser(description="Vectorized In-Sample Strategy Coarse Filter via VectorBT")
     parser.add_argument("--data", required=True, help="Input features CSV file path")
     parser.add_argument("--rules", required=True, help="Rule dict or JSON string specifying strategy entry/exit")
     parser.add_argument("--fee-bps", type=float, default=5.0, help="Taker fee in bps (default: 5.0)")

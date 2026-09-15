@@ -124,7 +124,7 @@ async def get_candles(symbol: Optional[str] = None, count: int = 20000, mode: st
         symbol = "S&P 500 (ES)" if is_sp else ("XAU/USD" if is_gold else "BTC/USDT")
 
     is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500", "OPENING"])
-    is_xau = any(k in symbol.upper() for k in ["XAU", "GOLD", "OANDA", "PAXG", "GC"])
+    is_xau = any(k in symbol.upper() for k in ["XAU", "GOLD", "OANDA", "GC"])
     interval = "1m" if (is_xau or is_sp) else "15m"
 
     # 1. First priority: Check live in-memory warm candles from running bot/providers (< 2ms)
