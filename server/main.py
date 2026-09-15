@@ -153,15 +153,22 @@ async def get_candles(
     elif is_xau:
         if interval == "5m":
             csv_path = "data/xauusd_candles_5m.csv"
-            if not os.path.exists(csv_path) and os.path.exists("data/xauusd_candles_1m.csv"):
+            need_resample = not os.path.exists(csv_path)
+            if not need_resample and os.path.exists("data/xauusd_candles_1m.csv"):
+                try:
+                    need_resample = os.path.getmtime("data/xauusd_candles_1m.csv") > os.path.getmtime(csv_path)
+                except Exception:
+                    pass
+            if need_resample and os.path.exists("data/xauusd_candles_1m.csv"):
                 import pandas as pd
                 df_1m = pd.read_csv("data/xauusd_candles_1m.csv")
                 df_1m['dt'] = pd.to_datetime(df_1m['timestamp'], unit='s', utc=True)
                 df_1m = df_1m.set_index('dt').sort_index()
                 resampled = df_1m.resample('5min', label='left', closed='left').agg({
-                    'timestamp': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
-                }).dropna().reset_index(drop=True)
-                resampled['timestamp'] = resampled['timestamp'].astype(int)
+                    'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                }).dropna()
+                resampled['timestamp'] = (resampled.index.astype('int64') // 10**9).astype(int)
+                resampled = resampled[['timestamp', 'open', 'high', 'low', 'close', 'volume']].reset_index(drop=True)
                 resampled.to_csv(csv_path, index=False)
         else:
             csv_path = "data/xauusd_candles_1m.csv"

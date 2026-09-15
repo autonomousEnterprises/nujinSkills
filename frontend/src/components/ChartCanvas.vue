@@ -871,6 +871,7 @@ const syncPriceAxisLines = (target: InspectableSignal | null | undefined) => {
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
+        lineVisible: false,
         title: 'ENTRY',
       });
       activePriceLines.push(plEntry);
@@ -884,6 +885,7 @@ const syncPriceAxisLines = (target: InspectableSignal | null | undefined) => {
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
+        lineVisible: false,
         title: 'TP',
       });
       activePriceLines.push(plTp);
@@ -897,6 +899,7 @@ const syncPriceAxisLines = (target: InspectableSignal | null | undefined) => {
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
+        lineVisible: false,
         title: 'SL',
       });
       activePriceLines.push(plSl);
@@ -1134,17 +1137,13 @@ const getLabelX = (box: PositionBoxCoord) => {
     const offsetFromEntry = box.x + 14;
     return Math.max(8, Math.min(containerW - labelWidth - 75, offsetFromEntry));
   }
-  // Closed trade: position at the left (entry) side of the trade box (+8px).
-  // This completely avoids collision with the exit marker arrow and pnl text rendered at the right edge of the box.
-  if (box.width >= labelWidth + 16) {
-    return Math.max(8, Math.min(box.x + 8, containerW - labelWidth - 10));
-  } else {
-    // Narrow box: place to the left of the entry candle if there is space, otherwise offset slightly
-    if (box.x - labelWidth - 8 >= 8) {
-      return box.x - labelWidth - 8;
-    }
-    return Math.max(8, Math.min(box.x + 8, containerW - labelWidth - 10));
+  // Closed trade: position labels to the LEFT of the entry candle (outside the trade box)
+  // so that neither Candle 1 nor [BT] LONG nor any candles inside the box are obstructed!
+  if (box.x >= labelWidth + 16) {
+    return box.x - labelWidth - 8;
   }
+  // If not enough room to the left, position cleanly at the left edge inside the box
+  return Math.max(8, Math.min(box.x + 8, containerW - labelWidth - 10));
 };
 
 const getClampedY = (y: number) => {
@@ -1308,6 +1307,8 @@ const initChart = () => {
     borderVisible: false,
     wickUpColor: '#26a69a',
     wickDownColor: '#ef5350',
+    priceLineVisible: false,
+    lastValueVisible: false,
   });
 
   // Volume Series
@@ -1705,7 +1706,9 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
   if (!candleSeries || !candleData || !candleData.time || !candleData.close || candleData.close <= 0) return;
   if (!rawCandles.value || rawCandles.value.length === 0) return;
 
-  const rawTime = Number(candleData.time);
+  const tf = selectedTimeframe.value;
+  const barStep = tf === '5m' ? 300 : (tf === '15m' ? 900 : 60);
+  const rawTime = Math.floor(Number(candleData.time) / barStep) * barStep;
   const open = Number(candleData.open || candleData.close);
   const high = Math.max(Number(candleData.high || candleData.close), open, Number(candleData.close));
   const low = Math.min(Number(candleData.low || candleData.close), open, Number(candleData.close));
@@ -1715,13 +1718,9 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
   const lastCandle = rawCandles.value[rawCandles.value.length - 1];
   const lastTime = Number(lastCandle.time);
 
-  const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
-  const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES');
-  const expectedStep = (isGold || isSp) ? 60 : 900;
-
   // If a significant gap is detected, trigger non-blocking debounced background reconciliation (max once per 30s)
   const nowMs = Date.now();
-  if (rawTime - lastTime > expectedStep * 3) {
+  if (rawTime - lastTime > barStep * 3) {
     if (nowMs - lastGapSyncTime > 30000) {
       lastGapSyncTime = nowMs;
       loadCandles(true);
