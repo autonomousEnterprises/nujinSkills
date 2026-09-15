@@ -165,6 +165,13 @@
                   >
                     Shorts ({{ shortCount }})
                   </button>
+                  <button 
+                    @click="activeFilter = 'SIGNALS'"
+                    class="btn btn-xs join-item font-mono h-6 min-h-0 px-2"
+                    :class="activeFilter === 'SIGNALS' ? 'btn-warning text-warning-content font-bold' : 'btn-ghost text-warning'"
+                  >
+                    ⚡ Signals ({{ liveSignalCount }})
+                  </button>
                 </div>
               </div>
 
@@ -193,7 +200,10 @@
                       </div>
 
                       <span v-if="item.sig.isLiveActive" class="badge badge-xs badge-success text-[8px] font-bold animate-pulse">
-                        LIVE
+                        LIVE ACTIVE
+                      </span>
+                      <span v-else-if="item.sig.source === 'LIVE'" class="badge badge-xs badge-warning text-warning-content text-[8px] font-bold">
+                        ⚡ SIGNAL
                       </span>
                       <span v-else-if="item.idx === selectedSignalIndex" class="text-primary font-bold text-[9px]">
                         ● ACTIVE
@@ -353,12 +363,13 @@ const emit = defineEmits<{
 
 // ── Mega-Menu Search & Filter State ──
 const searchQuery = ref('');
-const activeFilter = ref<'ALL' | 'WIN' | 'LOSS' | 'LONG' | 'SHORT'>('ALL');
+const activeFilter = ref<'ALL' | 'WIN' | 'LOSS' | 'LONG' | 'SHORT' | 'SIGNALS'>('ALL');
 
 const winCount = computed(() => (props.allInspectableSignals || []).filter(s => (s.pnl_pct || 0) >= 0).length);
 const lossCount = computed(() => (props.allInspectableSignals || []).filter(s => (s.pnl_pct || 0) < 0).length);
 const longCount = computed(() => (props.allInspectableSignals || []).filter(s => s.side === 'BUY' || s.side === 'LONG').length);
 const shortCount = computed(() => (props.allInspectableSignals || []).filter(s => s.side === 'SELL' || s.side === 'SHORT').length);
+const liveSignalCount = computed(() => (props.allInspectableSignals || []).filter(s => s.source === 'LIVE').length);
 const winRatePct = computed(() => {
   const total = (props.allInspectableSignals || []).length;
   if (total === 0) return '0.0';
@@ -377,6 +388,7 @@ const filteredSignals = computed(() => {
       if (activeFilter.value === 'LOSS' && (sig.pnl_pct || 0) >= 0) return false;
       if (activeFilter.value === 'LONG' && sig.side !== 'BUY' && sig.side !== 'LONG') return false;
       if (activeFilter.value === 'SHORT' && sig.side !== 'SELL' && sig.side !== 'SHORT') return false;
+      if (activeFilter.value === 'SIGNALS' && sig.source !== 'LIVE') return false;
 
       // Filter by search query
       if (query) {

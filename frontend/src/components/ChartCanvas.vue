@@ -699,6 +699,89 @@ const allInspectableSignals = computed<InspectableSignal[]>(() => {
   return list;
 });
 
+// ── Unified Chart Markers (Backtest Trades + All Live Signals Entry & Exit) ──
+const allChartMarkers = computed(() => {
+  const result: any[] = [];
+
+  // 1. Backtest trade markers
+  if (props.tradeMarkers && props.tradeMarkers.length > 0) {
+    result.push(...props.tradeMarkers);
+  }
+
+  // 2. Real Live Signals from SignalStore (both active and past closed)
+  const sigList = props.signals || [];
+  for (const s of sigList) {
+    const rawTime = s.time ? Number(s.time) : (s.timestamp ? Math.floor(s.timestamp / 1000) : 0);
+    const entryPrice = Number(s.entry_price || s.price || 0);
+    if (!rawTime || !entryPrice || !isPriceCompatible(entryPrice)) continue;
+
+    const isBuy = s.action === 'BUY' || s.action === 'LONG' || s.side === 'LONG' || s.side === 'BUY';
+    const isClosed = Boolean(
+      s.status === 'CLOSED' ||
+      s.status === 'COMPLETED' ||
+      s.exit_price != null ||
+      (s.exit_reason && s.exit_reason !== 'ACTIVE_IN_POSITION') ||
+      s.exit_time != null
+    );
+
+    // Entry Marker for live signal
+    result.push({
+      id: s.id != null ? `live-entry-${s.id}` : undefined,
+      time: rawTime,
+      price: entryPrice,
+      position: isBuy ? 'belowBar' : 'aboveBar',
+      color: isBuy ? '#10b981' : '#f43f5e',
+      shape: isBuy ? 'arrowUp' : 'arrowDown',
+      text: `⚡ LIVE ${isBuy ? 'BUY' : 'SELL'}`,
+      isLiveSignal: true,
+    });
+
+    // Exit Marker for closed live signal
+    const exitTime = Number(s.exit_time || (s as any).closed_at || 0);
+    const exitPrice = s.exit_price != null ? Number(s.exit_price) : undefined;
+    if (isClosed && exitTime > 0) {
+      const pnl = s.pnl_pct != null ? Number(s.pnl_pct) : 0;
+      const pnlStr = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+      const exitColor = pnl >= 0 ? '#10b981' : '#f59e0b';
+      result.push({
+        id: s.id != null ? `live-exit-${s.id}` : undefined,
+        time: exitTime,
+        price: exitPrice,
+        position: isBuy ? 'aboveBar' : 'belowBar',
+        color: exitColor,
+        shape: 'circle',
+        text: `🎯 EXIT ${pnlStr}`,
+        isLiveSignal: true,
+      });
+    }
+  }
+
+  // 3. Latest signal if active and not already included
+  if (props.latestSignal && (props.latestSignal.entry_price || props.latestSignal.price)) {
+    const s = props.latestSignal;
+    const rawTime = s.time ? Number(s.time) : (s.timestamp ? Math.floor(s.timestamp / 1000) : 0);
+    const entryPrice = Number(s.entry_price || s.price || 0);
+    if (rawTime && entryPrice && isPriceCompatible(entryPrice)) {
+      const alreadyIn = result.some(m => m.isLiveSignal && Math.abs(Number(m.time) - rawTime) < 2);
+      if (!alreadyIn) {
+        const isBuy = s.action === 'BUY' || s.action === 'LONG' || s.side === 'LONG' || s.side === 'BUY';
+        result.push({
+          id: s.id != null ? `live-entry-${s.id}` : 'live-entry-latest',
+          time: rawTime,
+          price: entryPrice,
+          position: isBuy ? 'belowBar' : 'aboveBar',
+          color: isBuy ? '#10b981' : '#f43f5e',
+          shape: isBuy ? 'arrowUp' : 'arrowDown',
+          text: `⚡ LIVE ${isBuy ? 'BUY' : 'SELL'}`,
+          isLiveSignal: true,
+        });
+      }
+    }
+  }
+
+  return result;
+});
+
 const isTargetTradeOpen = (target: InspectableSignal | null | undefined): boolean => {
   if (!target) return false;
   if (target.source === 'BACKTEST') return false;
@@ -1399,9 +1482,9 @@ const loadCandles = async (preserveViewport = false) => {
         };
       }
 
-      // Apply markers if present
-      if (props.tradeMarkers && props.tradeMarkers.length > 0) {
-        applyMarkers(props.tradeMarkers);
+      // Apply unified markers (backtest + all live signals)
+      if (allChartMarkers.value && allChartMarkers.value.length > 0) {
+        applyMarkers(allChartMarkers.value);
       }
 
       if (preserveViewport && savedRange) {
@@ -1517,15 +1600,26 @@ const applyMarkers = (markers: any[]) => {
           text: m.text || m.action || 'BUY',
         });
       } else if (bucket.below.length > 1) {
-        const firstM = bucket.below[0];
-        const count = bucket.below.length;
-        formatted.push({
-          time: bucket.barTime,
-          position: 'belowBar',
-          color: firstM.color || '#26a69a',
-          shape: 'arrowUp',
-          text: `[BT] ${count} Trades`,
-        });
+        const liveM = bucket.below.find((m: any) => m.isLiveSignal);
+        if (liveM) {
+          formatted.push({
+            time: bucket.barTime,
+            position: 'belowBar',
+            color: liveM.color || '#10b981',
+            shape: liveM.shape || 'arrowUp',
+            text: liveM.text || '⚡ LIVE BUY',
+          });
+        } else {
+          const firstM = bucket.below[0];
+          const count = bucket.below.length;
+          formatted.push({
+            time: bucket.barTime,
+            position: 'belowBar',
+            color: firstM.color || '#26a69a',
+            shape: 'arrowUp',
+            text: `[BT] ${count} Trades`,
+          });
+        }
       }
 
       // 2. Above bar markers: Max 1 marker above bar
@@ -1539,15 +1633,26 @@ const applyMarkers = (markers: any[]) => {
           text: m.text || m.action || 'SHORT',
         });
       } else if (bucket.above.length > 1) {
-        const firstM = bucket.above[0];
-        const count = bucket.above.length;
-        formatted.push({
-          time: bucket.barTime,
-          position: 'aboveBar',
-          color: firstM.color || '#ef5350',
-          shape: 'arrowDown',
-          text: `[BT] ${count} Trades`,
-        });
+        const liveM = bucket.above.find((m: any) => m.isLiveSignal);
+        if (liveM) {
+          formatted.push({
+            time: bucket.barTime,
+            position: 'aboveBar',
+            color: liveM.color || '#f43f5e',
+            shape: liveM.shape || 'arrowDown',
+            text: liveM.text || '⚡ LIVE SELL',
+          });
+        } else {
+          const firstM = bucket.above[0];
+          const count = bucket.above.length;
+          formatted.push({
+            time: bucket.barTime,
+            position: 'aboveBar',
+            color: firstM.color || '#ef5350',
+            shape: 'arrowDown',
+            text: `[BT] ${count} Trades`,
+          });
+        }
       }
     }
 
@@ -1888,7 +1993,7 @@ watch(() => props.theme, (newTheme) => {
   });
 });
 
-watch(() => props.tradeMarkers, (newMarkers) => {
+watch(allChartMarkers, (newMarkers) => {
   if (newMarkers && !loadingCandles.value) applyMarkers(newMarkers);
 }, { deep: true });
 
