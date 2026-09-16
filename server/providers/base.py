@@ -108,6 +108,145 @@ class BaseMarketDataProvider(abc.ABC):
             except Exception as e:
                 logger.error(f"[{self.symbol}] Bar callback error: {e}")
 
+    @property
+    def bar_step_seconds(self) -> int:
+        tf = (self.timeframe or "1m").lower().strip()
+        if tf in ("1", "1m"): return 60
+        elif tf in ("3", "3m"): return 180
+        elif tf in ("5", "5m"): return 300
+        elif tf in ("15", "15m"): return 900
+        elif tf in ("30", "30m"): return 1800
+        elif tf in ("60", "1h", "60m"): return 3600
+        elif tf in ("4h", "240m"): return 14400
+        elif tf in ("1d", "d"): return 86400
+        return 60
+
+    async def process_live_tick(
+        self,
+        price: float,
+        timestamp: Optional[int] = None,
+        bid: Optional[float] = None,
+        ask: Optional[float] = None,
+        volume_increment: Optional[float] = None,
+        source: str = "live_feed"
+    ) -> Dict[str, Any]:
+        """
+        Unified global method to process any incoming market price tick for ANY asset.
+        Automatically handles:
+        1. Modulo timeframe bucket alignment
+        2. Previous bar finalization and _notify_bar event dispatch
+        3. Forming candle open/high/low/close expansion
+        4. Dynamic volume accumulation
+        5. Quote structuring and real-time WebSocket broadcast
+        """
+        now_sec = timestamp or int(time.time())
+        step = self.bar_step_seconds
+        bar_time = (now_sec // step) * step
+
+        if not self._candles:
+            # First candle initialization
+            self._candles.append({
+                "time": bar_time,
+                "timestamp": bar_time,
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+                "volume": volume_increment or 10.0
+            })
+
+        last_bar = self._candles[-1]
+        last_bar_t = int(last_bar.get("timestamp") or last_bar.get("time") or 0)
+
+        # 1. Bar Rollover Detection
+        if bar_time > last_bar_t:
+            closed_bar = dict(last_bar)
+            await self._notify_bar(closed_bar)
+
+            new_open = last_bar["close"]
+            init_vol = volume_increment if volume_increment is not None else 10.0
+            new_bar = {
+                "time": bar_time,
+                "timestamp": bar_time,
+                "open": new_open,
+                "high": max(new_open, price),
+                "low": min(new_open, price),
+                "close": price,
+                "volume": init_vol
+            }
+            self._candles.append(new_bar)
+            if len(self._candles) > 20000:
+                self._candles.pop(0)
+            last_bar = new_bar
+        else:
+            # In-place candle development
+            last_bar["close"] = price
+            last_bar["high"] = max(float(last_bar["high"]), price)
+            last_bar["low"] = min(float(last_bar["low"]), price)
+            if volume_increment is not None:
+                last_bar["volume"] = round(float(last_bar.get("volume", 0.0)) + volume_increment, 2)
+
+        spread = abs(price * 0.0001)
+        quote = {
+            "symbol": self.symbol,
+            "price": price,
+            "bid": bid if bid is not None else round(price - spread, 2),
+            "ask": ask if ask is not None else round(price + spread, 2),
+            "open": last_bar["open"],
+            "high": last_bar["high"],
+            "low": last_bar["low"],
+            "volume": last_bar["volume"],
+            "timestamp": now_sec,
+            "source": source,
+            "candle": last_bar
+        }
+        self._latest_quote = quote
+        await self._notify_tick(quote)
+        return quote
+
+    async def process_live_bar(
+        self,
+        bar: Dict[str, Any],
+        is_closed: bool = False,
+        quote_extras: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Unified method to process an exchange-native kline bar (e.g. Binance/Bybit WS).
+        """
+        bar_time = int(bar.get("time") or bar.get("timestamp") or 0)
+        current_p = float(bar["close"])
+
+        if self._candles and int(self._candles[-1].get("time", 0)) == bar_time:
+            self._candles[-1] = bar
+        else:
+            if self._candles:
+                closed = dict(self._candles[-1])
+                await self._notify_bar(closed)
+            self._candles.append(bar)
+            if len(self._candles) > 20000:
+                self._candles.pop(0)
+
+        if is_closed:
+            await self._notify_bar(dict(bar))
+
+        quote = {
+            "symbol": self.symbol,
+            "price": current_p,
+            "bid": round(current_p * 0.9999, 2),
+            "ask": round(current_p * 1.0001, 2),
+            "open": bar["open"],
+            "high": bar["high"],
+            "low": bar["low"],
+            "volume": bar["volume"],
+            "timestamp": int(time.time()),
+            "source": (quote_extras or {}).get("source", "exchange_ws"),
+            "candle": bar
+        }
+        if quote_extras:
+            quote.update(quote_extras)
+        self._latest_quote = quote
+        await self._notify_tick(quote)
+
 
 class ProviderRegistry:
     """

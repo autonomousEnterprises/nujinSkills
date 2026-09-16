@@ -505,16 +505,6 @@ class XauusdScalpEngine:
                                 "signal": sig
                             }
                         })
-                        await broadcast_callback({
-                            "event_type": "MARKET_TICK",
-                            "payload": {
-                                "symbol": "XAU/USD",
-                                "timeframe": "1m",
-                                "price": self.current_quote.get("price", c_close),
-                                "quote": self.current_quote,
-                                "candle": self.candles_1m[-1]
-                            }
-                        })
             except Exception as e:
                 logger.warning(f"[XauusdScalpEngine] OANDA feed tick warning: {e}")
 

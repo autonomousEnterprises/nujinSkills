@@ -200,15 +200,8 @@ export function useWebSocket() {
               break;
             }
             case 'XAUUSD_TICK': {
-              if (payload?.quote) {
-                latestMarketTick.value = {
-                  symbol: 'XAU/USD',
-                  timeframe: '1m',
-                  price: payload.quote.price,
-                  quote: payload.quote,
-                  candle: payload.quote.candle,
-                };
-              }
+              // XAUUSD_TICK carries prop firm engine status, not raw chart ticks.
+              // MARKET_TICK from ProviderRegistry is the single source of truth for real-time market data.
               break;
             }
             case 'STRATEGY_DISCOVERED': {

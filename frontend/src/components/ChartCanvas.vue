@@ -223,18 +223,7 @@ const emit = defineEmits<{
 
 function timeToLocal(originalTime: number): number {
   if (!originalTime) return 0;
-  const d = new Date(originalTime * 1000);
-  return (
-    Date.UTC(
-      d.getFullYear(),
-      d.getMonth(),
-      d.getDate(),
-      d.getHours(),
-      d.getMinutes(),
-      d.getSeconds(),
-      d.getMilliseconds()
-    ) / 1000
-  );
+  return Number(originalTime);
 }
 
 // ── State Variables ──
@@ -336,8 +325,6 @@ const rawCandles = ref<any[]>([]);
 const positionBoxes = ref<PositionBoxCoord[]>([]);
 const isInspectingTrade = ref<boolean>(false);
 
-let binanceWs: WebSocket | null = null;
-let oandaTimer: any = null;
 let periodicSyncTimer: any = null;
 let resizeObserver: ResizeObserver | null = null;
 
@@ -1306,12 +1293,13 @@ const initChart = () => {
     downColor: '#ef5350',
     borderVisible: false,
     wickUpColor: '#26a69a',
+    priceLineVisible: true,
+    lastValueVisible: true,
+    priceLineColor: '#38bdf8',
+    priceLineWidth: 1,
+    priceLineStyle: LineStyle.Dashed,
     wickDownColor: '#ef5350',
-    priceLineVisible: false,
-    lastValueVisible: false,
   });
-
-  // Volume Series
   volumeSeries = chart.addHistogramSeries({
     color: 'rgba(38, 166, 154, 0.45)',
     priceFormat: { type: 'volume' },
@@ -1706,8 +1694,16 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
   if (!candleSeries || !candleData || !candleData.time || !candleData.close || candleData.close <= 0) return;
   if (!rawCandles.value || rawCandles.value.length === 0) return;
 
-  const tf = selectedTimeframe.value;
-  const barStep = tf === '5m' ? 300 : (tf === '15m' ? 900 : 60);
+  const tf = (selectedTimeframe.value || '1m').toLowerCase().trim();
+  let barStep = 60;
+  if (tf === '3m') barStep = 180;
+  else if (tf === '5m') barStep = 300;
+  else if (tf === '15m') barStep = 900;
+  else if (tf === '30m') barStep = 1800;
+  else if (tf === '1h' || tf === '60m') barStep = 3600;
+  else if (tf === '4h') barStep = 14400;
+  else if (tf === '1d' || tf === 'd') barStep = 86400;
+
   const rawTime = Math.floor(Number(candleData.time) / barStep) * barStep;
   const open = Number(candleData.open || candleData.close);
   const high = Math.max(Number(candleData.high || candleData.close), open, Number(candleData.close));
@@ -1717,6 +1713,11 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
 
   const lastCandle = rawCandles.value[rawCandles.value.length - 1];
   const lastTime = Number(lastCandle.time);
+
+  // Ignore stale ticks older than the current bar
+  if (rawTime < lastTime) {
+    return;
+  }
 
   // If a significant gap is detected, trigger non-blocking debounced background reconciliation (max once per 30s)
   const nowMs = Date.now();
@@ -1734,7 +1735,9 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     lastCandle.high = Math.max(lastCandle.high, high);
     lastCandle.low = Math.min(lastCandle.low, low);
     lastCandle.close = close;
-    if (candleData.volume != null) lastCandle.volume = volume;
+    if (candleData.volume != null && volume > 0) {
+      lastCandle.volume = volume;
+    }
 
     candleSeries.update({
       time: localTime,
@@ -1745,10 +1748,11 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     });
 
     if (volumeSeries && lastCandle.volume != null) {
+      const isUp = lastCandle.close >= lastCandle.open;
       volumeSeries.update({
         time: localTime,
         value: lastCandle.volume,
-        color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
+        color: isUp ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
       });
     }
   } else if (rawTime > lastTime) {
@@ -1782,28 +1786,6 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
 
     // Keep indicators synchronized
     applyStrategyIndicators();
-  } else {
-    // Tick update for the latest active forming bar
-    lastCandle.high = Math.max(lastCandle.high, close);
-    lastCandle.low = Math.min(lastCandle.low, close);
-    lastCandle.close = close;
-    if (candleData.volume != null) lastCandle.volume = volume;
-
-    candleSeries.update({
-      time: timeToLocal(lastTime) as Time,
-      open: lastCandle.open,
-      high: lastCandle.high,
-      low: lastCandle.low,
-      close: lastCandle.close,
-    });
-
-    if (volumeSeries && lastCandle.volume != null) {
-      volumeSeries.update({
-        time: timeToLocal(lastTime) as Time,
-        value: lastCandle.volume,
-        color: lastCandle.close >= lastCandle.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
-      });
-    }
   }
 
   // Update HUD and Legend
@@ -1820,128 +1802,22 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
   redrawTradeBoxes();
 };
 
-// Live price streams
+// Live price streams (Powered exclusively by backend WebSocket MARKET_TICK single source of truth)
 const startLiveFeeds = () => {
-  const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
-  const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
-
-  if (isSp) {
-    isWsConnected.value = true;
-    const pollSp500 = async () => {
-      try {
-        const res = await fetch('/api/sp500/quote');
-        const data = await res.json();
-        if (data?.quote?.price) {
-          const p = parseFloat(data.quote.price);
-          if (!isNaN(p) && p > 0) {
-            if (lastLivePrice.value !== null) {
-              priceFlash.value = p >= lastLivePrice.value ? 'up' : 'down';
-              setTimeout(() => { priceFlash.value = null; }, 500);
-            }
-            lastLivePrice.value = p;
-          }
-          const q = data.quote;
-          const barBucket = Math.floor((q.timestamp || Date.now() / 1000) / 60) * 60;
-          updateLiveCandle({
-            time: barBucket,
-            open: q.open ?? p,
-            high: q.high ?? p,
-            low: q.low ?? p,
-            close: p,
-            volume: q.volume ?? 100
-          });
-        }
-      } catch {}
-    };
-    pollSp500();
-    oandaTimer = setInterval(pollSp500, 2000);
-  } else if (isGold) {
-    isWsConnected.value = true;
-    const pollOanda = async () => {
-      try {
-        const res = await fetch('/api/xauusd/quote');
-        const data = await res.json();
-        if (data?.quote?.price) {
-          const p = parseFloat(data.quote.price);
-          if (!isNaN(p) && p > 0) {
-            if (lastLivePrice.value !== null) {
-              priceFlash.value = p >= lastLivePrice.value ? 'up' : 'down';
-              setTimeout(() => { priceFlash.value = null; }, 500);
-            }
-            lastLivePrice.value = p;
-          }
-        }
-        if (selectedTimeframe.value === '1m' && data?.quote?.candle) {
-          updateLiveCandle(data.quote.candle);
-        } else if (data?.quote?.price) {
-          const p = parseFloat(data.quote.price);
-          const nowSec = data.quote.timestamp ? Number(data.quote.timestamp) : Math.floor(Date.now() / 1000);
-          const barStep = selectedTimeframe.value === '5m' ? 300 : (selectedTimeframe.value === '15m' ? 900 : 60);
-          const barBucket = Math.floor(nowSec / barStep) * barStep;
-          updateLiveCandle({
-            time: barBucket,
-            open: p,
-            high: p,
-            low: p,
-            close: p,
-            volume: 20
-          });
-        }
-      } catch {}
-    };
-    pollOanda();
-    oandaTimer = setInterval(pollOanda, 2000);
-  } else {
-    try {
-      binanceWs = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_15m');
-      binanceWs.onopen = () => { isWsConnected.value = true; };
-      binanceWs.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg?.k) {
-            const k = msg.k;
-            const p = parseFloat(k.c);
-            if (!isNaN(p) && p > 0) {
-              if (lastLivePrice.value !== null) {
-                priceFlash.value = p >= lastLivePrice.value ? 'up' : 'down';
-                setTimeout(() => { priceFlash.value = null; }, 500);
-              }
-              lastLivePrice.value = p;
-            }
-            const barTimeSec = Math.floor(k.t / 1000);
-            updateLiveCandle({
-              time: barTimeSec,
-              open: parseFloat(k.o),
-              high: parseFloat(k.h),
-              low: parseFloat(k.l),
-              close: p,
-              volume: parseFloat(k.v)
-            });
-          }
-        } catch {}
-      };
-      binanceWs.onclose = () => { isWsConnected.value = false; };
-    } catch {}
-  }
+  isWsConnected.value = true;
 
   // Periodic non-intrusive full candle reconciliation (every 120s)
-  periodicSyncTimer = setInterval(() => {
-    loadCandles(true);
-  }, 120000);
+  if (!periodicSyncTimer) {
+    periodicSyncTimer = setInterval(() => {
+      loadCandles(true);
+    }, 120000);
+  }
 };
 
 const stopLiveFeeds = () => {
-  if (oandaTimer) {
-    clearInterval(oandaTimer);
-    oandaTimer = null;
-  }
   if (periodicSyncTimer) {
     clearInterval(periodicSyncTimer);
     periodicSyncTimer = null;
-  }
-  if (binanceWs) {
-    binanceWs.close();
-    binanceWs = null;
   }
   isWsConnected.value = false;
 };
@@ -1972,10 +1848,26 @@ watch(
       lastLivePrice.value = p;
     }
 
+    // Isolate candle updates strictly to matching timeframe (e.g. 1m vs 5m strategies)
+    const chartTf = (selectedTimeframe.value || '1m').toLowerCase().replace('m', '').trim();
+    const tickTf = (tick.timeframe || '').toLowerCase().replace('m', '').trim();
+    if (tickTf && chartTf && tickTf !== chartTf) {
+      return;
+    }
+
     if (tick.candle) {
       updateLiveCandle(tick.candle);
     } else if (tick.quote?.candle) {
       updateLiveCandle(tick.quote.candle);
+    } else if (p > 0) {
+      updateLiveCandle({
+        time: Number(tick.timestamp || Math.floor(Date.now() / 1000)),
+        open: p,
+        high: p,
+        low: p,
+        close: p,
+        volume: Number(tick.volume || tick.quote?.volume || 15),
+      });
     }
   },
   { deep: true, immediate: true }

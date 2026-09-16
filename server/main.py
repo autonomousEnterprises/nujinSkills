@@ -184,95 +184,50 @@ async def get_candles(
             import asyncio
             asyncio.create_task(provider.start())
 
-        if is_xau and interval == "1m" and xauusd_engine.candles_1m and len(xauusd_engine.candles_1m) >= min(count, 10000):
-            c_list = xauusd_engine.candles_1m
-            data = c_list[-count:] if (count and count < len(c_list)) else c_list
-            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
-
-        # Check if in-memory candles already have requested depth
-        if provider._candles and len(provider._candles) >= min(count, 10000):
-            c_list = provider._candles
-            data = c_list[-count:] if (count and count < len(c_list)) else c_list
-            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
-            
-        # If disk CSV has more historical candles than in-memory provider, backfill from disk
-        if os.path.exists(csv_path):
-            import pandas as pd
-            from server.data_manager import bridge_candles_to_now
-            df_disk = pd.read_csv(csv_path)
-            if len(df_disk) > len(provider._candles or []):
-                df_disk = bridge_candles_to_now(df_disk, interval=interval, symbol=symbol)
-                records = df_disk.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df_disk)) else df_disk.to_dict(orient="records")
-                data = [
-                    {
-                        "time": int(r.get("timestamp", r.get("time", 0))),
-                        "open": round(float(r["open"]), 2),
-                        "high": round(float(r["high"]), 2),
-                        "low": round(float(r["low"]), 2),
-                        "close": round(float(r["close"]), 2),
-                        "volume": round(float(r.get("volume", 10.0)), 4)
-                    }
-                    for r in records
-                ]
-                if provider:
-                    provider._candles = data
-                if is_xau and interval == "1m":
-                    xauusd_engine.candles_1m = data
+        # 1. First priority: If provider already has fresh in-memory candles (latest candle within 3 min), return directly
+        now_ts = int(time.time())
+        if provider._candles and len(provider._candles) >= 50:
+            last_ts = int(provider._candles[-1].get("time") or provider._candles[-1].get("timestamp") or 0)
+            if (now_ts - last_ts) <= 180:
+                c_list = provider._candles
+                data = c_list[-count:] if (count and count < len(c_list)) else c_list
                 return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
 
-        if provider._candles and len(provider._candles) >= 20:
-            c_list = provider._candles
-            data = c_list[-count:] if (count and count < len(c_list)) else c_list
-            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
-    except Exception as e_warm:
-        logger.debug(f"[Candles] In-memory check note: {e_warm}")
-
-    try:
+        # 2. Live Market Data Feed: Fetch fresh continuous bars directly from exchange / institutional stream
         if is_sp:
-            csv_path = "data/sp500_candles_1m.csv"
-            if os.path.exists(csv_path):
-                import pandas as pd
-                from server.data_manager import bridge_candles_to_now
-                df = pd.read_csv(csv_path)
-                df = bridge_candles_to_now(df, interval="1m", symbol=symbol)
-                records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
-                data = [
-                    {
-                        "time": int(r.get("timestamp", r.get("time", 0))),
-                        "open": round(float(r["open"]), 2),
-                        "high": round(float(r["high"]), 2),
-                        "low": round(float(r["low"]), 2),
-                        "close": round(float(r["close"]), 2),
-                        "volume": round(float(r.get("volume", 10.0)), 4)
-                    }
-                    for r in records
-                ]
-                if provider:
-                    provider._candles = data
-            else:
-                raise FileNotFoundError(f"Dataset {csv_path} not found")
+            from server.data_manager import fetch_real_sp500_candles
+            data = fetch_real_sp500_candles(interval=interval, count=count)
+            if provider and data:
+                provider._candles = data
         elif is_xau:
             from server.data_manager import fetch_real_oanda_candles
             data = fetch_real_oanda_candles(interval=interval, count=count)
-            if provider:
+            if provider and data:
                 provider._candles = data
+            if interval == "1m":
+                xauusd_engine.candles_1m = data
         else:
             data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
-            if provider:
+            if provider and data:
                 provider._candles = data
+
+        if data:
+            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
     except Exception as e:
-        logger.error(f"[Candles] Failed to fetch real data for {symbol}: {e}")
-        # Robust fallback to cached dataset with automatic bridging up to current time
+        logger.error(f"[Candles] Live fetch notice for {symbol}: {e}")
+        # Robust fallback to cached dataset without synthetic bridging
         if os.path.exists(csv_path):
             try:
                 import pandas as pd
-                from server.data_manager import bridge_candles_to_now
+                from server.data_manager import resample_candles
                 df = pd.read_csv(csv_path)
-                df = bridge_candles_to_now(df, interval=interval, symbol=symbol)
-                records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
-                data = [
+                time_col = "timestamp" if "timestamp" in df.columns else "time"
+                df = df.dropna(subset=[time_col, "close"]).sort_values(by=time_col)
+                records = df.tail(count * 5).to_dict(orient="records") if (count and count > 0) else df.to_dict(orient="records")
+                base_candles = [
                     {
                         "time": int(r.get("timestamp", r.get("time", 0))),
+                        "timestamp": int(r.get("timestamp", r.get("time", 0))),
                         "open": round(float(r["open"]), 2),
                         "high": round(float(r["high"]), 2),
                         "low": round(float(r["low"]), 2),
@@ -281,6 +236,8 @@ async def get_candles(
                     }
                     for r in records
                 ]
+                data = resample_candles(base_candles, interval) if interval not in ("1m", "15m") else base_candles
+                data = data[-count:] if (count and count < len(data)) else data
             except Exception as e_csv:
                 raise HTTPException(
                     status_code=503,
@@ -569,9 +526,14 @@ async def select_and_run_strategy(req: SelectStrategyRequest):
     clean_name = req.strategy.replace(".py", "")
     strat_record = strategy_registry.get(clean_name)
     
-    # Return existing audited backtest if present to prevent unwanted re-runs and drift pollution
-    if strat_record and strat_record.get("latest_backtest") and strat_record.get("latest_backtest", {}).get("trades", 0) > 0:
-        logger.info(f"[SelectStrategy] Returning cached audited backtest for {clean_name}")
+    curr_sys_state = state_manager.get()
+    is_active_sys = (clean_name == curr_sys_state.get("active_strategy"))
+    trade_markers = strat_record.get("trade_markers") or (curr_sys_state.get("trade_markers", []) if is_active_sys else [])
+    trades_detail = strat_record.get("trades_detail") or (curr_sys_state.get("trades_detail", []) if is_active_sys else [])
+    
+    # Return existing audited backtest if present and populated with trade markers
+    if strat_record and strat_record.get("latest_backtest") and len(trade_markers) > 0 and len(trades_detail) > 0:
+        logger.info(f"[SelectStrategy] Returning cached audited backtest with {len(trade_markers)} markers for {clean_name}")
         summary = strat_record.get("latest_backtest", {})
         gates = strat_record.get("falsification_gates", {})
         eq = strat_record.get("backtest_equity_curve", [])
@@ -584,10 +546,6 @@ async def select_and_run_strategy(req: SelectStrategyRequest):
             "invalidation": "Stop-loss triggered beyond structural extreme",
             "target_profile": strat_record.get("target_profile", f"{clean_name} Profile")
         }
-        curr_sys_state = state_manager.get()
-        is_active_sys = (clean_name == curr_sys_state.get("active_strategy"))
-        trade_markers = strat_record.get("trade_markers") or (curr_sys_state.get("trade_markers", []) if is_active_sys else [])
-        trades_detail = strat_record.get("trades_detail") or (curr_sys_state.get("trades_detail", []) if is_active_sys else [])
         
         result = {
             "strategy": clean_name,
@@ -1042,9 +1000,7 @@ async def get_sp500_quote():
     if os.path.exists(csv_path):
         try:
             import pandas as pd
-            from server.data_manager import bridge_candles_to_now
             df = pd.read_csv(csv_path)
-            df = bridge_candles_to_now(df, interval="1m", symbol="S&P 500 (ES)")
             if not df.empty:
                 last_r = df.iloc[-1]
                 price = round(float(last_r["close"]), 2)

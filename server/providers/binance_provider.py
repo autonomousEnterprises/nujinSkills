@@ -24,40 +24,13 @@ class BinanceSpotProvider(BaseMarketDataProvider):
         self._load_initial_data()
 
     def _load_initial_data(self):
-        import os
-        import pandas as pd
-        csv_path = "data/candles_15m.csv"
-        # 1. First prioritize full historical dataset from disk (up to 20,000 candles)
-        if os.path.exists(csv_path):
-            try:
-                from server.data_manager import bridge_candles_to_now
-                df = pd.read_csv(csv_path)
-                if len(df) > 0:
-                    df = bridge_candles_to_now(df, interval=self.timeframe, symbol=self.symbol)
-                    self._candles = [
-                        {
-                            "time": int(r.get("timestamp", r.get("time", 0))),
-                            "open": round(float(r["open"]), 2),
-                            "high": round(float(r["high"]), 2),
-                            "low": round(float(r["low"]), 2),
-                            "close": round(float(r["close"]), 2),
-                            "volume": round(float(r.get("volume", 10.0)), 4)
-                        }
-                        for r in df.tail(20000).to_dict(orient="records")
-                    ]
-                    logger.info(f"[BinanceSpotProvider] Loaded {len(self._candles)} deep historical 15m candles from {csv_path}")
-            except Exception as e_csv:
-                logger.warning(f"[BinanceSpotProvider] Error reading cached CSV {csv_path}: {e_csv}")
-
-        # 2. If no cached candles, fetch initial batch from Binance
-        if not self._candles:
-            try:
-                from server.data_manager import fetch_real_binance_klines
-                candles = fetch_real_binance_klines(symbol=self.symbol, interval=self.timeframe, count=10000)
-                if candles:
-                    self._candles = candles
-            except Exception as e:
-                logger.warning(f"[BinanceSpotProvider] Remote fetch error for {self.symbol}: {e}")
+        from server.data_manager import fetch_real_binance_klines
+        try:
+            candles = fetch_real_binance_klines(symbol=self.symbol, interval=self.timeframe, count=10000)
+            if candles:
+                self._candles = candles
+        except Exception as e:
+            logger.warning(f"[BinanceSpotProvider] Load error for {self.symbol}: {e}")
 
         if self._candles:
             last_c = self._candles[-1]
@@ -106,19 +79,6 @@ class BinanceSpotProvider(BaseMarketDataProvider):
                         t_sec = int(k["t"] // 1000)
                         is_bar_closed = bool(k.get("x", False))
 
-                        quote = {
-                            "symbol": self.symbol,
-                            "price": current_p,
-                            "bid": round(current_p * 0.9999, 2),
-                            "ask": round(current_p * 1.0001, 2),
-                            "high": round(float(k["h"]), 2),
-                            "low": round(float(k["l"]), 2),
-                            "volume": round(float(k["v"]), 4),
-                            "timestamp": int(time.time()),
-                            "source": "binance_spot"
-                        }
-
-                        # Maintain candles
                         bar = {
                             "time": t_sec,
                             "open": round(float(k["o"]), 2),
@@ -128,19 +88,11 @@ class BinanceSpotProvider(BaseMarketDataProvider):
                             "volume": round(float(k["v"]), 4)
                         }
 
-                        if self._candles and self._candles[-1]["time"] == t_sec:
-                            self._candles[-1] = bar
-                        else:
-                            self._candles.append(bar)
-                            if len(self._candles) > 20000:
-                                self._candles.pop(0)
-
-                        quote["candle"] = bar
-                        quote["is_bar_closed"] = is_bar_closed
-                        await self._notify_tick(quote)
-
-                        if is_bar_closed:
-                            await self._notify_bar(bar)
+                        await self.process_live_bar(
+                            bar=bar,
+                            is_closed=is_bar_closed,
+                            quote_extras={"source": "binance_spot", "is_bar_closed": is_bar_closed}
+                        )
 
             except asyncio.CancelledError:
                 break

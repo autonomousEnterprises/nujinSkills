@@ -3,25 +3,36 @@ import json
 import time
 import logging
 import urllib.request
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+
 import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
-from typing import List, Dict, Any
 
 logger = logging.getLogger("DataManager")
 
-import re
-import asyncio
-import concurrent.futures
-import websockets
+# Institutional TradingView WebSocket Client
+try:
+    from tradingview_websocket import TradingViewWebSocket
+    HAS_TV_WS = True
+except ImportError:
+    HAS_TV_WS = False
+    logger.warning("[DataManager] tradingview_websocket library not installed. Falling back to REST.")
+
 
 def resolve_market_symbol(symbol: str) -> str:
     """Maps user symbol to institutional exchange symbol."""
-    upper = symbol.replace("/", "").replace("-", "").replace(":", "").replace(" ", "").replace("&", "").upper()
+    upper = (symbol or "").replace("/", "").replace("-", "").replace(":", "").replace(" ", "").replace("&", "").upper()
     if upper in ("XAUUSD", "GOLD", "XAU", "OANDA", "XAU_USD", "OANDAXAUUSD", "GC=F", "GC"):
         return "OANDA:XAUUSD"
-    if any(k in upper for k in ["SP500", "SPX", "ES", "US500", "SPY"]):
+    if any(k in upper for k in ["SP500", "SPX", "ES", "US500", "SPY", "ES1"]):
         return "CME_MINI:ES1!"
+    if "BTC" in upper:
+        return "BINANCE:BTCUSDT"
+    if "ETH" in upper:
+        return "BINANCE:ETHUSDT"
+    if "SOL" in upper:
+        return "BINANCE:SOLUSDT"
     return upper
 
 
@@ -35,7 +46,13 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
         "symbols": {"tickers": ["OANDA:XAUUSD"]},
         "columns": ["close", "open", "high", "low", "bid", "ask", "change", "volume"]
     }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Origin": "https://www.tradingview.com",
+        "Referer": "https://www.tradingview.com/"
+    }
+    req = urllib.request.Request(url, data=payload, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             d = json.loads(r.read().decode("utf-8"))
@@ -52,12 +69,13 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
                 "bid": bid_p,
                 "ask": ask_p,
                 "change_pct": round(float(row[6] or 0.0), 2),
+                "volume": round(float(row[7] or 100.0), 1),
                 "timestamp": int(time.time()),
                 "source": "oanda_spot"
             }
     except Exception as e:
         logger.warning(f"[DataManager] Error fetching live OANDA quote: {e}")
-        fallback_p = 4374.98
+        fallback_p = 4335.00
         csv_path = "data/xauusd_candles_1m.csv"
         if os.path.exists(csv_path):
             try:
@@ -74,226 +92,391 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
             "bid": round(fallback_p - 0.15, 2),
             "ask": round(fallback_p + 0.15, 2),
             "change_pct": 0.0,
+            "volume": 50.0,
             "timestamp": int(time.time()),
             "source": "oanda_spot_fallback"
         }
 
 
-
-async def _async_fetch_oanda_bars(resolution: str = "15", n_bars: int = 3000) -> List[Dict[str, Any]]:
-    """Connects to TradingView data feed to extract real OANDA:XAUUSD bars."""
-    uri = "wss://data.tradingview.com/socket.io/websocket"
-    async with websockets.connect(uri, origin="https://www.tradingview.com", ping_interval=20, max_size=50_000_000) as ws:
-        await ws.recv()
-
-        def fmt(m):
-            s = json.dumps(m)
-            return f"~m~{len(s)}~m~{s}"
-
-        cs = f"cs_oanda_{resolution}_{int(time.time())}"
-        await ws.send(fmt({"m": "set_auth_token", "p": ["unauthorized_user_token"]}))
-        await ws.send(fmt({"m": "chart_create_session", "p": [cs, ""]}))
-        await ws.send(fmt({"m": "resolve_symbol", "p": [cs, "sds_sym_1", '={"symbol":"OANDA:XAUUSD","adjustment":"splits"}']}))
-        await ws.send(fmt({"m": "create_series", "p": [cs, "sds_1", "s1", "sds_sym_1", str(resolution), n_bars, ""]}))
-
-        for _ in range(15):
-            reply = await asyncio.wait_for(ws.recv(), timeout=8)
-            parts = re.split(r"~m~\d+~m~", reply)
-            for p in parts:
-                if not p or p.startswith("~h~"):
-                    continue
-                try:
-                    data = json.loads(p)
-                    if data.get("m") == "timescale_update":
-                        series = data["p"][1].get("sds_1", {}).get("s", [])
-                        if series:
-                            candles = []
-                            for row in series:
-                                v = row["v"]
-                                candles.append({
-                                    "time": int(v[0]),
-                                    "open": round(float(v[1]), 2),
-                                    "high": round(float(v[2]), 2),
-                                    "low": round(float(v[3]), 2),
-                                    "close": round(float(v[4]), 2),
-                                    "volume": round(float(v[5] or 10.0), 4)
-                                })
-                            return candles
-                except Exception:
-                    pass
-    return []
+def _tf_to_tv_resolution(timeframe: str) -> str:
+    """Converts timeframe string (1m, 5m, 15m, 1h, 1d) to TradingView resolution code."""
+    tf = (timeframe or "1m").lower().strip()
+    if tf in ("1", "1m"):
+        return "1"
+    elif tf in ("3", "3m"):
+        return "3"
+    elif tf in ("5", "5m"):
+        return "5"
+    elif tf in ("15", "15m"):
+        return "15"
+    elif tf in ("30", "30m"):
+        return "30"
+    elif tf in ("60", "1h", "60m"):
+        return "60"
+    elif tf in ("240", "4h"):
+        return "240"
+    elif tf in ("d", "1d", "daily"):
+        return "1D"
+    return "15"
 
 
-def bridge_candles_to_now(df: pd.DataFrame, interval: str = "1m", symbol: str = "XAUUSD") -> pd.DataFrame:
+def _timeframe_to_seconds(timeframe: str) -> int:
+    tf = (timeframe or "1m").lower().strip()
+    if tf == "1m":
+        return 60
+    elif tf == "3m":
+        return 180
+    elif tf == "5m":
+        return 300
+    elif tf == "15m":
+        return 900
+    elif tf == "30m":
+        return 1800
+    elif tf in ("1h", "60m"):
+        return 3600
+    elif tf == "4h":
+        return 14400
+    elif tf in ("1d", "d"):
+        return 86400
+    return 900
+
+
+def resample_candles(candles: List[Dict[str, Any]], target_timeframe: str) -> List[Dict[str, Any]]:
     """
-    If cached candles end earlier than the current time (e.g. overnight or on weekends,
-    or when external market APIs are unavailable/closed), seamlessly synthesizes continuous
-    valid OHLCV candles from the last timestamp up to the current minute.
-    Ensures charts and backtests are always up-to-date and never stuck in yesterday.
+    Vectorized, deterministic candlestick resampling from base bars (e.g. 1m)
+    to any higher timeframe (3m, 5m, 15m, 1h, 4h, 1d).
+    Strictly aligns candle time boundaries to epoch modulo: (t // step_sec) * step_sec.
+    Zero lookahead bias and zero synthetic noise.
     """
-    if df is None or df.empty:
-        return df
+    if not candles:
+        return []
 
-    time_col = "timestamp" if "timestamp" in df.columns else "time"
-    df = df.dropna(subset=[time_col, "close"]).reset_index(drop=True)
-    if df.empty:
-        return df
+    step_sec = _timeframe_to_seconds(target_timeframe)
+    if step_sec <= 60:
+        return candles
 
-    last_ts = int(df.iloc[-1][time_col])
-    step_sec = 60 if interval == "1m" else (300 if interval == "5m" else 900)
-    now_ts = int(time.time() // step_sec) * step_sec
+    buckets: Dict[int, Dict[str, Any]] = {}
+    for c in candles:
+        raw_t = int(c.get("timestamp") or c.get("time") or 0)
+        if raw_t <= 0:
+            continue
+        bucket_t = (raw_t // step_sec) * step_sec
+        o = round(float(c["open"]), 2)
+        h = round(float(c["high"]), 2)
+        l = round(float(c["low"]), 2)
+        cl = round(float(c["close"]), 2)
+        v = round(float(c.get("volume", 0.0)), 2)
 
-    if now_ts - last_ts >= step_sec:
-        last_row = df.iloc[-1]
-        last_close = float(last_row["close"])
-        curr_price = last_close
-        last_vol = float(last_row.get("volume", 10.0))
-        is_gold = "XAU" in symbol.upper() or "GOLD" in symbol.upper()
-        is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500"])
-        noise_std = 0.08 if is_gold else (0.40 if is_sp else curr_price * 0.0002)
-        vol_std = 0.00012 if is_sp else (0.00015 if is_gold else 0.0004)
-        
-        new_rows = []
-        curr_ts = last_ts + step_sec
-        np.random.seed(int(last_ts) % 100000)
+        if bucket_t not in buckets:
+            buckets[bucket_t] = {
+                "time": bucket_t,
+                "timestamp": bucket_t,
+                "open": o,
+                "high": h,
+                "low": l,
+                "close": cl,
+                "volume": v
+            }
+        else:
+            b = buckets[bucket_t]
+            b["high"] = max(b["high"], h)
+            b["low"] = min(b["low"], l)
+            b["close"] = cl
+            b["volume"] = round(b["volume"] + v, 2)
 
-        while curr_ts <= now_ts:
-            dt_curr = datetime.fromtimestamp(curr_ts, tz=timezone.utc)
-            # Weekend closure for traditional assets (Gold & S&P 500 futures)
-            # Friday >= 21:00 UTC, Saturday all day, Sunday < 22:00 UTC
-            if (is_gold or is_sp):
-                is_closed = (dt_curr.weekday() == 4 and dt_curr.hour >= 21) or \
-                            (dt_curr.weekday() == 5) or \
-                            (dt_curr.weekday() == 6 and dt_curr.hour < 22)
-                if is_closed:
-                    days_ahead = (6 - dt_curr.weekday()) % 7
-                    if dt_curr.weekday() == 6:
-                        target_dt = dt_curr.replace(hour=22, minute=0, second=0, microsecond=0)
-                    else:
-                        target_dt = (dt_curr + pd.Timedelta(days=days_ahead)).replace(hour=22, minute=0, second=0, microsecond=0)
-                    next_ts = int(target_dt.timestamp())
-                    if next_ts > curr_ts:
-                        curr_ts = next_ts
-                        continue
-                    else:
-                        curr_ts += step_sec
-                        continue
+    return list(buckets.values())
 
-            # Micro random walk (~0.01% per bar)
-            pct_change = float(np.random.normal(0.0, vol_std))
-            open_p = curr_price
-            close_p = round(curr_price * (1.0 + pct_change), 2)
-            high_p = round(max(open_p, close_p) + abs(float(np.random.normal(0, noise_std))), 2)
-            low_p = round(min(open_p, close_p) - abs(float(np.random.normal(0, noise_std))), 2)
-            vol = round(max(1.0, float(np.random.normal(last_vol, last_vol * 0.2))), 4)
 
-            new_rows.append({
-                time_col: curr_ts,
-                "open": open_p,
-                "high": high_p,
-                "low": low_p,
-                "close": close_p,
-                "volume": vol
-            })
-            curr_price = close_p
-            curr_ts += step_sec
+def fetch_candles_via_tv(symbol: str, timeframe: str = "1m", count: int = 2000) -> List[Dict[str, Any]]:
+    """
+    Pulls authentic institutional historical bars using TradingViewWebSocket.
+    Supported symbols: 'OANDA:XAUUSD', 'CME_MINI:ES1!', 'BINANCE:BTCUSDT'.
+    """
+    if not HAS_TV_WS:
+        return []
 
-        if new_rows:
-            df_new = pd.DataFrame(new_rows)
-            df = pd.concat([df, df_new], ignore_index=True)
-            logger.info(f"[DataManager] Bridged {len(new_rows)} {interval} candles for {symbol} up to current time {datetime.fromtimestamp(now_ts, tz=timezone.utc)}")
+    tv_sym = resolve_market_symbol(symbol)
+    tv_tf = _tf_to_tv_resolution(timeframe)
+    logger.info(f"[DataManager] Fetching {count} bars for {tv_sym} ({timeframe} -> {tv_tf}) via TradingView WebSocket...")
 
-    return df
+    try:
+        ws = TradingViewWebSocket(tv_sym, tv_tf, count)
+        ws.connect()
+        ws.run()
+        raw_bars = ws.result_data
+        if not raw_bars:
+            logger.warning(f"[DataManager] No bars returned from TradingView WS for {tv_sym}")
+            return []
+
+        candles = []
+        for b in raw_bars:
+            v = b.get("v", [])
+            if len(v) >= 5:
+                candles.append({
+                    "time": int(v[0]),
+                    "timestamp": int(v[0]),
+                    "open": round(float(v[1]), 2),
+                    "high": round(float(v[2]), 2),
+                    "low": round(float(v[3]), 2),
+                    "close": round(float(v[4]), 2),
+                    "volume": round(float(v[5] or 10.0), 2)
+                })
+
+        logger.info(f"[DataManager] Successfully received {len(candles)} authentic bars for {tv_sym}")
+        return candles
+    except Exception as e:
+        logger.warning(f"[DataManager] TradingView WS fetch error for {tv_sym}: {e}")
+        return []
 
 
 def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
-    Fetches real OANDA:XAUUSD spot candles.
-    Checks cache freshness (within 60s). If stale or force_refresh is True,
-    pulls authentic live bars directly from TradingView WebSocket and refreshes the cache.
+    Fetches genuine OANDA:XAUUSD spot candles.
+    Reads persistent clean CSV cache from disk, or refreshes from TradingView WebSocket.
+    Resamples cleanly to 5m, 15m, 1h as needed.
     """
-    logger.info(f"[DataManager] Fetching real OANDA:XAUUSD spot candles (interval={interval}, count={count}, force={force_refresh})...")
     csv_path = "data/xauusd_candles_1m.csv"
     now_ts = int(time.time())
 
-    # 1. Check if cached CSV exists and is currently fresh (latest bar <= 60s old)
-    if not force_refresh and interval == "1m" and os.path.exists(csv_path):
+    # 1. Check if cached CSV exists and is fresh
+    if not force_refresh and os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
             time_col = "timestamp" if "timestamp" in df.columns else "time"
             df = df.dropna(subset=[time_col, "close"]).reset_index(drop=True)
             if len(df) >= 100:
                 last_ts = int(df.iloc[-1][time_col])
-                if (now_ts - last_ts) <= 60:
-                    records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
-                    candles = [
+                if (now_ts - last_ts) <= 90:
+                    records = df.tail(count * 5).to_dict(orient="records")
+                    candles_1m = [
                         {
                             "time": int(r.get("timestamp", r.get("time", 0))),
+                            "timestamp": int(r.get("timestamp", r.get("time", 0))),
                             "open": round(float(r["open"]), 2),
                             "high": round(float(r["high"]), 2),
                             "low": round(float(r["low"]), 2),
                             "close": round(float(r["close"]), 2),
-                            "volume": round(float(r.get("volume", 10.0)), 4)
+                            "volume": round(float(r.get("volume", 10.0)), 2)
                         }
                         for r in records
                     ]
-                    logger.info(f"[DataManager] Loaded {len(candles)} fresh cached OANDA 1m candles (age: {now_ts - last_ts}s)")
-                    return candles
-        except Exception as e:
-            logger.warning(f"[DataManager] Error checking cached OANDA 1m CSV: {e}")
-
-    # 2. Cache is missing or older than 120s: fetch live from TradingView WebSocket
-    res_code = "1" if interval == "1m" else ("5" if interval == "5m" else "15")
-    try:
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    candles = pool.submit(lambda: asyncio.run(_async_fetch_oanda_bars(res_code, count))).result()
-            else:
-                candles = asyncio.run(_async_fetch_oanda_bars(res_code, count))
-        except RuntimeError:
-            candles = asyncio.run(_async_fetch_oanda_bars(res_code, count))
-
-        if candles and len(candles) >= 50:
-            # Refresh the local CSV cache with authentic live data
-            if interval == "1m":
-                try:
-                    df_fresh = pd.DataFrame(candles)
-                    df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
-                    if os.path.exists(csv_path):
-                        df_old = pd.read_csv(csv_path)
-                        df_merged = pd.concat([df_old, df_fresh], ignore_index=True)
-                        df_merged.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
-                        df_merged.sort_values(by="timestamp", inplace=True)
-                        df_merged.to_csv(csv_path, index=False)
-                        logger.info(f"[DataManager] Merged {len(candles)} live bars into {csv_path} (total: {len(df_merged)} bars)")
+                    if interval == "1m":
+                        return candles_1m[-count:] if count else candles_1m
                     else:
-                        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-                        df_fresh.to_csv(csv_path, index=False)
-                        logger.info(f"[DataManager] Synced {len(candles)} live OANDA 1m bars to cache {csv_path}")
-                except Exception as e_csv:
-                    logger.warning(f"[DataManager] Could not write fresh cache CSV: {e_csv}")
+                        resampled = resample_candles(candles_1m, interval)
+                        return resampled[-count:] if count else resampled
+        except Exception as e:
+            logger.warning(f"[DataManager] Error reading cached OANDA 1m CSV: {e}")
+
+    # 2. Fetch fresh authentic bars via TradingView WebSocket
+    fresh = fetch_candles_via_tv("OANDA:XAUUSD", "1m", max(count, 5000))
+    if fresh and len(fresh) >= 50:
+        try:
+            df_fresh = pd.DataFrame(fresh)
+            if "time" in df_fresh.columns and "timestamp" not in df_fresh.columns:
+                df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
+            if os.path.exists(csv_path):
+                df_old = pd.read_csv(csv_path)
+                df_clean_old = df_old[df_old.get("volume", 10.0) > 1.5]
+                df_merged = pd.concat([df_clean_old, df_fresh], ignore_index=True)
+                df_merged.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                df_merged.sort_values(by="timestamp", inplace=True)
+                df_merged.to_csv(csv_path, index=False)
+            else:
+                os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+                df_fresh.to_csv(csv_path, index=False)
+            df_to_return = df_merged if ('df_merged' in locals() and not df_merged.empty) else df_fresh
+            records = df_to_return.tail(count).to_dict(orient="records") if (count and count < len(df_to_return)) else df_to_return.to_dict(orient="records")
+            all_bars = [
+                {
+                    "time": int(r.get("timestamp", r.get("time", 0))),
+                    "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                    "open": round(float(r["open"]), 2),
+                    "high": round(float(r["high"]), 2),
+                    "low": round(float(r["low"]), 2),
+                    "close": round(float(r["close"]), 2),
+                    "volume": round(float(r.get("volume", 10.0)), 2)
+                }
+                for r in records
+            ]
+            if interval == "1m":
+                return all_bars
+            else:
+                return resample_candles(all_bars, interval)
+        except Exception as e_save:
+            logger.warning(f"[DataManager] Error saving fresh OANDA 1m cache: {e_save}")
+            if interval == "1m":
+                return fresh[-count:] if count else fresh
+            else:
+                return resample_candles(fresh, interval)[-count:]
+
+    # 3. Fallback to existing disk CSV without synthetic modification
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+        time_col = "timestamp" if "timestamp" in df.columns else "time"
+        records = df.tail(count * 5).to_dict(orient="records") if (count and count > 0) else df.to_dict(orient="records")
+        candles = [
+            {
+                "time": int(r.get("timestamp", r.get("time", 0))),
+                "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                "open": round(float(r["open"]), 2),
+                "high": round(float(r["high"]), 2),
+                "low": round(float(r["low"]), 2),
+                "close": round(float(r["close"]), 2),
+                "volume": round(float(r.get("volume", 10.0)), 2)
+            }
+            for r in records
+        ]
+        if interval == "1m":
             return candles[-count:] if count else candles
+        return resample_candles(candles, interval)[-count:]
+
+    # 4. Fallback to COMEX Gold GC=F via Yahoo Finance
+    return fetch_real_comex_gold_candles(interval=interval, count=count)
+
+
+def fetch_real_comex_gold_candles(interval: str = "1m", count: int = 2880) -> List[Dict[str, Any]]:
+    """
+    Fetches real institutional Gold OHLCV candles from CME / COMEX Gold Futures (GC=F).
+    """
+    logger.info(f"[DataManager] Fetching CME COMEX Gold (GC=F) candles ({interval})...")
+    yf_interval = "1m" if interval == "1m" else ("5m" if interval == "5m" else "15m")
+    yf_range = "7d" if yf_interval == "1m" else "1mo"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval={yf_interval}&range={yf_range}"
+
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        res = data["chart"]["result"][0]
+        timestamps = res["timestamp"]
+        quote = res["indicators"]["quote"][0]
+        candles = []
+        for i in range(len(timestamps)):
+            if quote["open"][i] is not None and quote["close"][i] is not None:
+                candles.append({
+                    "time": int(timestamps[i]),
+                    "timestamp": int(timestamps[i]),
+                    "open": round(float(quote["open"][i]), 2),
+                    "high": round(float(quote["high"][i]), 2),
+                    "low": round(float(quote["low"][i]), 2),
+                    "close": round(float(quote["close"][i]), 2),
+                    "volume": round(float(quote["volume"][i] or 10.0), 2)
+                })
+        return candles[-count:] if count else candles
     except Exception as e:
-        logger.warning(f"[DataManager] Error fetching live OANDA WS bars: {e}")
-    # 3. Fallback to cached CSV even if older
-    if interval == "1m" and os.path.exists(csv_path):
+        logger.warning(f"[DataManager] Yahoo COMEX Gold fetch error: {e}")
+        return []
+
+
+def fetch_real_sp500_candles(interval: str = "1m", count: int = 2880) -> List[Dict[str, Any]]:
+    """
+    Fetches genuine S&P 500 E-mini futures (ES) candles.
+    Reads clean CSV cache or pulls from TradingView WS (CME_MINI:ES1!).
+    """
+    csv_path = "data/sp500_candles_1m.csv"
+    now_ts = int(time.time())
+
+    if os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
             time_col = "timestamp" if "timestamp" in df.columns else "time"
-            df = df.dropna(subset=[time_col, "close"]).reset_index(drop=True)
-            if len(df) > 0:
-                df = bridge_candles_to_now(df, interval="1m", symbol="XAUUSD")
-                try:
-                    df.to_csv(csv_path, index=False)
-                except Exception:
-                    pass
-                logger.warning(f"[DataManager] Using cached OANDA 1m candles bridged to current time ({len(df)} rows)")
-                records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
+            if len(df) >= 100:
+                last_ts = int(df.iloc[-1][time_col])
+                if (now_ts - last_ts) <= 120:
+                    records = df.tail(count).to_dict(orient="records")
+                    return [
+                        {
+                            "time": int(r.get("timestamp", r.get("time", 0))),
+                            "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                            "open": round(float(r["open"]), 2),
+                            "high": round(float(r["high"]), 2),
+                            "low": round(float(r["low"]), 2),
+                            "close": round(float(r["close"]), 2),
+                            "volume": round(float(r.get("volume", 50.0)), 2)
+                        }
+                        for r in records
+                    ]
+        except Exception:
+            pass
+
+    # Fetch from TradingView WS
+    fresh = fetch_candles_via_tv("CME_MINI:ES1!", interval, count)
+    if fresh:
+        try:
+            df_fresh = pd.DataFrame(fresh)
+            if "time" in df_fresh.columns and "timestamp" not in df_fresh.columns:
+                df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
+            if os.path.exists(csv_path):
+                df_old = pd.read_csv(csv_path)
+                df_merged = pd.concat([df_old, df_fresh], ignore_index=True)
+                df_merged.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                df_merged.sort_values(by="timestamp", inplace=True)
+                df_merged.to_csv(csv_path, index=False)
+            else:
+                os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+                df_fresh.to_csv(csv_path, index=False)
+                df_merged = df_fresh
+            df_to_return = df_merged if ('df_merged' in locals() and not df_merged.empty) else df_fresh
+            records = df_to_return.tail(count).to_dict(orient="records") if (count and count < len(df_to_return)) else df_to_return.to_dict(orient="records")
+            return [
+                {
+                    "time": int(r.get("timestamp", r.get("time", 0))),
+                    "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                    "open": round(float(r["open"]), 2),
+                    "high": round(float(r["high"]), 2),
+                    "low": round(float(r["low"]), 2),
+                    "close": round(float(r["close"]), 2),
+                    "volume": round(float(r.get("volume", 50.0)), 2)
+                }
+                for r in records
+            ]
+        except Exception:
+            return fresh[-count:] if count else fresh
+
+    # Fallback to existing disk CSV
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+        records = df.tail(count).to_dict(orient="records")
+        return [
+            {
+                "time": int(r.get("timestamp", r.get("time", 0))),
+                "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                "open": round(float(r["open"]), 2),
+                "high": round(float(r["high"]), 2),
+                "low": round(float(r["low"]), 2),
+                "close": round(float(r["close"]), 2),
+                "volume": round(float(r.get("volume", 50.0)), 2)
+            }
+            for r in records
+        ]
+    return []
+
+
+def fetch_real_binance_klines(symbol: str = "BTC/USDT", interval: str = "15m", count: int = 2880) -> List[Dict[str, Any]]:
+    """
+    Fetches real OHLCV candles for any symbol.
+    Seamlessly routes Gold to OANDA:XAUUSD and S&P 500 to CME_MINI:ES1!.
+    """
+    clean_sym = resolve_market_symbol(symbol)
+    if clean_sym == "OANDA:XAUUSD":
+        return fetch_real_oanda_candles(interval=interval, count=count)
+    elif clean_sym == "CME_MINI:ES1!":
+        return fetch_real_sp500_candles(interval=interval, count=count)
+
+    # 1. Check local disk CSV if available
+    csv_path = "data/candles_15m.csv" if interval == "15m" else f"data/btc_candles_{interval}.csv"
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path)
+            time_col = "timestamp" if "timestamp" in df.columns else "time"
+            now_ts = int(time.time())
+            if len(df) >= 100 and (now_ts - int(df.iloc[-1][time_col])) <= 300:
+                records = df.tail(count).to_dict(orient="records")
                 return [
                     {
                         "time": int(r.get("timestamp", r.get("time", 0))),
+                        "timestamp": int(r.get("timestamp", r.get("time", 0))),
                         "open": round(float(r["open"]), 2),
                         "high": round(float(r["high"]), 2),
                         "low": round(float(r["low"]), 2),
@@ -302,267 +485,107 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
                     }
                     for r in records
                 ]
-        except Exception as e:
-            logger.warning(f"[DataManager] Error in fallback cached OANDA candles: {e}")
+        except Exception:
+            pass
 
-    # 4. Fallback to COMEX if OANDA WS is unavailable
-    return fetch_real_comex_gold_candles(interval=interval, count=count)
-
-
-def fetch_real_comex_gold_candles(interval: str = "1m", count: int = 2880) -> List[Dict[str, Any]]:
-    """
-    Fetches real institutional Gold OHLCV candles from the CME / COMEX Gold Futures market (GC=F).
-    100% Free & Keyless via Yahoo Finance CME direct institutional feed.
-    """
-    logger.info(f"[DataManager] Fetching real CME COMEX Gold (GC=F) candles (interval={interval}, count={count})...")
-    if interval == "1m":
-        url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m&range=7d"
-    elif interval in ("5m", "15m"):
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval={interval}&range=1mo"
-    elif interval in ("1h", "60m"):
-        url = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1h&range=60d"
-    else:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval={interval}&range=3mo"
-
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
-    with urllib.request.urlopen(req, timeout=12) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-
-    res = data["chart"]["result"][0]
-    timestamps = res["timestamp"]
-    quote = res["indicators"]["quote"][0]
-
-    candles = []
-    for i in range(len(timestamps)):
-        if quote["open"][i] is not None and quote["close"][i] is not None:
-            candles.append({
-                "time":   int(timestamps[i]),
-                "open":   round(float(quote["open"][i]), 2),
-                "high":   round(float(quote["high"][i]), 2),
-                "low":    round(float(quote["low"][i]), 2),
-                "close":  round(float(quote["close"][i]), 2),
-                "volume": round(float(quote["volume"][i] or 10.0), 4)
-            })
-
-    if count and len(candles) > count:
-        candles = candles[-count:]
-
-    logger.info(f"[DataManager] Successfully fetched {len(candles)} real COMEX Gold (GC=F) candles")
-    return candles
-
-
-def fetch_real_binance_klines(symbol: str = "BTC/USDT", interval: str = "15m", count: int = 2880) -> List[Dict[str, Any]]:
-    """
-    Fetches real OHLCV candles from Binance.
-    If Gold is requested, seamlessly routes to OANDA Spot Gold (XAUUSD).
-    """
-    clean_sym = resolve_market_symbol(symbol)
-    if clean_sym == "OANDA:XAUUSD":
-        return fetch_real_oanda_candles(interval=interval, count=count)
-    elif clean_sym == "GC=F":
-        return fetch_real_comex_gold_candles(interval=interval, count=count)
-    elif clean_sym == "CME_MINI:ES1!":
-        csv_path = "data/sp500_candles_1m.csv"
-        if os.path.exists(csv_path):
-            df = pd.read_csv(csv_path)
-            records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
-            return [
-                {
-                    "time": int(r.get("timestamp", r.get("time", 0))),
-                    "open": round(float(r["open"]), 2),
-                    "high": round(float(r["high"]), 2),
-                    "low": round(float(r["low"]), 2),
-                    "close": round(float(r["close"]), 2),
-                    "volume": round(float(r.get("volume", 10.0)), 4)
-                }
-                for r in records
-            ]
-
-    logger.info(f"[DataManager] Fetching {count} real candles for {clean_sym} ({symbol}) {interval} from Binance REST API")
-
-    raw_items = []
-    end_time = int(time.time() * 1000)
-    
-    while len(raw_items) < count:
-        limit = min(1000, count - len(raw_items))
-        url = f"https://api.binance.com/api/v3/klines?symbol={clean_sym}&interval={interval}&limit={limit}&endTime={end_time}"
-        
+    # 2. Pull from TradingView WS
+    fresh = fetch_candles_via_tv(clean_sym, interval, count)
+    if fresh:
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EdgeMiner/1.0"})
-            with urllib.request.urlopen(req, timeout=10) as response:
-                batch = json.loads(response.read().decode("utf-8"))
-        except Exception as e_req:
-            logger.warning(f"[DataManager] Binance request error: {e_req}")
-            break
+            df_fresh = pd.DataFrame(fresh)
+            if "time" in df_fresh.columns and "timestamp" not in df_fresh.columns:
+                df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
+            if os.path.exists(csv_path):
+                df_old = pd.read_csv(csv_path)
+                df_merged = pd.concat([df_old, df_fresh], ignore_index=True)
+                df_merged.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                df_merged.sort_values(by="timestamp", inplace=True)
+                df_merged.to_csv(csv_path, index=False)
+            else:
+                os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+                df_fresh.to_csv(csv_path, index=False)
+        except Exception:
+            pass
+        return fresh[-count:] if count else fresh
 
-        if not batch:
-            break
-
-        # Append earliest batch to front
-        raw_items = batch + raw_items
-        end_time = batch[0][0] - 1
-        time.sleep(0.04)
-
-    if not raw_items:
-        csv_path = "data/candles_15m.csv"
-        if os.path.exists(csv_path):
-            logger.warning(f"[DataManager] Binance request unavailable, falling back to cached {csv_path}")
-            df = pd.read_csv(csv_path)
-            df = bridge_candles_to_now(df, interval=interval, symbol=symbol)
-            try:
-                df.to_csv(csv_path, index=False)
-            except Exception:
-                pass
-            records = df.tail(count).to_dict(orient="records") if (count and count > 0 and count < len(df)) else df.to_dict(orient="records")
-            return [
+    # 3. Direct Binance REST API fallback
+    pair = clean_sym.replace("BINANCE:", "").upper()
+    url = f"https://api.binance.com/api/v3/klines?symbol={pair}&interval={interval}&limit={min(1000, count)}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+            candles = [
                 {
-                    "time": int(r.get("timestamp", r.get("time", 0))),
-                    "open": round(float(r["open"]), 2),
-                    "high": round(float(r["high"]), 2),
-                    "low": round(float(r["low"]), 2),
-                    "close": round(float(r["close"]), 2),
-                    "volume": round(float(r.get("volume", 10.0)), 4)
+                    "time": int(item[0] // 1000),
+                    "timestamp": int(item[0] // 1000),
+                    "open": round(float(item[1]), 2),
+                    "high": round(float(item[2]), 2),
+                    "low": round(float(item[3]), 2),
+                    "close": round(float(item[4]), 2),
+                    "volume": round(float(item[5]), 4)
                 }
-                for r in records
+                for item in raw
             ]
-        raise RuntimeError(f"[DataManager] No klines returned for {clean_sym} {interval}")
+            return candles
+    except Exception as e:
+        logger.warning(f"[DataManager] Binance REST fallback error for {pair}: {e}")
 
-    candles = []
-    for item in raw_items:
-        candles.append({
-            "time":   int(item[0] // 1000),
-            "open":   round(float(item[1]), 2),
-            "high":   round(float(item[2]), 2),
-            "low":    round(float(item[3]), 2),
-            "close":  round(float(item[4]), 2),
-            "volume": round(float(item[5]), 4),
-        })
-
-    logger.info(f"[DataManager] Successfully fetched {len(candles)} real candles for {clean_sym}")
-    return candles
+    # Fallback to cached CSV
+    if os.path.exists(csv_path):
+        df = pd.read_csv(csv_path)
+        records = df.tail(count).to_dict(orient="records")
+        return [
+            {
+                "time": int(r.get("timestamp", r.get("time", 0))),
+                "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                "open": round(float(r["open"]), 2),
+                "high": round(float(r["high"]), 2),
+                "low": round(float(r["low"]), 2),
+                "close": round(float(r["close"]), 2),
+                "volume": round(float(r.get("volume", 10.0)), 4)
+            }
+            for r in records
+        ]
+    return []
 
 
 def sync_30d_candles(symbol: str = "BTC/USDT", output_path: str = "data/candles_15m.csv") -> str:
-    """
-    Fetches extensive real market data (10,000+ candles) and merges with output_path CSV.
-    """
-    candles = fetch_real_binance_klines(symbol=symbol, interval="15m", count=10000)
-    df = pd.DataFrame(candles)
-    df.rename(columns={"time": "timestamp"}, inplace=True)
-    if os.path.exists(output_path):
-        try:
-            old_df = pd.read_csv(output_path)
-            df = pd.concat([old_df, df]).drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
-        except Exception:
-            pass
-    
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    df.to_csv(output_path, index=False)
-    logger.info(f"[DataManager] Updated {output_path} with {len(df)} candles")
+    """Synchronizes real market data (10,000+ candles) and updates output_path CSV."""
+    candles = fetch_candles_via_tv(resolve_market_symbol(symbol), "15m", 10000)
+    if not candles:
+        candles = fetch_real_binance_klines(symbol=symbol, interval="15m", count=5000)
+    if candles:
+        df = pd.DataFrame(candles)
+        if "time" in df.columns and "timestamp" not in df.columns:
+            df.rename(columns={"time": "timestamp"}, inplace=True)
+        if os.path.exists(output_path):
+            try:
+                old_df = pd.read_csv(output_path)
+                df = pd.concat([old_df, df]).drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+            except Exception:
+                pass
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        df.to_csv(output_path, index=False)
+        logger.info(f"[DataManager] Synchronized {output_path} with {len(df)} authentic candles")
     return output_path
 
 
 def sync_xauusd_scalp_candles(output_path: str = "data/xauusd_candles_1m.csv") -> str:
-    """
-    Fetches real institutional OANDA Cash Spot Gold (XAUUSD) data and generates 1m scalping dataset.
-    Prioritizes 10,000 authentic 1-minute OANDA spot bars directly from TradingView.
-    100% Free & Keyless matching MetaTrader 4/5 broker quotes for Goat Funded Trader.
-    """
-    logger.info("[DataManager] Syncing real OANDA Spot Gold (XAUUSD) market data...")
-    
-    bars_1m = []
-    try:
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    bars_1m = pool.submit(lambda: asyncio.run(_async_fetch_oanda_bars("1", 30000))).result()
-            else:
-                bars_1m = asyncio.run(_async_fetch_oanda_bars("1", 30000))
-        except RuntimeError:
-            bars_1m = asyncio.run(_async_fetch_oanda_bars("1", 30000))
-    except Exception as e:
-        logger.warning(f"[DataManager] OANDA 1m bar fetch error: {e}")
-
-    if bars_1m and len(bars_1m) >= 2000:
-        df_1m = pd.DataFrame(bars_1m)
-        if "time" in df_1m.columns:
-            df_1m.rename(columns={"time": "timestamp"}, inplace=True)
+    """Synchronizes real institutional OANDA Cash Spot Gold (XAUUSD) 1m scalping dataset."""
+    candles = fetch_candles_via_tv("OANDA:XAUUSD", "1m", 10000)
+    if candles:
+        df = pd.DataFrame(candles)
+        if "time" in df.columns and "timestamp" not in df.columns:
+            df.rename(columns={"time": "timestamp"}, inplace=True)
+        if os.path.exists(output_path):
+            try:
+                old_df = pd.read_csv(output_path)
+                clean_old = old_df[old_df.get("volume", 10.0) > 1.5]
+                df = pd.concat([clean_old, df]).drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
+            except Exception:
+                pass
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        df_1m.to_csv(output_path, index=False)
-        logger.info(f"[DataManager] Successfully wrote {len(df_1m)} authentic 1-minute OANDA candles to {output_path}")
-        return output_path
-
-    # Fallback to 5m/15m bars if 1m is unavailable
-    bars = []
-    try:
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            bars = pool.submit(lambda: asyncio.run(_async_fetch_oanda_bars("5", 6000))).result()
-    except Exception as e:
-        logger.warning(f"[DataManager] OANDA 5m bar fetch error: {e}")
-
-    bar_step = 5
-    if len(bars) < 3000:
-        try:
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                bars_15m = pool.submit(lambda: asyncio.run(_async_fetch_oanda_bars("15", 3000))).result()
-            if bars_15m and len(bars_15m) > len(bars):
-                bars = bars_15m
-                bar_step = 15
-        except Exception:
-            pass
-
-    records_1m = []
-    for b in bars:
-        t_start = int(b["timestamp"] if "timestamp" in b else b["time"])
-        o = float(b["open"])
-        h = float(b["high"])
-        l = float(b["low"])
-        c = float(b["close"])
-        vol_per_min = round(float(b.get("volume", 10.0)) / float(bar_step), 4)
-
-        if c >= o:
-            p0 = o
-            p1 = round(o + (l - o) * 0.7, 2)
-            p2 = l
-            p3 = h
-            p4 = c
-        else:
-            p0 = o
-            p1 = round(o + (h - o) * 0.7, 2)
-            p2 = h
-            p3 = l
-            p4 = c
-
-        prices = [p0, p1, p2, p3, p4]
-        for m in range(bar_step):
-            idx_o = min(m, 4)
-            idx_c = min(m + 1, 4)
-            m_open = prices[idx_o]
-            m_close = prices[idx_c]
-            m_high = max(m_open, m_close)
-            m_low = min(m_open, m_close)
-            if m == 1:
-                m_low = min(m_low, l)
-            if m == 2 or m == 3:
-                m_high = max(m_high, h)
-
-            records_1m.append({
-                "timestamp": t_start + m * 60,
-                "open": m_open,
-                "high": m_high,
-                "low": m_low,
-                "close": m_close,
-                "volume": vol_per_min
-            })
-
-    if records_1m and len(records_1m) > 0:
-        df_1m = pd.DataFrame(records_1m)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        df_1m.to_csv(output_path, index=False)
-        logger.info(f"[DataManager] Updated {output_path} with {len(df_1m)} real 30-day OANDA Spot Gold (XAUUSD) 1m scalping candles")
-    else:
-        logger.warning(f"[DataManager] No new bars available; preserving existing {output_path}")
+        df.to_csv(output_path, index=False)
+        logger.info(f"[DataManager] Synchronized {output_path} with {len(df)} authentic 1m OANDA Gold candles")
     return output_path
-
-
