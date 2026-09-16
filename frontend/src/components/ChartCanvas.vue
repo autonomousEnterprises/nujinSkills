@@ -1000,7 +1000,7 @@ const applyPrimitiveLevels = (levels: any[]) => {
 
 const updateZoneBoxCoordinates = () => {
   if (!chart || !candleSeries || !chartContainerRef.value || rawPrimitiveBoxes.value.length === 0) {
-    renderedZoneBoxes.value = [];
+    if (renderedZoneBoxes.value.length > 0) renderedZoneBoxes.value = [];
     return;
   }
 
@@ -1051,25 +1051,38 @@ const updateZoneBoxCoordinates = () => {
   renderedZoneBoxes.value = results;
 };
 
+let rafCoordId: number | null = null;
+const scheduleUpdateBoxCoordinates = () => {
+  if (rafCoordId !== null) return;
+  rafCoordId = requestAnimationFrame(() => {
+    rafCoordId = null;
+    updateBoxCoordinatesInternal();
+  });
+};
+
 const updateBoxCoordinates = () => {
+  scheduleUpdateBoxCoordinates();
+};
+
+const updateBoxCoordinatesInternal = () => {
   updateZoneBoxCoordinates();
 
   if (!isInspectingTrade.value && !props.targetedSignal) {
-    positionBoxes.value = [];
+    if (positionBoxes.value.length > 0) positionBoxes.value = [];
     clearPriceLines();
     return;
   }
 
   const target = inspectedSignal.value;
   if (!target || !target.entry_price || !chart || !candleSeries || !chartContainerRef.value || rawCandles.value.length === 0) {
-    positionBoxes.value = [];
+    if (positionBoxes.value.length > 0) positionBoxes.value = [];
     clearPriceLines();
     return;
   }
 
   // Cross-asset compatibility guard: Discard box if inspected signal price is incompatible with loaded candle series
   if (!isPriceCompatible(target.entry_price)) {
-    positionBoxes.value = [];
+    if (positionBoxes.value.length > 0) positionBoxes.value = [];
     clearPriceLines();
     return;
   }
@@ -1079,7 +1092,7 @@ const updateBoxCoordinates = () => {
   const slDistPct = Math.abs(target.stop_loss - target.entry_price) / target.entry_price;
   const tpDistPct = Math.abs(target.take_profit - target.entry_price) / target.entry_price;
   if (slDistPct > 0.08 || tpDistPct > 0.15) {
-    positionBoxes.value = [];
+    if (positionBoxes.value.length > 0) positionBoxes.value = [];
     clearPriceLines();
     return;
   }
@@ -1090,13 +1103,10 @@ const updateBoxCoordinates = () => {
   const rawEntry = target.entry_time > 2000000000 ? target.entry_time / 1000 : target.entry_time;
   const entryIdx = findCandleIndex(rawEntry);
   if (entryIdx < 0) {
-    positionBoxes.value = [];
+    if (positionBoxes.value.length > 0) positionBoxes.value = [];
     clearPriceLines();
     return;
   }
-
-  // Always synchronize price axis labels
-  syncPriceAxisLines(target);
 
   // Calculate dynamic bar spacing and visible logical range
   const barSpacing = chart.timeScale().options().barSpacing || 16;
@@ -1520,13 +1530,12 @@ const initChart = () => {
     }
   });
 
-  // Subscribe timescale changes to keep Trade Boxes pinned dynamically during pan/zoom
-  chart.timeScale().subscribeVisibleLogicalRangeChange(updateBoxCoordinates);
-  chart.timeScale().subscribeVisibleTimeRangeChange(updateBoxCoordinates);
+  // Subscribe timescale changes to keep Trade Boxes pinned dynamically during pan/zoom (RAF throttled)
+  chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleUpdateBoxCoordinates);
 
   const container = chartContainerRef.value;
-  container.addEventListener('wheel', updateBoxCoordinates, { passive: true });
-  container.addEventListener('pointerup', updateBoxCoordinates);
+  container.addEventListener('wheel', scheduleUpdateBoxCoordinates, { passive: true });
+  container.addEventListener('pointerup', scheduleUpdateBoxCoordinates);
 
   // Resize handling
   resizeObserver = new ResizeObserver((entries) => {
@@ -1715,7 +1724,7 @@ const loadCandles = async (preserveViewport = false) => {
 
       if (preserveViewport && savedRange) {
         chart.timeScale().setVisibleLogicalRange(savedRange);
-        redrawTradeBoxes();
+        scheduleUpdateBoxCoordinates();
         return;
       }
 
@@ -1984,9 +1993,6 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
         color: newBar.close >= newBar.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
       });
     }
-
-    // Keep indicators synchronized
-    applyStrategyIndicators();
   }
 
   // Update HUD and Legend
@@ -1999,8 +2005,9 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     changePct: open ? ((close - open) / open) * 100 : 0,
   };
 
-  // Redraw trade boxes so live trades follow the new bar
-  redrawTradeBoxes();
+  if (isInspectingTrade.value || rawPrimitiveBoxes.value.length > 0) {
+    scheduleUpdateBoxCoordinates();
+  }
 };
 
 // Live price streams (Powered exclusively by backend WebSocket MARKET_TICK single source of truth)
@@ -2028,6 +2035,7 @@ watch(
   () => props.latestMarketTick,
   (tick) => {
     if (!tick) return;
+    if (props.isActiveScreen === false) return;
     const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
     const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
     const isBtc = !isSp && !isGold;
@@ -2238,8 +2246,12 @@ onUnmounted(() => {
   clearLevelLines();
   window.removeEventListener('keydown', handleKeyDown);
   if (chartContainerRef.value) {
-    chartContainerRef.value.removeEventListener('wheel', updateBoxCoordinates);
-    chartContainerRef.value.removeEventListener('pointerup', updateBoxCoordinates);
+    chartContainerRef.value.removeEventListener('wheel', scheduleUpdateBoxCoordinates);
+    chartContainerRef.value.removeEventListener('pointerup', scheduleUpdateBoxCoordinates);
+  }
+  if (rafCoordId !== null) {
+    cancelAnimationFrame(rafCoordId);
+    rafCoordId = null;
   }
   if (resizeObserver) resizeObserver.disconnect();
   for (const s of activeIndicatorSeries.values()) {

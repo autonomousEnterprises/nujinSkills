@@ -130,14 +130,19 @@ def extract_strategy_primitives(strategy_name: str, candles: List[Dict[str, Any]
             lines_cfg.append(cfg)
             series_data[col] = pts
 
-    # 2. 2D Zone Boxes Auto-Discovery (FVG, Order Blocks, Asian Range)
-    # Fair Value Gaps
-    if "fvg_bullish" in df.columns or ("low" in df.columns and "high" in df.columns):
+    # 2. 2D Zone Boxes Auto-Discovery (FVG, Order Blocks, Liquidity Zones)
+    # ONLY detect FVGs if the strategy explicitly defines FVG indicator columns or is an SMC/FVG archetype
+    strategy_uses_fvg = (
+        any(c in df.columns for c in ["fvg_bullish", "fvg_bearish", "fvg", "fair_value_gap", "order_block", "liquidity_pool", "fvg_top"])
+        or any(k in strategy_name.lower() for k in ["fvg", "fairvalue", "fair_value", "smc", "orderblock", "liquidity_sweep", "imbalance"])
+    )
+
+    if strategy_uses_fvg and "low" in df.columns and "high" in df.columns:
         fvg_bull_mask = df.get("fvg_bullish", pd.Series(0, index=df.index))
         fvg_bear_mask = df.get("fvg_bearish", pd.Series(0, index=df.index))
 
-        # Scan recent 200 bars for distinct FVGs
-        scan_len = min(250, len(df))
+        # Scan recent 100 bars for distinct FVGs
+        scan_len = min(100, len(df))
         sub_df = df.iloc[-scan_len:].reset_index(drop=True)
         for i in range(2, len(sub_df)):
             t_curr = int(sub_df.loc[i, "time"])
