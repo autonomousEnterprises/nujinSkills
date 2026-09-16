@@ -58,7 +58,7 @@ class TelegramGateway:
             logger.warning(f"[TelegramGateway] User discovery encountered error: {e}")
         return users
 
-    def send_message(self, text: str, parse_mode: Optional[str] = "HTML", target_chat_id: Optional[str] = None) -> bool:
+    def send_message(self, text: str, parse_mode: Optional[str] = "HTML", target_chat_id: Optional[str] = None, disable_notification: bool = False) -> bool:
         if not self.bot_token:
             logger.info(f"[Telegram Off-line / Log Only]\n{text}")
             return False
@@ -81,6 +81,8 @@ class TelegramGateway:
             }
             if parse_mode:
                 payload["parse_mode"] = parse_mode
+            if disable_notification:
+                payload["disable_notification"] = True
 
             try:
                 resp = requests.post(url, json=payload, timeout=8)
@@ -94,6 +96,8 @@ class TelegramGateway:
                     logger.info(f"[TelegramGateway] Retrying message delivery to {cid} in unformatted plaintext fallback mode...")
                     clean_text = text.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "").replace("<i>", "").replace("</i>", "")
                     fallback_payload = {"chat_id": cid, "text": clean_text}
+                    if disable_notification:
+                        fallback_payload["disable_notification"] = True
                     retry_resp = requests.post(url, json=fallback_payload, timeout=8)
                     if retry_resp.status_code == 200:
                         logger.info(f"[TelegramGateway] Plaintext fallback delivered successfully to {cid}.")
@@ -104,6 +108,66 @@ class TelegramGateway:
                 logger.error(f"Failed to dispatch Telegram message to {cid}: {e}")
 
         return any_success
+
+    @staticmethod
+    def format_broadcast_text(body: str, category: str = "general", title: str = "") -> str:
+        cat = (category or "general").lower().strip()
+        time_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+        
+        if cat == "raw":
+            return body
+
+        headers = {
+            "report": ("📊", "QUANTITATIVE REPORT", "Quantitative Systems"),
+            "news": ("📰", "MARKET INTEL & NEWS", "FastFeed Intelligence"),
+            "update": ("🚀", "SYSTEM & STRATEGY UPDATE", "Operations Core"),
+            "alert": ("🚨", "RISK & VOLATILITY ALERT", "Risk Guardian"),
+            "general": ("💬", "NUJIN AI BROADCAST", "EdgeMiner Engine"),
+        }
+        icon, default_title, tag = headers.get(cat, ("💬", "BROADCAST MESSAGE", "EdgeMiner Engine"))
+        display_title = title.strip() if title else default_title
+
+        return (
+            f"{icon} <b>{display_title.upper()}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ <b>Time:</b> <code>{time_str}</code>\n\n"
+            f"{body.strip()}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚡ <i>NujinAI {tag}</i>"
+        )
+
+    def broadcast_custom(
+        self,
+        body: str,
+        category: str = "general",
+        title: str = "",
+        parse_mode: Optional[str] = "HTML",
+        target_chat_ids: Optional[list[str]] = None,
+        disable_notification: bool = False
+    ) -> Dict[str, Any]:
+        formatted_text = self.format_broadcast_text(body, category=category, title=title)
+        targets = target_chat_ids if target_chat_ids else self.get_chat_ids()
+        if not targets:
+            targets = self.discover_all_users()
+
+        results = {}
+        for cid in targets:
+            ok = self.send_message(
+                formatted_text,
+                parse_mode=parse_mode,
+                target_chat_id=cid,
+                disable_notification=disable_notification
+            )
+            results[cid] = ok
+
+        return {
+            "delivered": any(results.values()) if results else False,
+            "recipients": results,
+            "formatted_text": formatted_text,
+            "category": category,
+            "title": title
+        }
+
 
     def format_and_send_signal(self, payload: Dict[str, Any]) -> bool:
         action = payload.get("action", "BUY").upper()

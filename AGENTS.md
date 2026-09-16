@@ -22,6 +22,8 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 | Remove Decommissioned Strategy | `python tools/strategy_manager.py remove <strategy_name>` |
 | Add Strategy to Production | `python tools/strategy_manager.py add <path_to_strategy.py>` |
 | Deploy Trading Bot | `python tools/bot_control.py deploy --strategy strategies/live_alpha.py --mode paper` |
+| Broadcast Telegram Update / News / Report | `python tools/telegram_broadcast.py broadcast --type [report\|news\|update\|alert] --title "<Title>" --message "<Content>"` |
+| Inspect Telegram Gateway Status | `python tools/telegram_broadcast.py status` |
 
 ## Strict Quantitative Gates
 Never approve or deploy a strategy unless it passes all programmatic gates:

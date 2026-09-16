@@ -73,6 +73,45 @@ Trap: Aggressive market sellers absorbed at support.
 Time: 2026-09-11 14:15:00 UTC
 ```
 
+### D. Autonomous Broadcast Tool (`tools/telegram_broadcast.py`)
+Used by the AI agent whenever requested to communicate, publish reports, share market intelligence, or update subscribers:
+
+```bash
+# 1. Check Gateway & Subscriber Connectivity
+python tools/telegram_broadcast.py status
+
+# 2. Broadcast Quantitative Performance Report
+python tools/telegram_broadcast.py broadcast \
+  --type report \
+  --title "Daily Quant Performance" \
+  --message "Net PnL: +4.12% | Win Rate: 75.0% | Profit Factor: 2.84 | Max DD: 0.85%"
+
+# 3. Broadcast Market / Macro News
+python tools/telegram_broadcast.py broadcast \
+  --type news \
+  --title "US CPI Release Volatility" \
+  --message "CPI prints higher than expected. Liquidity sweeps observed across BTC perpetuals."
+
+# 4. Broadcast System & Strategy Lifecycle Updates
+python tools/telegram_broadcast.py broadcast \
+  --type update \
+  --title "Strategy Deployed: BTC Volatility Fade" \
+  --message "PropFirm Wick Strategy activated in live paper mode."
+
+# 5. Broadcast Urgent Risk Alerts
+python tools/telegram_broadcast.py broadcast \
+  --type alert \
+  --title "Volatility Spike Warning" \
+  --message "Realized volatility breached 3.5 sigma. Dynamic stop-loss distances widened."
+
+# 6. Ingest Reports from File or Piped Input
+python tools/telegram_broadcast.py broadcast --type report --file reports/session_summary.md
+cat reports/session_summary.md | python tools/telegram_broadcast.py broadcast --type report
+
+# 7. Safe Dry-Run Simulation
+python tools/telegram_broadcast.py broadcast --type news --title "Preview" --message "Dry-run test" --dry-run
+```
+
 ---
 
 ## 4. Bot Supervisor CLI (`tools/bot_control.py`)

@@ -215,7 +215,19 @@ When a strategy passes all gates ($\text{Score} = 6/6$, $\text{DSR} \ge 0.95$):
    ```bash
    python tools/bot_control.py deploy --strategy MyStrategy --mode dry-run
    ```
-5. **Stream Real-Time Telegram Alerts:** Signals trigger push notifications to Telegram and mark entry/exit levels on the Cockpit chart.
+5. **Broadcast Reports, News & Strategy Updates:**
+   Whenever users request updates, reports, or market commentary, or when the agent proactively informs subscribers:
+   ```bash
+   # Broadcast market or quantitative performance reports
+   python tools/telegram_broadcast.py broadcast --type report --title "Daily Quant Performance" --message "Net PnL: +3.2%, Win Rate: 72%, Sharpe: 2.1"
+   
+   # Broadcast breaking macro/market news
+   python tools/telegram_broadcast.py broadcast --type news --title "CPI Surprise" --message "CPI prints 3.1% vs 2.9% exp. Liquidity sweep on BTC."
+   
+   # Broadcast strategy lifecycle updates
+   python tools/telegram_broadcast.py broadcast --type update --title "Strategy Deployed" --message "PropFirm Wick Strategy activated in live paper mode."
+   ```
+6. **Stream Real-Time Telegram Alerts:** Signals trigger push notifications to Telegram and mark entry/exit levels on the Cockpit chart.
 
 ---
 
@@ -259,6 +271,7 @@ Nujin audits and evolves its own tool suite and knowledge base:
 | `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
 | `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
 | `tools/strategy_manager.py` | `[StrategyManager]` | **Zero-Code Strategy Management:** Dynamic auto-discovery, safe file removal, 4-pillar rankings, drift tracking, and bot activation | `sync`, `add`, `remove`, `rank`, `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `insights`, `--json` |
+| `tools/telegram_broadcast.py` | `[TelegramBroadcast]` | **Autonomous Telegram Dispatcher:** Broadcasts quant reports, macro/market news, system/strategy updates, and alerts to users | `broadcast`, `status`, `test`, `--message`, `--file`, `--type`, `--title`, `--chat-id`, `--silent`, `--dry-run`, `--json` |
 | `tools/state_control.py` | `[StateControl]` | Shared state CLI: read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add` |
 | `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
 | `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |

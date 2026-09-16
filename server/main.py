@@ -447,6 +447,11 @@ async def broadcast_event(envelope: EventEnvelope):
     elif envelope.event_type == "TELEGRAM_ALERT":
         play_system_alert(envelope.payload.get("action", ""))
         telegram_gateway.format_and_send_signal(envelope.payload)
+    elif envelope.event_type == "TELEGRAM_BROADCAST":
+        msg_body = envelope.payload.get("message") or envelope.payload.get("text") or envelope.payload.get("body", "")
+        msg_cat = envelope.payload.get("type") or envelope.payload.get("category", "general")
+        msg_title = envelope.payload.get("title", "")
+        telegram_gateway.broadcast_custom(msg_body, category=msg_cat, title=msg_title)
     elif envelope.event_type == "UPSERT_WIDGET" and envelope.payload.get("component") == "MetricCard":
         telegram_gateway.format_and_send_dsr_alert(envelope.payload)
     return {"status": "SUCCESS", "event_type": envelope.event_type}

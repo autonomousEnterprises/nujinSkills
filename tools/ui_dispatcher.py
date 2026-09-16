@@ -29,7 +29,7 @@ def dispatch(event: str, payload_str: str, endpoint: str = "http://localhost:800
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="UI & Telegram Telemetry Dispatcher CLI")
-    parser.add_argument("--event", choices=["CHART_MARKER", "UPSERT_WIDGET", "TELEGRAM_ALERT", "SIGNAL_TRIGGERED"], required=True, help="Telemetry event type")
+    parser.add_argument("--event", choices=["CHART_MARKER", "UPSERT_WIDGET", "TELEGRAM_ALERT", "TELEGRAM_BROADCAST", "SIGNAL_TRIGGERED"], required=True, help="Telemetry event type")
     parser.add_argument("--payload", required=True, help="JSON payload string")
     parser.add_argument("--endpoint", default="http://localhost:8000/api/broadcast", help="HTTP broadcast endpoint (default: http://localhost:8000/api/broadcast)")
     args = parser.parse_args()
