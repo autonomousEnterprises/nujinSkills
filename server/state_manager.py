@@ -633,47 +633,227 @@ class StrategyRegistry:
             "timeframe": timeframe,
         }
 
-    def _calculate_score(self, summary: Dict[str, Any], gates: Dict[str, Any]) -> float:
+    def _calculate_score_and_breakdown(self, strat: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Multi-pillar quantitative scoring and tier classification model.
+        Evaluates strategies across 4 orthogonal dimensions:
+          1. Edge Strength (35%): Net Annualized Sharpe (net of friction), Profit Factor, Expectancy
+          2. Statistical Robustness & Falsification (30%): Deflated Sharpe Ratio (DSR), Sample Count, Cynic Gates
+          3. Capital Preservation & Downside Risk (25%): Max Drawdown curve, Win Rate consistency
+          4. Drift Stability & Out-of-Sample Performance (10%): Snapshot trajectory over time
+        """
+        summary = strat.get("latest_backtest", {})
+        gates = strat.get("falsification_gates", {})
         if not summary or summary.get("trades", 0) == 0:
-            return 0.0
+            return {
+                "ranking_score": 0.0,
+                "tier": "C-Tier (Sub-Hurdle)",
+                "ranking_breakdown": {
+                    "edge_score": 0.0,
+                    "robustness_score": 0.0,
+                    "risk_score": 0.0,
+                    "drift_score": 50.0,
+                    "composite_score": 0.0,
+                    "gates_passed": 0,
+                    "gates_total": 5,
+                    "tier_reason": "No backtest trades recorded"
+                }
+            }
+
         sharpe = max(0.0, float(summary.get("sharpe", 0.0)))
-        dsr = max(0.0, float(summary.get("dsr", 0.0)))
-        win_rate = max(0.0, float(summary.get("win_rate", 0.0)))
-        profit_factor = min(max(0.0, float(summary.get("profit_factor", 0.0))), 5.0)
+        dsr = max(0.0, float(summary.get("dsr") if summary.get("dsr") is not None else gates.get("gate_1_dsr", {}).get("dsr", 0.0)))
+        raw_wr = float(summary.get("win_rate", 0.0))
+        win_rate = raw_wr / 100.0 if raw_wr > 1.0 else raw_wr
+        profit_factor = max(0.0, float(summary.get("profit_factor", 0.0)))
         max_dd = max(0.0, float(summary.get("max_drawdown", 0.0)))
+        trades = max(0, int(summary.get("trades", 0)))
+        exp_bps = float(summary.get("expectancy_bps", 0.0))
 
-        # Weighted score: Sharpe (35%), DSR (25%), Win Rate (20%), PF (15%), Drawdown penalty (10%)
-        sharpe_pts = sharpe * 10.0 * 0.35
-        dsr_pts = dsr * 100.0 * 0.25
-        wr_pts = win_rate * 100.0 * 0.20
-        pf_pts = (profit_factor / 3.0) * 100.0 * 0.15
-        dd_penalty = max_dd * 100.0 * 2.0 * 0.10
+        # ── 1. Edge Strength Score (0 to 100) - Weight 35% ──
+        # Net Sharpe (Hurdle: 1.80, Benchmark: 3.50)
+        if sharpe <= 0:
+            sh_pts = 0.0
+        elif sharpe < 1.8:
+            sh_pts = (sharpe / 1.8) * 25.0
+        elif sharpe <= 3.5:
+            sh_pts = 25.0 + ((sharpe - 1.8) / 1.7) * 25.0
+        else:
+            sh_pts = 50.0
 
-        score = sharpe_pts + dsr_pts + wr_pts + pf_pts - dd_penalty
-        if dsr < 0.95 and dsr > 0:
-            score = max(0.0, score - 15.0)  # Falsification failure penalty
-        return round(max(0.0, min(100.0, score)), 1)
+        # Profit Factor (Hurdle: 1.30, Benchmark: 2.00)
+        if profit_factor <= 1.0:
+            pf_pts = 0.0
+        elif profit_factor < 1.3:
+            pf_pts = ((profit_factor - 1.0) / 0.3) * 12.0
+        elif profit_factor <= 2.0:
+            pf_pts = 12.0 + ((profit_factor - 1.3) / 0.7) * 18.0
+        else:
+            pf_pts = 30.0
+
+        # Expectancy & Friction Coverage (max 20 pts)
+        if exp_bps >= 14.0 or (profit_factor >= 1.6 and win_rate >= 0.50):
+            exp_pts = 20.0
+        elif exp_bps > 0:
+            exp_pts = min(20.0, (exp_bps / 14.0) * 20.0)
+        else:
+            exp_pts = max(0.0, min(20.0, win_rate * profit_factor * 15.0))
+        edge_score = round(min(100.0, sh_pts + pf_pts + exp_pts), 1)
+
+        # ── 2. Statistical Robustness & Falsification (0 to 100) - Weight 30% ──
+        # Deflated Sharpe Ratio (DSR) (max 50 pts)
+        if dsr >= 0.95:
+            dsr_pts = 50.0
+        elif dsr >= 0.90:
+            dsr_pts = 35.0
+        elif dsr >= 0.80:
+            dsr_pts = 20.0
+        elif dsr >= 0.50:
+            dsr_pts = 10.0
+        else:
+            dsr_pts = 5.0
+
+        # Sample Size Significance (max 30 pts)
+        if trades >= 60:
+            n_pts = 30.0
+        elif trades >= 30:
+            n_pts = 20.0
+        elif trades >= 15:
+            n_pts = 10.0
+        else:
+            n_pts = 3.0
+
+        # 5-Gate Cynic Audit Verification (max 20 pts)
+        g1 = 1 if sharpe >= 1.8 else 0
+        g2 = 1 if max_dd <= 0.045 else 0
+        g3 = 1 if (trades >= 30 and win_rate >= 0.50) else 0
+        g4 = 1 if profit_factor >= 1.3 else 0
+        g5 = 1 if dsr >= 0.95 else 0
+        gates_passed = g1 + g2 + g3 + g4 + g5
+        gates_pts = (gates_passed / 5.0) * 20.0
+        robustness_score = round(min(100.0, dsr_pts + n_pts + gates_pts), 1)
+
+        # ── 3. Capital Preservation & Risk (0 to 100) - Weight 25% ──
+        # Max Drawdown (Gate <= 4.5%, Scalper Elite <= 1.0%)
+        if max_dd <= 0.01:
+            dd_pts = 60.0
+        elif max_dd <= 0.045:
+            dd_pts = 60.0 - ((max_dd - 0.01) / 0.035) * 25.0
+        elif max_dd <= 0.08:
+            dd_pts = max(5.0, 35.0 - ((max_dd - 0.045) / 0.035) * 30.0)
+        else:
+            dd_pts = 0.0
+
+        # Win Rate Consistency (max 40 pts)
+        if win_rate >= 0.60:
+            wr_pts = 40.0
+        elif win_rate >= 0.50:
+            wr_pts = 25.0 + ((win_rate - 0.50) / 0.10) * 15.0
+        elif win_rate >= 0.40:
+            wr_pts = 15.0
+        else:
+            wr_pts = max(0.0, win_rate * 25.0)
+        risk_score = round(min(100.0, dd_pts + wr_pts), 1)
+
+        # ── 4. Drift Stability & Trajectory (0 to 100) - Weight 10% ──
+        hist = strat.get("cron_config", {}).get("drift_history", [])
+        if len(hist) >= 2:
+            d_sh = float(hist[-1].get("sharpe", 0.0)) - float(hist[0].get("sharpe", 0.0))
+            if d_sh >= 0.05:
+                drift_score = 100.0
+            elif d_sh >= -0.10:
+                drift_score = 85.0
+            elif d_sh >= -0.25:
+                drift_score = 60.0
+            else:
+                drift_score = 25.0
+        else:
+            drift_score = 75.0
+
+        composite_score = round(
+            0.35 * edge_score + 0.30 * robustness_score + 0.25 * risk_score + 0.10 * drift_score,
+            1
+        )
+
+        # ── Institutional Tier Determination ──
+        is_s = (
+            composite_score >= 80.0 and
+            sharpe >= 2.5 and
+            dsr >= 0.95 and
+            max_dd <= 0.045 and
+            win_rate >= 0.50 and
+            profit_factor >= 1.5 and
+            trades >= 25
+        )
+        is_a = (
+            composite_score >= 65.0 and
+            sharpe >= 1.8 and
+            dsr >= 0.90 and
+            max_dd <= 0.05 and
+            profit_factor >= 1.3 and
+            trades >= 20
+        )
+
+        if is_s:
+            tier = "S-Tier (Superior Edge)"
+            tier_reason = f"Elite Production Alpha: {gates_passed}/5 Gates Passed, DSR {dsr:.2f} >= 0.95, Sharpe {sharpe:.2f}"
+        elif is_a:
+            tier = "A-Tier (Robust Edge)"
+            tier_reason = f"Production Edge: {gates_passed}/5 Gates Passed, DSR {dsr:.2f}, Sharpe {sharpe:.2f}"
+        elif composite_score >= 45.0:
+            tier = "B-Tier (Incubation Alpha)"
+            reasons = []
+            if dsr < 0.90:
+                reasons.append(f"DSR {dsr:.2f} < 0.90")
+            if win_rate < 0.50:
+                reasons.append(f"WinRate {win_rate*100:.1f}% < 50%")
+            if trades < 30:
+                reasons.append(f"Trades {trades} < 30")
+            tier_reason = f"Incubation: {gates_passed}/5 Gates. Pending: {', '.join(reasons) or 'Further OOS Data'}"
+        else:
+            tier = "C-Tier (Sub-Hurdle)"
+            reasons = []
+            if sharpe < 1.2:
+                reasons.append(f"Low Sharpe ({sharpe:.2f})")
+            if max_dd > 0.045:
+                reasons.append(f"High Drawdown ({max_dd*100:.1f}%)")
+            if profit_factor < 1.1:
+                reasons.append(f"Low PF ({profit_factor:.2f})")
+            tier_reason = f"Sub-Hurdle: {gates_passed}/5 Gates. {', '.join(reasons) or 'Fails Core Gates'}"
+
+        return {
+            "ranking_score": composite_score,
+            "tier": tier,
+            "ranking_breakdown": {
+                "edge_score": edge_score,
+                "robustness_score": robustness_score,
+                "risk_score": risk_score,
+                "drift_score": drift_score,
+                "composite_score": composite_score,
+                "gates_passed": gates_passed,
+                "gates_total": 5,
+                "tier_reason": tier_reason,
+            }
+        }
 
     def calculate_rankings(self, strategies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for strat in strategies:
-            summary = strat.get("latest_backtest", {})
-            gates = strat.get("falsification_gates", {})
-            strat["ranking_score"] = self._calculate_score(summary, gates)
-            score = strat["ranking_score"]
-            if score >= 80.0:
-                strat["tier"] = "S-Tier (Superior Edge)"
-            elif score >= 65.0:
-                strat["tier"] = "A-Tier (Robust Edge)"
-            elif score >= 50.0:
-                strat["tier"] = "B-Tier (Marginal Edge)"
-            else:
-                strat["tier"] = "C-Tier (Sub-Hurdle)"
+            meta = self._calculate_score_and_breakdown(strat)
+            strat["ranking_score"] = meta["ranking_score"]
+            strat["tier"] = meta["tier"]
+            strat["ranking_breakdown"] = meta["ranking_breakdown"]
 
         # Sort descending by ranking_score
         strategies.sort(key=lambda s: s.get("ranking_score", 0.0), reverse=True)
         for idx, strat in enumerate(strategies, start=1):
             strat["rank"] = idx
         return strategies
+
+    def recalculate_and_save(self) -> List[Dict[str, Any]]:
+        """Recalculates multi-factor quantitative rankings across all strategies and saves to disk."""
+        strategies = self.get_all(sync=False)
+        ranked = self.calculate_rankings(strategies)
+        self._write_raw(ranked)
+        return ranked
 
     def sync_with_filesystem(self) -> List[Dict[str, Any]]:
         """Syncs data/strategies.json with files in strategies/*.py and active state."""

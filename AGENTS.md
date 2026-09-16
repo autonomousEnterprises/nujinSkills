@@ -16,6 +16,8 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 | Continuous Quant Edge Mining | `python tools/nujin_miner.py run --dimension mean_reversion --max-iterations 10` |
 | Vectorized Strategy Screener | `python tools/vectorized_screener.py --data data/BTCUSDT_15m.csv --strategy strategies/candidate.py` |
 | 5-Gate Cynic Audit (DSR >= 0.95) | `python tools/validation_cynic.py --strategy strategies/candidate.py --strict` |
+| Strategy Ranking & Tiers | `python tools/strategy_manager.py rank` |
+| Strategy Deep Insights | `python tools/strategy_manager.py insights <strategy_name>` |
 | Deploy Trading Bot | `python tools/bot_control.py deploy --strategy strategies/live_alpha.py --mode paper` |
 
 ## Strict Quantitative Gates
@@ -30,4 +32,5 @@ Never approve or deploy a strategy unless it passes all programmatic gates:
 - Full Quant Engine & Phases: [`SKILL.md`](SKILL.md)
 - Cockpit Telemetry & Hotkeys: [`references/cockpit_telemetry.md`](references/cockpit_telemetry.md)
 - Strategy Library & Rules: [`references/quant_strategies.md`](references/quant_strategies.md)
-- Cynic Audit & DSR Validation: [`references/cynic_audit.md`](references/cynic_audit.md)
+- Strategy Ranking & Tiering System: [`references/strategy_ranking_tiers.md`](references/strategy_ranking_tiers.md)
+- Statistical Validation & Binary Metrics: [`references/statistical_validation.md`](references/statistical_validation.md)

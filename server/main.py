@@ -748,8 +748,43 @@ async def trigger_cron_evaluations():
         "portfolio_summary": portfolio,
         "distribution_analytics": distribution
     }
+@app.get("/api/strategies/manage/rankings")
+async def get_strategy_rankings():
+    """Returns sorted quantitative leaderboard with ranking breakdown, sub-scores, tiers, and tier distribution."""
+    strats = strategy_registry.get_all(sync=False)
+    strats_sorted = sorted(strats, key=lambda s: s.get("ranking_score", 0.0), reverse=True)
+    distribution = strategy_registry.get_distribution_analytics()
+    return {
+        "status": "SUCCESS",
+        "rankings": strats_sorted,
+        "total": len(strats_sorted),
+        "tier_distribution": distribution.get("tier_distribution", {}),
+        "sharpe_distribution": distribution.get("sharpe_distribution", {})
+    }
+
+
+@app.post("/api/strategies/manage/rank")
+async def recalculate_strategy_rankings():
+    """
+    Recalculates multi-pillar quantitative rankings and tiers across all strategies.
+    Saves updated state to data/strategies.json and broadcasts STRATEGIES_UPDATED via WebSocket.
+    """
+    ranked = strategy_registry.recalculate_and_save()
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    payload = {
+        "strategies": ranked,
+        "portfolio_summary": portfolio,
+        "distribution_analytics": distribution
+    }
     await manager.broadcast({"event_type": "STRATEGIES_UPDATED", "payload": payload})
-    return {"status": "SUCCESS", "evaluated": evaluated, **payload}
+    return {
+        "status": "SUCCESS",
+        "message": f"Successfully recalculated rankings across {len(ranked)} strategies.",
+        "top_strategy": ranked[0].get("name") if ranked else None,
+        "total": len(ranked),
+        **payload
+    }
 
 
 @app.websocket("/ws")

@@ -42,10 +42,10 @@ export const getValColor = (val?: number | null): string => {
 
 export const getTierBadgeClass = (tier?: string): string => {
   if (!tier) return 'badge-neutral';
-  if (tier.includes('S-Tier')) return 'badge-warning';
-  if (tier.includes('A-Tier')) return 'badge-primary';
-  if (tier.includes('B-Tier')) return 'badge-info';
-  return 'badge-neutral';
+  if (tier.includes('S-Tier')) return 'badge-warning border-warning/40 text-warning font-bold bg-warning/10';
+  if (tier.includes('A-Tier')) return 'badge-primary border-primary/40 text-primary font-bold bg-primary/10';
+  if (tier.includes('B-Tier')) return 'badge-info border-info/40 text-info font-bold bg-info/10';
+  return 'badge-ghost text-base-content/60';
 };
 
 export const getStatusBadgeClass = (status?: string): string => {

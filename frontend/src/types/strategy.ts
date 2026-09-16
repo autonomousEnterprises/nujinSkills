@@ -19,6 +19,16 @@ export interface ManagedStrategy {
   rank: number;
   ranking_score: number;
   tier: string;
+  ranking_breakdown?: {
+    edge_score: number;
+    robustness_score: number;
+    risk_score: number;
+    drift_score: number;
+    composite_score: number;
+    gates_passed: number;
+    gates_total: number;
+    tier_reason: string;
+  };
   latest_backtest: {
     sharpe?: number;
     win_rate?: number;

@@ -242,9 +242,10 @@ Nujin audits and evolves its own tool suite and knowledge base:
 | **Statistical Validation**| [`references/statistical_validation.md`](file:///home/christonomous/Desktop/EdgeMiner/references/statistical_validation.md) | Strict binary metric matrix, Deflated Sharpe Ratio (DSR), parameter surface plateaus, Monte Carlo $MDD_{99}$, ATR stops. |
 | **Self-Improving Loop** | [`references/self_improving_loop.md`](file:///home/christonomous/Desktop/EdgeMiner/references/self_improving_loop.md) | Autonomous research loop, disk state machine (`.nujin/`), validation slicing, keep/discard logic, plateau breakers. |
 | **Execution & Signals** | [`references/execution_and_signals.md`](file:///home/christonomous/Desktop/EdgeMiner/references/execution_and_signals.md) | Freqtrade & Jesse code emission, 24/7 Telegram signal gateway, bot supervision, live PnL REST API. |
-| **State Architecture** | [`references/state_architecture.md`](file:///home/christonomous/Desktop/EdgeMiner/references/state_architecture.md) | Single Source of Truth (`state.json`, `strategies.json`), atomic file locks (`fcntl`), tri-state lifecycle, cron drift. |
-| **Cockpit Telemetry** | [`references/cockpit_telemetry.md`](file:///home/christonomous/Desktop/EdgeMiner/references/cockpit_telemetry.md) | Dual-screen Cockpit UI architecture, TradingView charts, WebSocket telemetry bus, F1–F4 hotkeys. |
-| **Extending Nujin** | [`references/extending_nujin.md`](file:///home/christonomous/Desktop/EdgeMiner/references/extending_nujin.md) | Developer extension guide: adding REST endpoints, WS events, React screens, and tool authoring standard. |
+| **State Architecture** | [`references/state_architecture.md`](references/state_architecture.md) | Single Source of Truth (`state.json`, `strategies.json`), atomic file locks (`fcntl`), tri-state lifecycle, cron drift. |
+| **Ranking & Tiers** | [`references/strategy_ranking_tiers.md`](references/strategy_ranking_tiers.md) | 4-pillar composite scoring (Edge 35%, Robustness 30%, Risk 25%, Drift 10%), S/A/B/C tier gates, WebSocket sync. |
+| **Cockpit Telemetry** | [`references/cockpit_telemetry.md`](references/cockpit_telemetry.md) | Dual-screen Cockpit UI architecture, TradingView charts, WebSocket telemetry bus, F1–F4 hotkeys. |
+| **Extending Nujin** | [`references/extending_nujin.md`](references/extending_nujin.md) | Developer extension guide: adding REST endpoints, WS events, React screens, and tool authoring standard. |
 
 ---
 
@@ -257,7 +258,7 @@ Nujin audits and evolves its own tool suite and knowledge base:
 | `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast In-Sample strategy coarse filter with taker fee & slippage friction | `--data`, `--rules`, `--fee-bps`, `--output` |
 | `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
 | `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
-| `tools/strategy_manager.py` | `[StrategyManager]` | Strategy lifecycle CLI: multi-bot execution, rankings, cron drift tracking | `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `rank` |
+| `tools/strategy_manager.py` | `[StrategyManager]` | Strategy lifecycle CLI: multi-bot execution, 4-pillar rankings, insights, cron drift tracking | `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `rank`, `insights`, `--json` |
 | `tools/state_control.py` | `[StateControl]` | Shared state CLI: read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add` |
 | `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
 | `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
