@@ -37,7 +37,7 @@ def compute_dsr(returns: np.ndarray, num_trials: int) -> dict:
 
 def run_monte_carlo(returns: np.ndarray, num_simulations: int = 1000) -> dict:
     if len(returns) < 10:
-        return {"mdd_99": 0.0, "status": "FAIL"}
+        return {"mdd_99": 0.0, "status": "FAIL", "reason": "Insufficient return samples (< 10)"}
         
     cum_returns = np.cumsum(returns)
     orig_mdd = float(np.max(np.maximum.accumulate(cum_returns) - cum_returns)) if len(cum_returns) > 0 else 0.01
@@ -52,12 +52,14 @@ def run_monte_carlo(returns: np.ndarray, num_simulations: int = 1000) -> dict:
         
     mdd_99 = float(np.percentile(sim_mdds, 99))
     ratio = mdd_99 / (orig_mdd + 1e-6)
+    passed = (ratio <= 2.5) and (mdd_99 <= 0.045)
     
     return {
         "original_mdd": round(orig_mdd, 4),
         "mdd_99": round(mdd_99, 4),
         "mdd_ratio": round(ratio, 2),
-        "status": "PASS" if ratio <= 2.5 else "FAIL"
+        "status": "PASS" if passed else "FAIL",
+        "reason": "MDD99 <= 4.5% & ratio <= 2.5" if passed else ("MDD99 > 4.5%" if mdd_99 > 0.045 else "Tail ratio > 2.5")
     }
 
 def run_parameter_stability(param_grid_json: str, observed_sr: float) -> dict:
