@@ -2,30 +2,48 @@
   <div class="w-full h-full overflow-y-auto font-mono select-none bg-base-100 text-base-content transition-colors">
     <div class="w-full px-3 md:px-6 py-4 space-y-4">
 
-      <!-- ── TOP STATS & LIFECYCLE ACTIONS RIBBON ── -->
+      <!-- ── 1. TOP STATS & LIFECYCLE ACTIONS RIBBON (WITH GLOBAL SCREEN MODE TOGGLE) ── -->
       <StrategyKpiRibbon
         :strategies="strategies"
         :portfolio="portfolio"
+        :signals="signals"
         :activeCount="activeCount"
         :cronCount="cronCount"
         :runningCron="runningCron"
         :runningAll="runningAll"
+        :screenMode="screenMode"
+        @update:screenMode="screenMode = $event"
         @runAllBacktests="handleRunAllBacktests"
         @triggerCron="handleTriggerCron"
       />
 
-      <!-- ── STRATEGY LEADERBOARD TABLE (WITH DRIFT METRICS & SNAPSHOTS) ── -->
+      <!-- ── 2. REALIZED & BENCHMARK EQUITY GROWTH TRAJECTORY ── -->
+      <StrategyEquityChart
+        :signals="signals"
+        :strategies="strategies"
+        :screenMode="screenMode"
+        :selectedScope="selectedScope"
+        :activeBots="activeBotNames"
+        @update:screenMode="screenMode = $event"
+        @update:selectedScope="selectedScope = $event"
+      />
+
+      <!-- ── 3. STRATEGY LEADERBOARD TABLE (DYNAMIC LIVE vs BACKTEST DRIFT & TIERS) ── -->
       <StrategyLeaderboard
         :strategies="strategies"
+        :signals="signals"
         :activeCount="activeCount"
         :cronCount="cronCount"
         :actionLoading="actionLoading"
+        :screenMode="screenMode"
+        :selectedScope="selectedScope"
+        @selectScope="handleSelectScope"
         @navigateToBacktest="emit('navigateToBacktest', $event)"
         @runBacktest="handleRunBacktest"
         @updateStatus="handleUpdateStatus"
       />
 
-      <!-- ── PORTFOLIO RISK, CORRELATION MATRIX & ALLOCATION SCOPE ── -->
+      <!-- ── 4. PORTFOLIO RISK, CORRELATION MATRIX & ALLOCATION SCOPE ── -->
       <StrategyAlphaRiskDeck
         :strategies="strategies"
         :portfolio="portfolio"
@@ -46,6 +64,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import StrategyKpiRibbon from './strategy/StrategyKpiRibbon.vue';
+import StrategyEquityChart from './strategy/StrategyEquityChart.vue';
 import StrategyLeaderboard from './strategy/StrategyLeaderboard.vue';
 import StrategyAlphaRiskDeck from './strategy/StrategyAlphaRiskDeck.vue';
 import type { ManagedStrategy, PortfolioSummary, DistributionAnalytics } from '../types';
@@ -76,12 +95,26 @@ const emit = defineEmits<{
   (e: 'navigateToBacktest', stratName: string): void;
 }>();
 
+// Global Screen Mode for the entire Strategies Deck: LIVE vs BACKTEST
+const screenMode = ref<'LIVE' | 'BACKTEST'>('LIVE');
+const selectedScope = ref<string>('ALL');
+
 const runningCron = ref(false);
 const runningAll = ref(false);
 const actionLoading = ref<Record<string, boolean>>({});
 
 const activeCount = computed(() => props.strategies.filter((s) => s.status === 'ACTIVE_LIVE').length);
 const cronCount = computed(() => props.strategies.filter((s) => s.status === 'CRON_BACKTEST').length);
+
+const activeBotNames = computed(() => {
+  return props.strategies
+    .filter((s) => s.status === 'ACTIVE_LIVE')
+    .map((s) => s.name.replace('.py', ''));
+});
+
+const handleSelectScope = (scope: string) => {
+  selectedScope.value = scope;
+};
 
 const portfolio = computed<PortfolioSummary>(() => {
   if (

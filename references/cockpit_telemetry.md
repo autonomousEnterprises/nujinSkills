@@ -34,8 +34,22 @@ The Cockpit runs on a 100vw / 100vh responsive layout organized into four dedica
 | **Chart Canvas** | **F1** | `ChartCanvas.tsx` | Full-screen interactive **TradingView Lightweight Chart** connected to live Binance 15m/1m feeds. Overlays backtest entry/exit trade markers, stop-loss invalidation lines, and take-profit target bounds. |
 | **Signal Deck** | **F2** | `SignalDeck.tsx` | Real-time live execution telemetry: performance stats since activation (win rate, profit factor, annualized Sharpe, total net PnL %), active open position with live unrealized PnL, and signal history audit table. |
 | **Backtest Deck** | **F3** | `BacktestDeck.tsx` | Full-width analytical audit: continuous equity growth curve, return distribution histogram, market regime survival breakdown (Bull, Bear, Range), sequential trade log, and 5-Gate Cynic Audit matrix. |
-| **Strategy Manager** | **F4** | `StrategyManagerDeck.tsx` | Command & Portfolio Lifecycle deck: Top KPI bar showing parallel active bots, portfolio blended win rate, and daily cron status. Features Leaderboard, Drift Trajectory, and Edge/Risk distribution charts. |
+| **Strategy Manager** | **F4** | `StrategyManagerDeck.vue` | Command & Portfolio Lifecycle deck: Global Screen Mode toggle (`LIVE` vs `BACKTEST`), Realized & Benchmark Equity Growth Trajectory Curve (scope: Portfolio or individual strategy), Leaderboard with dynamic live/backtest drift metrics, sparklines, and 4-pillar Cynic audit scorecards. |
 | **Cycle Screens** | **Ctrl + Space** | Root Router | Seamlessly toggle focus across all open screens. |
+
+---
+
+### Strategy Manager Deck (F4) — Global Screen Mode & Equity Trajectory
+
+The **Strategy Manager Deck** includes a global operational toggle between **`LIVE TELEMETRY`** and **`BENCHMARK BACKTEST`**:
+- **Global Toggle Synchronization:** Switching the mode at the top of the deck updates the entire screen simultaneously—KPI ribbon, equity trajectory chart, leaderboard columns, row sparklines, and expandable inspection scorecards.
+- **Equity Growth Curve (`StrategyEquityChart`):**
+  - In `LIVE` Mode: Plots the compounded equity trajectory of real closed trades from live execution bots starting at 100.00% baseline.
+  - In `BACKTEST` Mode: Plots the theoretical simulation curve across historical market regimes.
+  - **Scope Filter:** Toggle between `PORTFOLIO (ALL STRATEGIES)` and any isolated strategy with one click or via table row Focus button.
+- **Dynamic Leaderboard Columns:**
+  - `LIVE` Mode: Displays `Backtest → Live Sharpe (Drift)`, `Live Win Rate Drift`, `Live PF Drift`, `Live Max DD Drift`, and live realized sparkline series.
+  - `BACKTEST` Mode: Displays `Baseline → Current Sharpe (Drift)`, `Win Rate Drift`, `Profit Factor Drift`, `Max DD Drift`, and cron re-evaluation snapshot series.
 
 ---
 
