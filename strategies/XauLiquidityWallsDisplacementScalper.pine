@@ -152,8 +152,8 @@ if array.size(active_zones) > 0 and session_ok and strategy.position_size == 0
             // and price displaces/breaks above the upper border (z.top)
             if z.tapped and not z.displaced
                 if high >= z.top and is_bullish
-                    // Entry occurs right at the displacement border (z.top)
-                    planned_long_entry := z.top
+                    // Entry occurs at displacement border (z.top) if low <= z.top, else open
+                    planned_long_entry := low <= z.top ? z.top : open
                     // Structural SL at the lowest tap point or box bottom
                     planned_long_sl    := math.min(z.tap_extreme, z.bottom) - (0.2 * atr_val)
                     float risk         = planned_long_entry - planned_long_sl
@@ -175,8 +175,8 @@ if array.size(active_zones) > 0 and session_ok and strategy.position_size == 0
             // and price displaces/breaks below the lower border (z.bottom)
             if z.tapped and not z.displaced
                 if low <= z.bottom and is_bearish
-                    // Entry occurs right at the displacement border (z.bottom)
-                    planned_short_entry := z.bottom
+                    // Entry occurs at displacement border (z.bottom) if high >= z.bottom, else open
+                    planned_short_entry := high >= z.bottom ? z.bottom : open
                     // Structural SL at the highest tap point or box top
                     planned_short_sl    := math.max(z.tap_extreme, z.top) + (0.2 * atr_val)
                     float risk          = planned_short_sl - planned_short_entry

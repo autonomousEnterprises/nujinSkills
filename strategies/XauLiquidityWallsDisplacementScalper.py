@@ -184,10 +184,16 @@ class XauLiquidityWallsDisplacementScalper(IStrategy):
 
                     if z["tapped"] and not z["displaced"]:
                         if h_i >= z["top"] and bullish_conf:
-                            entry_p = round(z["top"], 2)
+                            # Enforce physical fill: if candle spans across z["top"], entry is at z["top"].
+                            # If candle opened entirely above z["top"], entry is at candle open.
+                            if l_i <= z["top"]:
+                                entry_p = round(z["top"], 2)
+                            else:
+                                entry_p = round(o_i, 2)
+
                             sl_p = round(min(z["tap_extreme"], z["bottom"]) - 0.15 * atr_i, 2)
                             risk = entry_p - sl_p
-                            if 0.20 <= risk <= 3.0 * atr_i:
+                            if 0.20 <= risk <= 3.0 * atr_i and risk > 0:
                                 tp_p = round(entry_p + 2.0 * risk, 2) # Strict 2:1 RRR
                                 enter_long[i] = 1
                                 custom_entry_price[i] = entry_p
@@ -204,10 +210,16 @@ class XauLiquidityWallsDisplacementScalper(IStrategy):
 
                     if z["tapped"] and not z["displaced"]:
                         if l_i <= z["bottom"] and bearish_conf:
-                            entry_p = round(z["bottom"], 2)
+                            # Enforce physical fill: if candle spans across z["bottom"], entry is at z["bottom"].
+                            # If candle opened entirely below z["bottom"], entry is at candle open.
+                            if h_i >= z["bottom"]:
+                                entry_p = round(z["bottom"], 2)
+                            else:
+                                entry_p = round(o_i, 2)
+
                             sl_p = round(max(z["tap_extreme"], z["top"]) + 0.15 * atr_i, 2)
                             risk = sl_p - entry_p
-                            if 0.20 <= risk <= 3.0 * atr_i:
+                            if 0.20 <= risk <= 3.0 * atr_i and risk > 0:
                                 tp_p = round(entry_p - 2.0 * risk, 2) # Strict 2:1 RRR
                                 enter_short[i] = 1
                                 custom_entry_price[i] = entry_p

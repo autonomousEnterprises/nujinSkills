@@ -342,7 +342,18 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
 
             # Dynamic entry price calculation (Limit order vs Market order)
             if 'custom_entry_price' in c and not np.isnan(c['custom_entry_price']):
-                entry_price = round(float(c['custom_entry_price']), 2)
+                raw_custom = float(c['custom_entry_price'])
+                # Physical fill sanity check: ensure custom fill physically traded within [curr_low, curr_high]
+                if curr_low <= raw_custom <= curr_high:
+                    entry_price = round(raw_custom, 2)
+                elif raw_custom < curr_low and side == "LONG":
+                    # Price already broke higher; fill realistically at open
+                    entry_price = round(curr_open, 2)
+                elif raw_custom > curr_high and side == "SHORT":
+                    # Price already broke lower; fill realistically at open
+                    entry_price = round(curr_open, 2)
+                else:
+                    entry_price = round(curr_close, 2)
             elif 'atr_lower_band' in c and is_long and not np.isnan(c['atr_lower_band']):
                 lower_band = float(c['atr_lower_band'])
                 entry_price = round(curr_close if (is_gold or is_sp500) else lower_band, 2)
