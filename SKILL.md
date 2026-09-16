@@ -103,22 +103,34 @@ Nujin verifies the computational environment and available market data:
 
 ---
 
-### Phase 2 — Target & Hypothesis Selection
+### Phase 2 — Target & Hypothesis Selection (Multi-Archetype Open Ideation)
 *(Reference: [`references/alpha_ideation.md`](file:///home/christonomous/Desktop/EdgeMiner/references/alpha_ideation.md))*
+
+> [!IMPORTANT]
+> **The Referee vs. The Athlete Principle:**
+> - **The Referee (Verification Gates):** Unchanging and strict across all strategies (fees, slippage, DSR $\ge 0.95$, MaxDD $\le 4.5\%$).
+> - **The Athlete (Strategy Paradigm):** Completely unconstrained and open. Nujin adapts naturally to whatever philosophy the user requests or explores radically orthogonal archetypes:
+>   1. **Trend Following / Momentum:** EMA crosses, ADX trend strength, Donchian channel breakouts, trailing ATR stops.
+>   2. **Pure Price Action:** Bullish/Bearish Engulfing, Inside Bar continuations, Support/Resistance retests.
+>   3. **Smart Money Concepts (SMC):** Liquidity sweeps, Fair Value Gaps (FVGs), session killzones (London/NY).
+>   4. **Oscillators & Mean Reversion:** RSI divergence, Bollinger Band pierces, intra-candle rejection wicks.
+>   5. **Statistical Quant / Arbitrage:** Anchored VWAP Z-score deviations, Parkinson volatility compression, rolling Hurst regime filtering.
 
 Nujin maps the user's trading objective to a standardized quantitative profile or suggests ideas across **6 Quantitative Dimensions**:
 
 ```
 Here is your quantitative optimization template:
 
-  Target:  _______________________________________________
-  (e.g. Prop Firm Challenge Pass, BTC Cycle Swing, News Volatility Fade)
+  Target:      _______________________________________________
+  (e.g. Trend Following Momentum, SMC London Open Sweep, Price Action Breakout)
 
-  Scope:   _______________________________________________
-  (e.g. BTC/USDT 15m Binance, XAU/USD 1m London/NY session)
+  Archetype:   [trend_following | momentum_breakout | price_action | smc_liquidity | mean_reversion | custom]
 
-  Context: _______________________________________________
-  (e.g. MaxDD <= 4.5%, Net Sharpe >= 1.8, DSR >= 0.95, dynamic holding <= 12 bars)
+  Scope:       _______________________________________________
+  (e.g. BTC/USDT 15m Binance, XAU/USD 1m London/NY session, SOL/USDT 1h)
+
+  Context:     _______________________________________________
+  (e.g. MaxDD <= 4.5%, Net Sharpe >= 1.8, DSR >= 0.95, trailing stops)
 ```
 
 **Standard Profiles:**
@@ -151,10 +163,13 @@ Nujin defines 4–6 strict **binary (yes/no)** pass/fail evaluation criteria:
 
 Nujin initializes the persistence environment on disk in `.nujin/`:
 ```bash
-python tools/nujin_miner.py init --target "Prop Firm Dual Wick Rejection" --scope "BTC/USDT 15m"
+# Initialize with specific archetype or custom seed
+python tools/nujin_miner.py init --archetype trend_following --target "BTC Trend Momentum" --scope "BTC/USDT 15m"
+# Or initialize with completely custom rules
+python tools/nujin_miner.py init --initial-rules '{"entry_long": "engulfing_bullish == 1 and close > ema_50", ...}'
 ```
 Files created:
-- `.nujin/state.json`: Active run counter, best scores, plateau counter, validation slices.
+- `.nujin/state.json`: Active run counter, best scores, archetype, plateau counter, validation slices.
 - `.nujin/rules.json`: Current candidate rules.
 - `.nujin/best_rules.json`: Current reigning champion rules.
 - `.nujin/results.jsonl`: Append-only audit history of every research cycle.

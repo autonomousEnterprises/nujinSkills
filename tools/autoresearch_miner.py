@@ -49,12 +49,9 @@ def dispatch_telemetry(payload: Dict[str, Any]):
         except Exception:
             pass
 
-def action_init(target: str, scope: str, context: str):
-    print(f"{TOOL_NAME} Initializing Nujin research environment in {AUTORESEARCH_DIR}/...")
-    os.makedirs(AUTORESEARCH_DIR, exist_ok=True)
-    ensure_gitignore()
-
-    initial_rules = {
+ARCHETYPE_TEMPLATES = {
+    "mean_reversion": {
+        "archetype": "mean_reversion",
         "entry_long": "lower_wick > 0.40 and volume_zscore > 1.0",
         "entry_short": "upper_wick > 0.40 and volume_zscore > 1.0",
         "exit": "bars >= 8",
@@ -62,12 +59,76 @@ def action_init(target: str, scope: str, context: str):
         "stoploss_pct": 0.018,
         "takeprofit_pct": 0.035,
         "bias": "DUAL"
+    },
+    "trend_following": {
+        "archetype": "trend_following",
+        "entry_long": "close > ema_50 and ema_9 > ema_21 and adx_14 > 20 and rsi_14 > 50",
+        "entry_short": "close < ema_50 and ema_9 < ema_21 and adx_14 > 20 and rsi_14 < 50",
+        "exit": "close < ema_21",
+        "max_bars_held": 24,
+        "stoploss_pct": 0.020,
+        "takeprofit_pct": 0.055,
+        "bias": "DUAL"
+    },
+    "momentum_breakout": {
+        "archetype": "momentum_breakout",
+        "entry_long": "close >= donchian_upper_20 and volume_zscore > 1.2 and adx_14 > 22",
+        "entry_short": "close <= donchian_lower_20 and volume_zscore > 1.2 and adx_14 > 22",
+        "exit": "close < donchian_mid_20",
+        "max_bars_held": 18,
+        "stoploss_pct": 0.015,
+        "takeprofit_pct": 0.045,
+        "bias": "DUAL"
+    },
+    "price_action": {
+        "archetype": "price_action",
+        "entry_long": "engulfing_bullish == 1 and close > ema_50 and volume_zscore > 0.8",
+        "entry_short": "engulfing_bearish == 1 and close < ema_50 and volume_zscore > 0.8",
+        "exit": "bars >= 10",
+        "max_bars_held": 10,
+        "stoploss_pct": 0.015,
+        "takeprofit_pct": 0.035,
+        "bias": "DUAL"
+    },
+    "smc_liquidity": {
+        "archetype": "smc_liquidity",
+        "entry_long": "sweep_low_rejection == 1 and volume_zscore > 1.0",
+        "entry_short": "sweep_high_rejection == 1 and volume_zscore > 1.0",
+        "exit": "bars >= 8",
+        "max_bars_held": 8,
+        "stoploss_pct": 0.018,
+        "takeprofit_pct": 0.035,
+        "bias": "DUAL"
     }
+}
+
+def action_init(target: str, scope: str, context: str, archetype: str = "mean_reversion", initial_rules_input: str = ""):
+    print(f"{TOOL_NAME} Initializing Nujin research environment in {AUTORESEARCH_DIR}/...")
+    os.makedirs(AUTORESEARCH_DIR, exist_ok=True)
+    ensure_gitignore()
+
+    # Determine initial rules
+    initial_rules = None
+    if initial_rules_input:
+        if os.path.exists(initial_rules_input):
+            with open(initial_rules_input, "r", encoding="utf-8") as f:
+                initial_rules = json.load(f)
+        else:
+            try:
+                initial_rules = json.loads(initial_rules_input)
+            except Exception:
+                initial_rules = None
+
+    if not initial_rules:
+        initial_rules = ARCHETYPE_TEMPLATES.get(archetype, ARCHETYPE_TEMPLATES["mean_reversion"])
+
+    arch_name = initial_rules.get("archetype", archetype)
 
     state = {
-        "target": target or "Prop Firm Dual Wick Rejection",
+        "target": target or f"{arch_name.replace('_', ' ').title()} Discovery",
         "scope": scope or "BTC/USDT 15m / XAUUSD 1m",
         "context": context or "Net Sharpe >= 1.8, MaxDD <= 4.5%, DSR >= 0.95",
+        "archetype": arch_name,
         "run_number": 0,
         "best_score": 0,
         "best_validation_score": 0,
@@ -104,66 +165,94 @@ def action_init(target: str, scope: str, context: str):
             pass
 
     print(f"{TOOL_NAME} State initialized successfully.")
-    print(f"{TOOL_NAME} Target: {state['target']}")
+    print(f"{TOOL_NAME} Target: {state['target']} (Archetype: {arch_name})")
     print(f"{TOOL_NAME} Validation Slices: {len(state['validation_slices'])} regime partitions")
     print(f"{TOOL_NAME} Files created: {state_path}, {rules_path}, {best_rules_path}, {results_path}")
 
 def mutate_rules(rules: Dict[str, Any], operator: str, failures: List[str]) -> Dict[str, Any]:
     mutated = dict(rules)
-    
+    arch = mutated.get("archetype", "mean_reversion")
+
     if operator == "add_constraint":
-        # Add orthogonal regime or volume constraint to filter noisy trades
-        if "hurst_proxy" not in mutated.get("entry_long", ""):
-            mutated["entry_long"] = f"{mutated['entry_long']} and hurst_proxy < 0.48"
-            mutated["entry_short"] = f"{mutated['entry_short']} and hurst_proxy < 0.48"
-        elif "parkinson_vol" not in mutated.get("entry_long", ""):
-            mutated["entry_long"] = f"{mutated['entry_long']} and parkinson_vol < 0.02"
-            mutated["entry_short"] = f"{mutated['entry_short']} and parkinson_vol < 0.02"
-            
+        if arch == "trend_following":
+            if "adx_14" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and adx_14 > 22"
+                mutated["entry_short"] = f"{mutated['entry_short']} and adx_14 > 22"
+            elif "volume_zscore" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and volume_zscore > 0.5"
+                mutated["entry_short"] = f"{mutated['entry_short']} and volume_zscore > 0.5"
+        elif arch == "momentum_breakout":
+            if "parkinson_vol" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and parkinson_vol > 0.01"
+                mutated["entry_short"] = f"{mutated['entry_short']} and parkinson_vol > 0.01"
+        elif arch == "price_action":
+            if "close > ema_50" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and close > ema_50"
+                mutated["entry_short"] = f"{mutated['entry_short']} and close < ema_50"
+        else: # mean_reversion or smc_liquidity
+            if "hurst_proxy" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and hurst_proxy < 0.48"
+                mutated["entry_short"] = f"{mutated['entry_short']} and hurst_proxy < 0.48"
+            elif "parkinson_vol" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and parkinson_vol < 0.02"
+                mutated["entry_short"] = f"{mutated['entry_short']} and parkinson_vol < 0.02"
+
     elif operator == "add_negative_example":
-        # Add anti-trap filter: forbid entering on extreme body candle exhaustion
-        if "body_ratio" not in mutated.get("entry_long", ""):
-            mutated["entry_long"] = f"{mutated['entry_long']} and body_ratio < 0.65"
-            mutated["entry_short"] = f"{mutated['entry_short']} and body_ratio < 0.65"
-            
+        if arch == "trend_following":
+            if "rsi_14 < 75" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and rsi_14 < 75"
+                mutated["entry_short"] = f"{mutated['entry_short']} and rsi_14 > 25"
+        elif arch == "momentum_breakout":
+            if "body_ratio" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and body_ratio > 0.45"
+                mutated["entry_short"] = f"{mutated['entry_short']} and body_ratio > 0.45"
+        else:
+            if "body_ratio" not in mutated.get("entry_long", ""):
+                mutated["entry_long"] = f"{mutated['entry_long']} and body_ratio < 0.65"
+                mutated["entry_short"] = f"{mutated['entry_short']} and body_ratio < 0.65"
+
     elif operator == "restructure_exit":
-        # Mutate holding window or profit target
-        curr_bars = int(mutated.get("max_bars_held", 8))
-        new_bars = 12 if curr_bars == 8 else (6 if curr_bars == 12 else 8)
-        mutated["max_bars_held"] = new_bars
-        mutated["exit"] = f"bars >= {new_bars}"
-        mutated["takeprofit_pct"] = round(mutated.get("takeprofit_pct", 0.035) * 1.15, 4)
-        
+        curr_bars = int(mutated.get("max_bars_held", 12))
+        if arch == "trend_following":
+            new_bars = 36 if curr_bars == 24 else (16 if curr_bars == 36 else 24)
+            mutated["max_bars_held"] = new_bars
+            mutated["takeprofit_pct"] = round(mutated.get("takeprofit_pct", 0.055) * 1.15, 4)
+        else:
+            new_bars = 12 if curr_bars == 8 else (6 if curr_bars == 12 else 8)
+            mutated["max_bars_held"] = new_bars
+            if "bars >=" in mutated.get("exit", ""):
+                mutated["exit"] = f"bars >= {new_bars}"
+            mutated["takeprofit_pct"] = round(mutated.get("takeprofit_pct", 0.035) * 1.15, 4)
+
     elif operator == "tighten_thresholds":
-        # Increase trigger selectivity
-        mutated["entry_long"] = mutated["entry_long"].replace("lower_wick > 0.40", "lower_wick > 0.45").replace("lower_wick > 0.38", "lower_wick > 0.42")
-        mutated["entry_short"] = mutated["entry_short"].replace("upper_wick > 0.40", "upper_wick > 0.45").replace("upper_wick > 0.38", "upper_wick > 0.42")
+        if "adx_14 > 20" in mutated.get("entry_long", ""):
+            mutated["entry_long"] = mutated["entry_long"].replace("adx_14 > 20", "adx_14 > 25")
+            mutated["entry_short"] = mutated["entry_short"].replace("adx_14 > 20", "adx_14 > 25")
+        if "volume_zscore > 1.0" in mutated.get("entry_long", ""):
+            mutated["entry_long"] = mutated["entry_long"].replace("volume_zscore > 1.0", "volume_zscore > 1.3")
+            mutated["entry_short"] = mutated["entry_short"].replace("volume_zscore > 1.0", "volume_zscore > 1.3")
+        if "lower_wick > 0.40" in mutated.get("entry_long", ""):
+            mutated["entry_long"] = mutated["entry_long"].replace("lower_wick > 0.40", "lower_wick > 0.45")
+            mutated["entry_short"] = mutated["entry_short"].replace("upper_wick > 0.40", "upper_wick > 0.45")
         mutated["stoploss_pct"] = round(mutated.get("stoploss_pct", 0.018) * 0.90, 4)
-        
+
     elif operator == "remove_bloat":
-        # Prune complex clauses back to essence
-        mutated["entry_long"] = "lower_wick > 0.42 and volume_zscore > 1.2"
-        mutated["entry_short"] = "upper_wick > 0.42 and volume_zscore > 1.2"
-        mutated["max_bars_held"] = 8
-        mutated["exit"] = "bars >= 8"
-        
+        base_template = ARCHETYPE_TEMPLATES.get(arch, ARCHETYPE_TEMPLATES["mean_reversion"])
+        mutated["entry_long"] = base_template["entry_long"]
+        mutated["entry_short"] = base_template["entry_short"]
+        mutated["max_bars_held"] = base_template["max_bars_held"]
+        mutated["exit"] = base_template["exit"]
+
     elif operator == "directional_bias_flip":
-        # Switch between DUAL, LONG-only, and SHORT-only
         curr_bias = mutated.get("bias", "DUAL")
         new_bias = "LONG" if curr_bias == "DUAL" else ("SHORT" if curr_bias == "LONG" else "DUAL")
         mutated["bias"] = new_bias
-        
+
     elif operator == "plateau_break":
-        # Radical restart based on orthogonal microstructure thesis
-        mutated = {
-            "entry_long": "lower_wick > 0.50 and volume_zscore > 1.4 and avwap_zscore < -1.5",
-            "entry_short": "upper_wick > 0.50 and volume_zscore > 1.4 and avwap_zscore > 1.5",
-            "exit": "bars >= 10",
-            "max_bars_held": 10,
-            "stoploss_pct": 0.015,
-            "takeprofit_pct": 0.040,
-            "bias": "DUAL"
-        }
+        # Radical pivot to an orthogonal archetype
+        next_arch = "trend_following" if arch == "mean_reversion" else ("momentum_breakout" if arch == "trend_following" else "mean_reversion")
+        mutated = dict(ARCHETYPE_TEMPLATES[next_arch])
+        print(f"{TOOL_NAME} Plateau Break: Switching hypothesis archetype from '{arch}' to '{next_arch}'")
     return mutated
 
 def execute_screener_eval(rules: Dict[str, Any], features_path: str) -> Dict[str, Any]:
@@ -237,7 +326,7 @@ def execute_screener_eval(rules: Dict[str, Any], features_path: str) -> Dict[str
         "param_stability": param_status
     }
 
-def action_step(features_path: str = "data/features.csv"):
+def action_step(features_path: str = "data/features.csv", rules_override: str = None):
     state_path = os.path.join(AUTORESEARCH_DIR, "state.json")
     rules_path = os.path.join(AUTORESEARCH_DIR, "rules.json")
     best_rules_path = os.path.join(AUTORESEARCH_DIR, "best_rules.json")
@@ -249,14 +338,30 @@ def action_step(features_path: str = "data/features.csv"):
 
     with open(state_path, "r", encoding="utf-8") as f:
         state = json.load(f)
-    with open(rules_path, "r", encoding="utf-8") as f:
-        current_rules = json.load(f)
+    
+    if rules_override:
+        if os.path.exists(rules_override):
+            with open(rules_override, "r", encoding="utf-8") as f:
+                current_rules = json.load(f)
+        else:
+            try:
+                current_rules = json.loads(rules_override)
+            except Exception:
+                with open(rules_path, "r", encoding="utf-8") as f:
+                    current_rules = json.load(f)
+        # Write active candidate
+        with open(rules_path, "w", encoding="utf-8") as f:
+            json.dump(current_rules, f, indent=2)
+    else:
+        with open(rules_path, "r", encoding="utf-8") as f:
+            current_rules = json.load(f)
+
     with open(best_rules_path, "r", encoding="utf-8") as f:
         best_rules = json.load(f)
 
     run_num = state.get("run_number", 0) + 1
     print(f"\n{TOOL_NAME} ========================================================")
-    print(f"{TOOL_NAME} STARTING AUTORESEARCH CYCLE #{run_num}")
+    print(f"{TOOL_NAME} STARTING AUTORESEARCH CYCLE #{run_num} (Archetype: {state.get('archetype', 'mean_reversion')})")
     print(f"{TOOL_NAME} ========================================================")
 
     # Ensure features file exists
@@ -483,20 +588,23 @@ def action_improve_tool(tool_name: str):
     print("=" * 60 + "\n")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Karpathy Autoresearch Quant Engine & Tool Evolver")
+    parser = argparse.ArgumentParser(description="Autonomous Quant Research Engine & Tool Evolver")
     parser.add_argument("action", choices=["init", "step", "run", "status", "improve-tool"], help="Autoresearch action")
     parser.add_argument("--target", default="", help="Optimization target description")
     parser.add_argument("--scope", default="", help="Target scope (symbol/timeframe)")
     parser.add_argument("--context", default="", help="Target constraints/context")
+    parser.add_argument("--archetype", default="mean_reversion", choices=["mean_reversion", "trend_following", "momentum_breakout", "price_action", "smc_liquidity", "custom"], help="Strategy archetype template")
+    parser.add_argument("--initial-rules", default="", help="JSON string or file path containing initial candidate rules")
+    parser.add_argument("--rules-file", default="", help="Candidate rules JSON file or string to evaluate in this step")
     parser.add_argument("--features", default="data/features.csv", help="Feature data CSV path")
     parser.add_argument("--cycles", type=int, default=5, help="Number of continuous cycles for 'run'")
     parser.add_argument("--tool", default="feature_miner.py", help="Tool filename for 'improve-tool'")
     args = parser.parse_args()
 
     if args.action == "init":
-        action_init(args.target, args.scope, args.context)
+        action_init(args.target, args.scope, args.context, archetype=args.archetype, initial_rules_input=args.initial_rules)
     elif args.action == "step":
-        action_step(args.features)
+        action_step(args.features, rules_override=args.rules_file)
     elif args.action == "run":
         action_run(args.cycles, args.features)
     elif args.action == "status":
