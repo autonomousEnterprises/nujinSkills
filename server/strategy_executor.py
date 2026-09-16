@@ -285,7 +285,7 @@ class NativeStrategyRunner:
             await asyncio.sleep(1.2)
 
         # Evaluate strategy entry strictly on completed bars up to bar_time
-        candles = self.provider.get_candles(count=250)
+        candles = self.provider.get_candles(count=1000)
         completed_candles = [
             c for c in candles 
             if int(c.get("time", c.get("timestamp", 0))) <= bar_time
