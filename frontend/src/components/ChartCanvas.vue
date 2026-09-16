@@ -49,8 +49,8 @@
         </div>
       </div>
 
-      <!-- ── Dynamic Trade Boxes for SL, Entry & TP (Precision Placed SVG Overlay) ── -->
-      <svg v-if="positionBoxes.length > 0" class="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
+      <!-- ── Dynamic Visual Primitives (FVG / Order Blocks / Session Zones) & Trade Boxes (SVG Overlay) ── -->
+      <svg v-if="positionBoxes.length > 0 || renderedZoneBoxes.length > 0" class="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
         <defs>
           <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#26a69a" stop-opacity="0.25" />
@@ -61,6 +61,33 @@
             <stop offset="100%" stop-color="#ef5350" stop-opacity="0.25" />
           </linearGradient>
         </defs>
+
+        <!-- ── Dynamic Level 3 Strategy Primitive Boxes (FVG, Order Blocks, Liquidity Zones) ── -->
+        <g v-for="zbox in renderedZoneBoxes" :key="zbox.id">
+          <rect
+            :x="zbox.x"
+            :y="zbox.y"
+            :width="zbox.width"
+            :height="zbox.height"
+            :fill="zbox.color"
+            :stroke="zbox.borderColor"
+            stroke-width="1.2"
+            :stroke-dasharray="zbox.borderStyle === 'dashed' ? '4 2' : undefined"
+            rx="2"
+          />
+          <text
+            v-if="zbox.width > 24"
+            :x="zbox.x + 5"
+            :y="zbox.y + 11"
+            :fill="zbox.borderColor"
+            font-size="9"
+            font-weight="bold"
+            font-family="monospace"
+            opacity="0.9"
+          >
+            {{ zbox.label }}
+          </text>
+        </g>
 
         <g v-for="box in positionBoxes" :key="box.id">
           <!-- Green Profit Zone Box -->
@@ -324,6 +351,24 @@ const legendData = ref<Record<string, any>>({});
 const rawCandles = ref<any[]>([]);
 const positionBoxes = ref<PositionBoxCoord[]>([]);
 const isInspectingTrade = ref<boolean>(false);
+
+// Level 3 Universal Visual Primitives state
+interface RenderedZoneBox {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  borderColor: string;
+  borderStyle?: string;
+  type: string;
+}
+const rawPrimitiveBoxes = ref<any[]>([]);
+const renderedZoneBoxes = ref<RenderedZoneBox[]>([]);
+const backendPrimitives = ref<any>(null);
+let activeLevelLines: any[] = [];
 
 let periodicSyncTimer: any = null;
 let resizeObserver: ResizeObserver | null = null;
@@ -921,7 +966,94 @@ const getYForPrice = (price: number): number => {
   return price > (inspectedSignal.value?.entry_price || 0) ? -50 : containerH + 50;
 };
 
+const clearLevelLines = () => {
+  if (!candleSeries) return;
+  for (const pl of activeLevelLines) {
+    try {
+      candleSeries.removePriceLine(pl);
+    } catch {}
+  }
+  activeLevelLines = [];
+};
+
+const applyPrimitiveLevels = (levels: any[]) => {
+  clearLevelLines();
+  if (!candleSeries || !levels || levels.length === 0) return;
+  for (const lvl of levels) {
+    if (lvl.price == null || isNaN(lvl.price)) continue;
+    try {
+      const pl = candleSeries.createPriceLine({
+        price: Number(lvl.price),
+        color: lvl.color || '#38bdf8',
+        lineWidth: 1,
+        lineStyle: lvl.lineStyle === 'dotted' ? LineStyle.Dotted : LineStyle.Dashed,
+        axisLabelVisible: lvl.axisLabel !== false,
+        lineVisible: true,
+        title: lvl.title || '',
+      });
+      activeLevelLines.push(pl);
+    } catch (e) {
+      console.warn('[ChartCanvas] Failed to create primitive price line:', e);
+    }
+  }
+};
+
+const updateZoneBoxCoordinates = () => {
+  if (!chart || !candleSeries || !chartContainerRef.value || rawPrimitiveBoxes.value.length === 0) {
+    renderedZoneBoxes.value = [];
+    return;
+  }
+
+  const results: RenderedZoneBox[] = [];
+  const containerW = chartContainerRef.value.clientWidth || 800;
+
+  for (const b of rawPrimitiveBoxes.value) {
+    const tStart = timeToLocal(Number(b.time_start));
+    const tEnd = timeToLocal(Number(b.time_end));
+    let x1 = chart.timeScale().timeToCoordinate(tStart as Time);
+    let x2 = chart.timeScale().timeToCoordinate(tEnd as Time);
+
+    if (x1 === null) {
+      const idx1 = findCandleIndex(Number(b.time_start));
+      if (idx1 >= 0) x1 = chart.timeScale().logicalToCoordinate(idx1 as any);
+    }
+    if (x2 === null) {
+      const idx2 = findCandleIndex(Number(b.time_end));
+      if (idx2 >= 0) x2 = chart.timeScale().logicalToCoordinate(idx2 as any);
+    }
+
+    if (x1 === null && x2 === null) continue;
+    if (x1 === null) x1 = 0;
+    if (x2 === null) x2 = containerW;
+
+    const yHigh = candleSeries.priceToCoordinate(Number(b.price_high));
+    const yLow = candleSeries.priceToCoordinate(Number(b.price_low));
+    if (yHigh === null || yLow === null) continue;
+
+    const y = Math.min(yHigh, yLow);
+    const height = Math.max(Math.abs(yLow - yHigh), 3);
+    const x = Math.min(x1, x2);
+    const width = Math.max(Math.abs(x2 - x1), 12);
+
+    results.push({
+      id: b.id,
+      label: b.label || b.type || 'ZONE',
+      x,
+      y,
+      width,
+      height,
+      color: b.color || 'rgba(56, 189, 248, 0.15)',
+      borderColor: b.borderColor || '#38bdf8',
+      borderStyle: b.borderStyle || 'dashed',
+      type: b.type || 'ZONE'
+    });
+  }
+  renderedZoneBoxes.value = results;
+};
+
 const updateBoxCoordinates = () => {
+  updateZoneBoxCoordinates();
+
   if (!isInspectingTrade.value && !props.targetedSignal) {
     positionBoxes.value = [];
     clearPriceLines();
@@ -1323,7 +1455,21 @@ const initChart = () => {
         changePct: cData.open ? ((cData.close - cData.open) / cData.open) * 100 : 0,
       };
 
-      if (indicatorCalculator) {
+      if (backendPrimitives.value && backendPrimitives.value.lines && backendPrimitives.value.lines.length > 0) {
+        const newHud: IndicatorChipData[] = [];
+        for (const cfg of backendPrimitives.value.lines) {
+          const s = activeIndicatorSeries.get(cfg.id);
+          const sData = s && param.seriesData ? (param.seriesData.get(s) as any) : null;
+          const val = sData?.value;
+          newHud.push({
+            id: cfg.id,
+            label: cfg.title,
+            color: cfg.color,
+            value: (val !== undefined && val !== null) ? `$${Number(val).toFixed(2)}` : '–'
+          });
+        }
+        currentHudItems.value = newHud;
+      } else if (indicatorCalculator) {
         const hoverTime = Number(param.time);
         const idx = timeIndexMap.get(hoverTime);
         if (idx !== undefined) {
@@ -1398,10 +1544,68 @@ const initChart = () => {
 const applyStrategyIndicators = () => {
   if (!chart || !rawCandles.value || rawCandles.value.length === 0) return;
 
+  // 1. Prepare formatted candles and rebuild timeIndexMap
+  const candles = rawCandles.value.map((c: any) => ({
+    ...c,
+    time: timeToLocal(Number(c.time)) as Time,
+  }));
+  timeIndexMap.clear();
+  candles.forEach((c: any, idx: number) => {
+    timeIndexMap.set(Number(c.time), idx);
+  });
+
+  // 2. Level 3 Universal Primitives path: If backend provided dynamic indicator lines
+  if (backendPrimitives.value && backendPrimitives.value.lines && backendPrimitives.value.lines.length > 0) {
+    const pLines = backendPrimitives.value.lines;
+    const currentConfigIds = new Set(pLines.map((c: any) => c.id));
+    for (const [id, s] of activeIndicatorSeries.entries()) {
+      if (!currentConfigIds.has(id)) {
+        try {
+          chart.removeSeries(s);
+        } catch (e) {}
+        activeIndicatorSeries.delete(id);
+      }
+    }
+    for (const cfg of pLines) {
+      if (!activeIndicatorSeries.has(cfg.id)) {
+        const s = chart.addLineSeries({
+          color: cfg.color,
+          lineWidth: (cfg.lineWidth || 1.5) as any,
+          lineStyle: (cfg.lineStyle ?? 0) as any,
+          title: cfg.title,
+        });
+        activeIndicatorSeries.set(cfg.id, s);
+      } else {
+        const s = activeIndicatorSeries.get(cfg.id)!;
+        s.applyOptions({
+          color: cfg.color,
+          lineWidth: (cfg.lineWidth || 1.5) as any,
+          lineStyle: (cfg.lineStyle ?? 0) as any,
+          title: cfg.title,
+        });
+      }
+    }
+    for (const cfg of pLines) {
+      const s = activeIndicatorSeries.get(cfg.id);
+      const rawData = backendPrimitives.value.series?.[cfg.id] || [];
+      const formattedData = rawData.map((pt: any) => ({
+        time: timeToLocal(Number(pt.time)) as Time,
+        value: Number(pt.value),
+      }));
+      s?.setData(formattedData);
+    }
+    if (backendPrimitives.value.hud_items && backendPrimitives.value.hud_items.length > 0) {
+      currentHudItems.value = backendPrimitives.value.hud_items;
+    }
+    nextTick(() => updateZoneBoxCoordinates());
+    return;
+  }
+
+  // 3. Built-in profile fallback
   const profile = getStrategyIndicatorProfile(props.selectedStrategy);
   currentProfile.value = profile;
 
-  // 1. Remove obsolete series from chart that are not in the new profile
+  // Remove obsolete series from chart that are not in the new profile
   const currentConfigIds = new Set(profile.seriesConfigs.map((c) => c.id));
   for (const [id, s] of activeIndicatorSeries.entries()) {
     if (!currentConfigIds.has(id)) {
@@ -1412,7 +1616,7 @@ const applyStrategyIndicators = () => {
     }
   }
 
-  // 2. Add or reconfigure series for current profile
+  // Add or reconfigure series for current profile
   for (const cfg of profile.seriesConfigs) {
     if (!activeIndicatorSeries.has(cfg.id)) {
       const s = chart.addLineSeries({
@@ -1433,29 +1637,17 @@ const applyStrategyIndicators = () => {
     }
   }
 
-  // 3. Prepare formatted candles
-  const candles = rawCandles.value.map((c: any) => ({
-    ...c,
-    time: timeToLocal(Number(c.time)) as Time,
-  }));
-
-  // Rebuild timeIndexMap
-  timeIndexMap.clear();
-  candles.forEach((c: any, idx: number) => {
-    timeIndexMap.set(Number(c.time), idx);
-  });
-
-  // 4. Calculate indicators
+  // Calculate indicators
   indicatorCalculator = profile.calculate(candles);
 
-  // 5. Populate series data
+  // Populate series data
   for (const cfg of profile.seriesConfigs) {
     const s = activeIndicatorSeries.get(cfg.id);
     const data = indicatorCalculator.seriesData[cfg.id] || [];
     s?.setData(data);
   }
 
-  // 6. Populate HUD items for latest candle
+  // Populate HUD items for latest candle
   const lastIdx = candles.length - 1;
   currentHudItems.value = indicatorCalculator.getHudItems(lastIdx);
 };
@@ -1476,6 +1668,15 @@ const loadCandles = async (preserveViewport = false) => {
 
     if (data.data && data.data.length > 0) {
       rawCandles.value = data.data;
+      if (data.primitives && (data.primitives.lines?.length || data.primitives.boxes?.length || data.primitives.levels?.length)) {
+        backendPrimitives.value = data.primitives;
+        rawPrimitiveBoxes.value = data.primitives.boxes || [];
+        applyPrimitiveLevels(data.primitives.levels || []);
+      } else {
+        backendPrimitives.value = null;
+        rawPrimitiveBoxes.value = [];
+        clearLevelLines();
+      }
       const candles = data.data.map((c: any) => ({
         ...c,
         time: timeToLocal(Number(c.time)) as Time,
@@ -1907,8 +2108,8 @@ watch(() => props.selectedStrategy, (newStrat) => {
       loadCandles();
       startLiveFeeds();
     } else {
-      // Same symbol and timeframe: immediately update dedicated visual indicators on existing candles
-      applyStrategyIndicators();
+      // Same symbol and timeframe: re-fetch candles and primitives while preserving current viewport
+      loadCandles(true);
       nextTick(() => {
         if (props.targetedSignal) {
           applyTargetedSignal(props.targetedSignal);
@@ -2034,6 +2235,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopLiveFeeds();
   clearPriceLines();
+  clearLevelLines();
   window.removeEventListener('keydown', handleKeyDown);
   if (chartContainerRef.value) {
     chartContainerRef.value.removeEventListener('wheel', updateBoxCoordinates);

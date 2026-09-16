@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from server.websocket import manager
 from server.telegram_bot import telegram_gateway
@@ -114,6 +114,20 @@ async def get_system_status():
         "active_strategy": strategy_registry.get_active_strategy_name()
     }
 
+def _extract_primitives_for_response(strategy_name: Optional[str], candles_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not candles_data:
+        return {"lines": [], "series": {}, "boxes": [], "levels": [], "hud_items": []}
+    strat = strategy_name or strategy_registry.get_active_strategy_name()
+    if not strat:
+        return {"lines": [], "series": {}, "boxes": [], "levels": [], "hud_items": []}
+    try:
+        from server.chart_primitives import extract_strategy_primitives
+        clean_name = strat.replace(".py", "")
+        return extract_strategy_primitives(clean_name, candles_data)
+    except Exception as e:
+        logger.warning(f"[Primitives] Failed extracting visual primitives for {strat}: {e}")
+        return {"lines": [], "series": {}, "boxes": [], "levels": [], "hud_items": []}
+
 @app.get("/api/candles")
 async def get_candles(
     symbol: Optional[str] = None, 
@@ -194,7 +208,8 @@ async def get_candles(
             if (now_ts - last_ts) <= 180:
                 c_list = provider._candles
                 data = c_list[-count:] if (count and count < len(c_list)) else c_list
-                return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
+                prims = _extract_primitives_for_response(strategy, data)
+                return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
 
         # 2. Live Market Data Feed: Fetch fresh continuous bars directly from exchange / institutional stream
         if is_sp:
@@ -215,7 +230,8 @@ async def get_candles(
                 provider._candles = data
 
         if data:
-            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
+            prims = _extract_primitives_for_response(strategy, data)
+            return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
     except Exception as e:
         logger.error(f"[Candles] Live fetch notice for {symbol}: {e}")
         # Robust fallback to cached dataset without synthetic bridging
@@ -251,7 +267,25 @@ async def get_candles(
                 status_code=503,
                 detail=f"Real market data unavailable for {symbol}. Error: {str(e)}"
             )
-    return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data}
+    prims = _extract_primitives_for_response(strategy, data)
+    return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
+
+
+@app.get("/api/strategy/primitives")
+async def get_strategy_primitives(
+    strategy: Optional[str] = None,
+    symbol: Optional[str] = None,
+    timeframe: Optional[str] = None
+):
+    """
+    Direct endpoint for querying Level 3 Visual Primitives (lines, boxes, levels, hud items)
+    for any quantitative strategy.
+    """
+    strat = strategy or strategy_registry.get_active_strategy_name()
+    if not strat:
+        return {"lines": [], "series": {}, "boxes": [], "levels": [], "hud_items": []}
+    candles_res = await get_candles(symbol=symbol, timeframe=timeframe, strategy=strat, count=2000)
+    return candles_res.get("primitives", {"lines": [], "series": {}, "boxes": [], "levels": [], "hud_items": []})
 
 
 @app.get("/api/widgets")

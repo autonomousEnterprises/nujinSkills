@@ -31,9 +31,14 @@ def _ensure_freqtrade_shim():
             def populate_indicators(self, df, metadata): return df
             def populate_entry_trend(self, df, metadata): return df
             def populate_exit_trend(self, df, metadata): return df
-        ft_strat_mod.IStrategy = _IStrategy
-        ft_strat_mod.DecimalParameter = float
-        ft_strat_mod.IntParameter = int
+        class _Parameter:
+            def __init__(self, *args, **kwargs):
+                self.value = kwargs.get('default', args[0] if len(args) > 0 else 0)
+            def __int__(self): return int(self.value)
+            def __float__(self): return float(self.value)
+            def __repr__(self): return str(self.value)
+        ft_strat_mod.DecimalParameter = _Parameter
+        ft_strat_mod.IntParameter = _Parameter
         ft_strat_mod.CategoricalParameter = lambda choices, default=None: default or choices[0]
         ft_strat_mod.BooleanParameter = bool
         sys.modules["freqtrade"] = ft_mod
