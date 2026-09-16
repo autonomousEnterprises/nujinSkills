@@ -125,7 +125,7 @@ def generate_report_text(target_date_str: str = None) -> str:
         strat_groups.setdefault(s.get("strategy", "Autonomous Engine"), []).append(s)
 
     lines = [
-        "📊 <b>EDGEMINER DAILY QUANT & STRATEGY REPORT</b>",
+        "📊 <b>Zillions QUANT & STRATEGY REPORT</b>",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━",
         f"📅 <b>Date:</b> <code>{session_date_str}</code> | ⏰ <code>{time_now_str}</code>",
         f"🌐 <b>Market:</b> <code>{symbols_str}</code>",
@@ -182,8 +182,6 @@ def generate_report_text(target_date_str: str = None) -> str:
     lines.append("\n🛡️ <b>QUANT RISK & GATE VERIFICATION</b>")
     lines.append(f"• <b>Drawdown Ceiling:</b> {dd_pass} (Max intraday: {max_intraday_dd:.2f}% vs 4.5% limit)")
     lines.append("• <b>Overnight Exposure:</b> " + ("CLEARED ✅ (100% Cash)" if not open_trades else "ACTIVE EXPOSURE ⚠️"))
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("⚡ <i>NujinAIs Zillions</i>")
 
     return "\n".join(lines)
 
