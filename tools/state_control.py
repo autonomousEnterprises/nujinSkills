@@ -210,7 +210,12 @@ if __name__ == "__main__":
 
     if   args.action == "get":          get_state(args.key, args.endpoint)
     elif args.action == "patch":        patch_state(args.patch, args.endpoint)
-    elif args.action == "deploy":       deploy_strategy(args.strategy or "GoatFundedTraderXauusdScalper.py", args.mode, args.endpoint)
+    elif args.action == "deploy":
+        target_strat = args.strategy
+        if not target_strat:
+            from server.state_manager import strategy_registry
+            target_strat = strategy_registry.get_active_strategy_name()
+        deploy_strategy(target_strat, args.mode, args.endpoint)
     elif args.action == "stop":         stop_strategy(args.endpoint)
     elif args.action == "signals":      get_signals(args.endpoint, args.strategy)
     elif args.action == "signal-stats": get_signal_stats(args.endpoint, args.strategy)

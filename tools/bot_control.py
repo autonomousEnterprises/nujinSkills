@@ -52,7 +52,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.action == "deploy":
-        deploy_strat = args.strategy or "GoatFundedTraderXauusdScalper"
+        if not args.strategy:
+            from server.state_manager import strategy_registry
+            deploy_strat = strategy_registry.get_active_strategy_name()
+        else:
+            deploy_strat = args.strategy
         deploy_bot(deploy_strat, args.mode, args.endpoint)
     elif args.action == "stop":
         stop_bot(args.endpoint, args.strategy)

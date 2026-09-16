@@ -44,8 +44,8 @@ STRATEGIES_DIR = os.path.join(_ROOT, "strategies")
 # Canonical schema / default state
 # ─────────────────────────────────────────────────────────────
 DEFAULT_STATE: Dict[str, Any] = {
-    "active_strategy": "PropFirmVsaWickRejectionStrategy",
-    "target_profile": "Prop Firm Challenge",
+    "active_strategy": "",
+    "target_profile": "Autonomous Alpha Model",
     "status": "ACTIVE_DEPLOYED",
     "backtest_summary": {
         "sharpe": 0.0,
@@ -254,7 +254,7 @@ class SignalStore:
         # Detect strategy and pair intelligently if missing
         strat = signal.get("strategy")
         if not strat:
-            strat = state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
+            strat = strategy_registry.get_active_strategy_name()
         clean_strat = strat.replace(".py", "")
 
         pair = signal.get("pair")
@@ -448,79 +448,8 @@ class SignalStore:
 # ─────────────────────────────────────────────────────────────
 # StrategyRegistry
 # ─────────────────────────────────────────────────────────────
-
-KNOWN_STRATEGY_CATALOG: Dict[str, Dict[str, str]] = {
-    "GoatLondonOpenOtadScalper": {
-        "display_name": "Goat Funded Trader London Open OTAD Scalper",
-        "target_profile": "Goat Funded Trader Prop OTAD Scalper (1m-25m)",
-        "thesis": "Quantitative London Open One-Trade-A-Day (OTAD) Mean Reversion & Volatility Absorption on Gold (XAUUSD)",
-        "symbol": "XAU/USD",
-        "timeframe": "1m",
-    },
-    "PropFirmAtrHybridScalperXauusd": {
-        "display_name": "Trader MNQ ATR Scalper on Gold",
-        "target_profile": "Prop Firm Gold ATR Envelope Scalper (1m-5m)",
-        "thesis": "Trader MNQ volatility envelope limit dip buying & exhaustion fading on Gold (XAUUSD)",
-        "symbol": "XAU/USD",
-        "timeframe": "1m",
-    },
-    "GoldLiquiditySweepAtrScalper": {
-        "display_name": "Gold Liquidity Sweep & ATR Rebound Scalper",
-        "target_profile": "Gold Liquidity Sweep Scalper (1m)",
-        "thesis": "Institutional liquidity absorption and ATR rebound on XAUUSD 1-minute sweeps",
-        "symbol": "XAU/USD",
-        "timeframe": "1m",
-    },
-    "GoatFundedTraderXauusdScalper": {
-        "display_name": "Goat Funded Trader XAUUSD Scalper",
-        "target_profile": "Goat Funded Trader Prop Scalper (2m-15m)",
-        "thesis": "Dynamic Range Expansion Momentum Train on 1m-15m London/NY sessions",
-        "symbol": "XAU/USD",
-        "timeframe": "1m",
-    },
-    "OpeningFlushReversalScalper": {
-        "display_name": "S&P 500 Opening Flush Reversal Scalper",
-        "target_profile": "S&P 500 Futures Intraday Reversal (1m)",
-        "thesis": "4-Factor Opening Liquidity Flush & Inverted Head-and-Shoulders Reversal on S&P 500 Futures",
-        "symbol": "S&P 500 (ES)",
-        "timeframe": "1m",
-    },
-    "OrderFlowImbalanceScalper": {
-        "display_name": "Order Flow Imbalance Scalper",
-        "target_profile": "Order Flow Imbalance Scalper (Alpha Engine)",
-        "thesis": "Autonomous Alpha Model: Order Flow Imbalance Scalper",
-        "symbol": "S&P 500 (ES)",
-        "timeframe": "1m",
-    },
-    "AsianRangeLiquidityFade": {
-        "display_name": "Asian Range Liquidity Fade",
-        "target_profile": "Asian Range Liquidity Fade (Alpha Engine)",
-        "thesis": "Autonomous Alpha Model: Asian Range Liquidity Fade",
-        "symbol": "BTC/USDT",
-        "timeframe": "15m",
-    },
-    "PropFirmAtrHybridScalper": {
-        "display_name": "Trader MNQ Prop Firm ATR Hybrid Scalper",
-        "target_profile": "Prop Firm Challenge & Funded Scalper (5m-15m)",
-        "thesis": "Trader MNQ Prop Firm ATR Hybrid Scalper (Intrabar Dip Limits + Exhaustion Wick Shorts)",
-        "symbol": "BTC/USDT",
-        "timeframe": "5m",
-    },
-    "TrapFade_v1": {
-        "display_name": "Trap Fade Liquidity Sweep",
-        "target_profile": "Liquidity Sweep Fade (LONG & SHORT)",
-        "thesis": "Fade Asian Liquidity Sweeps",
-        "symbol": "BTC/USDT",
-        "timeframe": "15m",
-    },
-    "PropFirmVsaWickRejection": {
-        "display_name": "Prop Firm Vsa Wick Rejection",
-        "target_profile": "Prop Firm Vsa Wick Rejection (Alpha Engine)",
-        "thesis": "Prop Firm Challenge VSA Wick Rejection",
-        "symbol": "BTC/USDT",
-        "timeframe": "15m",
-    },
-}
+# StrategyRegistry
+# ─────────────────────────────────────────────────────────────
 
 class StrategyRegistry:
     """
@@ -544,12 +473,78 @@ class StrategyRegistry:
     def _write_raw(self, data: List[Dict[str, Any]]) -> None:
         _write_json_locked(self._path, data)
 
+    def get_active_strategy_name(self) -> str:
+        """
+        Dynamically resolves the active strategy.
+        Checks current system state. If valid and existing on disk, returns it.
+        Otherwise falls back to the #1 ranked strategy on disk.
+        If no strategies exist on disk, returns ''.
+        Never hardcodes any strategy name.
+        """
+        curr = state_manager.get().get("active_strategy", "")
+        clean = curr.replace(".py", "").strip()
+        if clean and os.path.exists(os.path.join(self._dir, f"{clean}.py")):
+            return clean
+
+        # Fallback to #1 ranked strategy from strategies directory
+        py_files = sorted([f for f in os.listdir(self._dir) if f.endswith(".py")]) if os.path.exists(self._dir) else []
+        if not py_files:
+            return ""
+
+        # Check ranked list in memory/disk
+        raw = self._read_raw()
+        for s in raw:
+            s_file = s.get("file", "")
+            if s_file in py_files:
+                top_name = s.get("name", s_file.replace(".py", ""))
+                state_manager.patch({"active_strategy": top_name})
+                return top_name
+
+        top_name = py_files[0].replace(".py", "")
+        state_manager.patch({"active_strategy": top_name})
+        return top_name
+
+    def remove_strategy(self, strategy_name: str) -> bool:
+        """
+        Safely removes a strategy from the strategies directory and synchronizes registry.
+        Removes both .py and companion .pine files if present.
+        """
+        clean = strategy_name.replace(".py", "").strip()
+        py_path = os.path.join(self._dir, f"{clean}.py")
+        pine_path = os.path.join(self._dir, f"{clean}.pine")
+        removed = False
+        if os.path.exists(py_path):
+            try:
+                os.remove(py_path)
+                removed = True
+            except Exception as e:
+                logger.error(f"[StrategyRegistry] Error removing {py_path}: {e}")
+        if os.path.exists(pine_path):
+            try:
+                os.remove(pine_path)
+                removed = True
+            except Exception as e:
+                logger.error(f"[StrategyRegistry] Error removing {pine_path}: {e}")
+
+        # Resync filesystem and rankings
+        self.sync_with_filesystem()
+
+        # If deleted strategy was the active strategy, auto-switch to top remaining
+        curr_active = state_manager.get().get("active_strategy", "").replace(".py", "")
+        if curr_active == clean:
+            new_active = self.get_active_strategy_name()
+            state_manager.patch({"active_strategy": new_active})
+
+        return removed
+
     def _infer_metadata(self, filename: str) -> Dict[str, Any]:
+        """
+        Dynamically extracts all strategy metadata from any Python file in strategies/.
+        Parses header comments, docstrings, and class variables.
+        Zero hardcoded catalogs or static dictionary lookups.
+        """
         clean = filename.replace(".py", "")
         filepath = os.path.join(self._dir, filename)
-
-        if clean in KNOWN_STRATEGY_CATALOG:
-            return dict(KNOWN_STRATEGY_CATALOG[clean])
 
         thesis = ""
         symbol = ""
@@ -561,7 +556,7 @@ class StrategyRegistry:
         if os.path.exists(filepath):
             try:
                 with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    content = f.read(4096)
+                    content = f.read(8192)
                     for line in content.splitlines():
                         line_s = line.strip()
                         if line_s.startswith("# Strategy:"):
@@ -587,6 +582,12 @@ class StrategyRegistry:
                                 symbol = "MNQ (Futures)"
                             elif "BTC" in sym.upper():
                                 symbol = "BTC/USDT"
+                            elif "ETH" in sym.upper():
+                                symbol = "ETH/USDT"
+                            elif "SOL" in sym.upper():
+                                symbol = "SOL/USDT"
+                            else:
+                                symbol = sym
                         elif "timeframe =" in line_s or "timeframe=" in line_s:
                             tf = line_s.split("=")[-1].strip().strip("'\"")
                             if tf:
@@ -595,6 +596,20 @@ class StrategyRegistry:
                             sym = line_s.split("=")[-1].strip().strip("'\"")
                             if sym:
                                 symbol = sym
+
+                    # Docstring inspection fallback for thesis & display_name
+                    if not thesis or not display_name:
+                        doc_match = re.search(r'"""(.*?)"""', content, re.DOTALL)
+                        if doc_match:
+                            doc_text = doc_match.group(1).strip()
+                            doc_lines = [d.strip() for d in doc_text.splitlines() if d.strip()]
+                            if doc_lines:
+                                if not display_name and not doc_lines[0].lower().startswith("quantitative"):
+                                    display_name = doc_lines[0]
+                                if not thesis:
+                                    # Use docstring text excluding header
+                                    rationale = " ".join(doc_lines[1:]) if len(doc_lines) > 1 else doc_lines[0]
+                                    thesis = rationale[:200]
             except Exception as e:
                 logger.debug(f"[StrategyRegistry] Metadata extract error for {filename}: {e}")
 
@@ -613,6 +628,10 @@ class StrategyRegistry:
                 symbol = "XAU/USD"
             elif any(k in clean_up for k in ["MNQ", "NQ"]):
                 symbol = "MNQ (Futures)"
+            elif any(k in clean_up for k in ["ETH"]):
+                symbol = "ETH/USDT"
+            elif any(k in clean_up for k in ["SOL"]):
+                symbol = "SOL/USDT"
             else:
                 symbol = "BTC/USDT"
 
@@ -858,7 +877,7 @@ class StrategyRegistry:
     def sync_with_filesystem(self) -> List[Dict[str, Any]]:
         """Syncs data/strategies.json with files in strategies/*.py and active state."""
         existing = {s["file"]: s for s in self._read_raw() if "file" in s}
-        active_strat = state_manager.get().get("active_strategy", "GoatFundedTraderXauusdScalper")
+        active_strat = self.get_active_strategy_name()
         clean_active = active_strat.replace(".py", "")
 
         os.makedirs(self._dir, exist_ok=True)

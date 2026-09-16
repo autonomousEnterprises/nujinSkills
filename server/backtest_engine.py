@@ -142,7 +142,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
     """
     curr_sys_state = state_manager.get()
     if not strategy_name:
-        strategy_name = curr_sys_state.get("active_strategy", "PropFirmAtrHybridScalperXauusd")
+        strategy_name = strategy_registry.get_active_strategy_name()
 
     clean_name = strategy_name.replace(".py", "")
     logger.info(f"[BacktestEngine] Running dynamic quantitative backtest for strategy: {clean_name} (save_as_active={save_as_active})")

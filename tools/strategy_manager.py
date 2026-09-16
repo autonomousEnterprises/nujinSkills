@@ -409,16 +409,64 @@ def show_signals(strategy: Optional[str], endpoint: str):
         print(f"   {status_icon} #{s.get('id')} [{s.get('strategy')}] {s.get('action')} {s.get('pair')} @ ${s.get('price'):,.2f} -> {s.get('exit_reason', 'OPEN')} ({pnl_str})")
     print("=" * 76 + "\n")
 
+def sync_strategies(endpoint: str):
+    """Explicitly re-scans strategies/ folder, indexes new files, removes deleted ones, and updates rankings."""
+    print(f"{TOOL_NAME} Synchronizing strategy registry with filesystem (strategies/)...")
+    res = _fetch_json(f"{endpoint}/api/strategies/sync", method="POST", data={})
+    if res and res.get("status") == "SUCCESS":
+        total = res.get("total", len(res.get("strategies", [])))
+        print(f"{TOOL_NAME} SUCCESS: Synced with running server ({total} strategies indexed).")
+    else:
+        from server.state_manager import strategy_registry
+        strats = strategy_registry.sync_with_filesystem()
+        print(f"{TOOL_NAME} SUCCESS: Synced locally with filesystem ({len(strats)} strategies indexed).")
+    list_strategies(endpoint)
+
+def remove_strategy_cli(strategy: str, endpoint: str):
+    """Removes strategy file from strategies/ and prunes it from the registry."""
+    if not strategy:
+        print(f"{TOOL_NAME} ERROR: Please specify strategy name to remove (e.g. python tools/strategy_manager.py remove MyStrategy)")
+        sys.exit(1)
+    print(f"{TOOL_NAME} Removing strategy '{strategy}'...")
+    res = _fetch_json(f"{endpoint}/api/strategies/manage/remove", method="POST", data={"strategy": strategy})
+    if res and res.get("status") == "SUCCESS":
+        print(f"{TOOL_NAME} SUCCESS: Removed '{strategy}' via server. Registry updated.")
+    else:
+        from server.state_manager import strategy_registry
+        removed = strategy_registry.remove_strategy(strategy)
+        if removed:
+            print(f"{TOOL_NAME} SUCCESS: Removed '{strategy}' from disk and updated registry.")
+        else:
+            print(f"{TOOL_NAME} WARNING: Strategy file for '{strategy}' not found on disk, pruned from registry.")
+    list_strategies(endpoint)
+
+def add_strategy_cli(filepath: str, endpoint: str):
+    """Copies a new strategy Python file into strategies/ and synchronizes."""
+    if not filepath or not os.path.exists(filepath):
+        print(f"{TOOL_NAME} ERROR: Source file '{filepath}' does not exist.")
+        sys.exit(1)
+    import shutil
+    fname = os.path.basename(filepath)
+    if not fname.endswith(".py"):
+        print(f"{TOOL_NAME} ERROR: Strategy file must be a .py file.")
+        sys.exit(1)
+    target_path = os.path.join(ROOT_DIR, "strategies", fname)
+    if os.path.abspath(filepath) != os.path.abspath(target_path):
+        shutil.copy2(filepath, target_path)
+        print(f"{TOOL_NAME} Copied {fname} -> strategies/{fname}")
+    sync_strategies(endpoint)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EdgeMiner AI Strategy Management CLI")
     parser.add_argument(
         "action",
-        choices=["list", "status", "backtest", "cron", "rank", "insights", "register", "summary", "portfolio", "drift", "signals"],
-        help="list | status | backtest | cron | rank | insights | register | summary | portfolio | drift | signals"
+        choices=["list", "status", "backtest", "cron", "rank", "insights", "register", "summary", "portfolio", "drift", "signals", "sync", "remove", "add"],
+        help="list | status | backtest | cron | rank | insights | register | summary | portfolio | drift | signals | sync | remove | add"
     )
-    parser.add_argument("pos_strategy", nargs="?", default=None, help="Optional positional strategy name")
+    parser.add_argument("pos_strategy", nargs="?", default=None, help="Optional positional strategy name or file path")
     parser.add_argument("pos_status", nargs="?", default=None, help="Optional positional status")
-    parser.add_argument("--strategy",  default="", help="Strategy filename or name (filter for signals, target for status)")
+    parser.add_argument("--strategy",  default="", help="Strategy filename or name (filter for signals, target for status/remove)")
+    parser.add_argument("--file",      default="", help="Source strategy file for add action")
     parser.add_argument("--status",    default="CRON_BACKTEST", choices=["ACTIVE_LIVE", "CRON_BACKTEST", "DEACTIVATED"], help="Target status")
     parser.add_argument("--exclusive", action="store_true", help="Demote other active strategies if activating this one")
     parser.add_argument("--thesis",    default="Out-of-the-Box Edge Hypothesis",   help="Core thesis description")
@@ -431,6 +479,7 @@ if __name__ == "__main__":
 
     effective_strategy = args.pos_strategy or args.strategy
     effective_status = args.pos_status or args.status
+    effective_file = args.file or args.pos_strategy
 
     if   args.action == "list":      list_strategies(args.endpoint)
     elif args.action == "status":    update_status(effective_strategy, effective_status, args.endpoint, args.exclusive)
@@ -443,4 +492,7 @@ if __name__ == "__main__":
     elif args.action == "portfolio": show_portfolio(args.endpoint)
     elif args.action == "drift":     show_drift_distribution(args.endpoint)
     elif args.action == "signals":   show_signals(effective_strategy, args.endpoint)
+    elif args.action == "sync":      sync_strategies(args.endpoint)
+    elif args.action == "remove":    remove_strategy_cli(effective_strategy, args.endpoint)
+    elif args.action == "add":       add_strategy_cli(effective_file, args.endpoint)
 

@@ -688,17 +688,23 @@ export function getStrategyIndicatorProfile(rawStratName?: string): StrategyIndi
     };
   }
 
-  // 6. Prop Firm VSA Wick Rejection (Default for BTC 15m)
+  // Universal Dynamic Alpha Profile (Adapts automatically to any strategy on disk)
+  const cleanDispName = (rawStratName || 'Dynamic Alpha Engine')
+    .replace('.py', '')
+    .replace(/([A-Z]+)/g, ' $1')
+    .replace(/_/g, ' ')
+    .trim();
+
   return {
-    strategyKey: 'PropFirmVsaWickRejection',
-    strategyDisplayName: 'Prop Firm Challenge VSA Wick Rejection',
-    frameworkBadge: 'BOLLINGER BANDS (±2.0σ) + SMA 20 EXIT + VSA Z-SCORE',
-    frameworkDescription: 'Volume Spread Analysis (VSA) Wick Rejection with Bollinger Bands Mean-Reversion Target',
+    strategyKey: rawStratName ? rawStratName.replace('.py', '') : 'DynamicAlpha',
+    strategyDisplayName: cleanDispName,
+    frameworkBadge: 'VOLATILITY ENVELOPE (±2.0σ) + SMA 20 + VOLUME Z-SCORE',
+    frameworkDescription: 'Dynamic Volatility Bands, Moving Average Baseline & Relative Volume Telemetry',
     badgeClass: 'badge-primary',
     seriesConfigs: [
-      { id: 'bb_upper', title: 'BB Upper', color: '#c084fc', lineStyle: 2, lineWidth: 1.5 },
-      { id: 'sma_20', title: 'SMA 20 (Exit)', color: '#38bdf8', lineStyle: 0, lineWidth: 1.5 },
-      { id: 'bb_lower', title: 'BB Lower', color: '#c084fc', lineStyle: 2, lineWidth: 1.5 },
+      { id: 'bb_upper', title: 'Upper Band (+2.0σ)', color: '#c084fc', lineStyle: 2, lineWidth: 1.5 },
+      { id: 'sma_20', title: 'SMA 20 Baseline', color: '#38bdf8', lineStyle: 0, lineWidth: 1.5 },
+      { id: 'bb_lower', title: 'Lower Band (-2.0σ)', color: '#c084fc', lineStyle: 2, lineWidth: 1.5 },
     ],
     calculate: (candles: any[]) => {
       const bb = calculateBollingerBands(candles, 20, 2.0);
@@ -717,12 +723,11 @@ export function getStrategyIndicatorProfile(rawStratName?: string): StrategyIndi
           const isMeanRev = h < 0.5;
 
           return [
-            { id: 'bb_up', label: 'BB Upper', color: '#c084fc', value: `$${bb.upper[idx]?.value.toFixed(1)}` },
-            { id: 'sma20', label: 'SMA 20 (Exit)', color: '#38bdf8', value: `$${bb.middle[idx]?.value.toFixed(1)}` },
-            { id: 'bb_low', label: 'BB Lower', color: '#c084fc', value: `$${bb.lower[idx]?.value.toFixed(1)}` },
+            { id: 'bb_up', label: 'Upper Band', color: '#c084fc', value: bb.upper[idx]?.value != null ? `$${bb.upper[idx].value.toFixed(1)}` : '–' },
+            { id: 'sma20', label: 'SMA 20', color: '#38bdf8', value: bb.middle[idx]?.value != null ? `$${bb.middle[idx].value.toFixed(1)}` : '–' },
+            { id: 'bb_low', label: 'Lower Band', color: '#c084fc', value: bb.lower[idx]?.value != null ? `$${bb.lower[idx].value.toFixed(1)}` : '–' },
             { id: 'hurst', label: 'Hurst Proxy', color: isMeanRev ? '#34d399' : '#f59e0b', value: `${h} (${isMeanRev ? 'Mean-Rev' : 'Trend'})` },
             { id: 'volz', label: 'Vol Z', color: '#38bdf8', value: `${zscores[idx] >= 0 ? '+' : ''}${zscores[idx]}` },
-            { id: 'wick', label: 'Wick Rejection', color: '#c084fc', value: '> 40%' },
           ];
         },
       };

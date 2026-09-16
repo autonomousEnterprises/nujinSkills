@@ -60,6 +60,9 @@ class UpdateStrategyStatusRequest(BaseModel):
 class RunStrategyBacktestRequest(BaseModel):
     strategy: str
 
+class RemoveStrategyRequest(BaseModel):
+    strategy: str
+
 class CloseSignalRequest(BaseModel):
     id: Optional[int] = None
     strategy: Optional[str] = None
@@ -108,7 +111,7 @@ async def get_system_status():
             "has_token": bool(telegram_gateway.bot_token),
             "has_chat_id": bool(telegram_gateway.chat_id)
         },
-        "active_strategy": state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
+        "active_strategy": strategy_registry.get_active_strategy_name()
     }
 
 @app.get("/api/candles")
@@ -132,7 +135,7 @@ async def get_candles(
             symbol = rec.get("symbol")
 
     if not symbol:
-        active_strat = strategy or state_manager.get().get("active_strategy", "OpeningFlushReversalScalper")
+        active_strat = strategy or strategy_registry.get_active_strategy_name()
         clean_active = active_strat.replace(".py", "")
         rec = strategy_registry.get(clean_active)
         if rec and rec.get("symbol"):
@@ -425,7 +428,7 @@ async def broadcast_event(envelope: EventEnvelope):
 
         # Resolve strategy name if missing in payload
         if not envelope.payload.get("strategy"):
-            envelope.payload["strategy"] = state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
+            envelope.payload["strategy"] = strategy_registry.get_active_strategy_name()
         signal_store.add(envelope.payload)          # ← StateManager handles file I/O + signals_count bump
         telegram_gateway.format_and_send_signal(envelope.payload)
 
@@ -451,7 +454,7 @@ async def broadcast_event(envelope: EventEnvelope):
 
 @app.post("/api/bot/deploy")
 async def deploy_bot(req: DeployBotRequest):
-    strat = req.strategy or req.strategy_name or "GoatFundedTraderXauusdScalper"
+    strat = req.strategy or req.strategy_name or strategy_registry.get_active_strategy_name()
     logger.info(f"Activating & deploying strategy for system: {strat}")
     bt_result = run_real_backtest(strat, save_as_active=True)
     bot_supervisor.set_broadcast_callback(manager.broadcast)
@@ -603,7 +606,7 @@ async def update_system_state(req: UpdateStateRequest):
 async def get_backtest_results(strategy: Optional[str] = None):
     if strategy:
         return run_real_backtest(strategy, save_as_active=False)
-    active_strat = state_manager.get().get("active_strategy", "PropFirmVsaWickRejection")
+    active_strat = strategy_registry.get_active_strategy_name()
     return run_real_backtest(active_strat, save_as_active=False)
 
 @app.get("/api/signals/stats")
@@ -748,6 +751,10 @@ async def trigger_cron_evaluations():
         "portfolio_summary": portfolio,
         "distribution_analytics": distribution
     }
+    await manager.broadcast({"event_type": "STRATEGIES_UPDATED", "payload": payload})
+    return {"status": "SUCCESS", "evaluated": evaluated, **payload}
+
+
 @app.get("/api/strategies/manage/rankings")
 async def get_strategy_rankings():
     """Returns sorted quantitative leaderboard with ranking breakdown, sub-scores, tiers, and tier distribution."""
@@ -785,6 +792,23 @@ async def recalculate_strategy_rankings():
         "total": len(ranked),
         **payload
     }
+
+
+@app.post("/api/strategies/manage/remove")
+async def remove_strategy_endpoint(req: RemoveStrategyRequest):
+    """Safely remove a strategy from disk, re-sync registry, and broadcast update to Cockpit."""
+    success = strategy_registry.remove_strategy(req.strategy)
+    all_strats = strategy_registry.get_all(sync=True)
+    portfolio = strategy_registry.get_portfolio_summary()
+    distribution = strategy_registry.get_distribution_analytics()
+    payload = {
+        "strategies": all_strats,
+        "portfolio_summary": portfolio,
+        "distribution_analytics": distribution
+    }
+    await manager.broadcast({"event_type": "STRATEGIES_UPDATED", "payload": payload})
+    await manager.broadcast({"event_type": "STATE_UPDATED", "payload": state_manager.get()})
+    return {"status": "SUCCESS" if success else "NOT_FOUND", "strategy": req.strategy, **payload}
 
 
 @app.websocket("/ws")

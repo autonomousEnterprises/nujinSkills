@@ -131,7 +131,7 @@ const props = withDefaults(
   }>(),
   {
     theme: 'dark',
-    selectedStrategy: 'GoatFundedTraderXauusdScalper.py',
+    selectedStrategy: '',
     strategies: () => [],
     managedStrategies: () => [],
     loading: false,
@@ -146,8 +146,8 @@ const emit = defineEmits<{
 
 const selectedRegimeFilter = ref<'ALL' | 'bull_market' | 'bear_market' | 'ranging_market'>('ALL');
 
-const cleanSelectedName = computed(() => (props.selectedStrategy || 'GoatFundedTraderXauusdScalper').replace('.py', ''));
-const activeName = computed(() => props.activeState?.active_strategy || 'GoatFundedTraderXauusdScalper');
+const cleanSelectedName = computed(() => (props.selectedStrategy || props.activeState?.active_strategy || props.strategies?.[0]?.name || '').replace('.py', ''));
+const activeName = computed(() => props.activeState?.active_strategy || cleanSelectedName.value);
 
 const summary = computed<BacktestSummary | null>(() => props.selectedBacktestData?.summary || props.activeState?.backtest_summary || null);
 const thesisInfo = computed<ThesisProps | null>(() => props.selectedBacktestData?.thesis_props || null);

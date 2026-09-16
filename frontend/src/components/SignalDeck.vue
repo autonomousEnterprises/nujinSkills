@@ -92,7 +92,7 @@ const props = withDefaults(
   {
     signals: () => [],
     theme: 'dark',
-    selectedStrategy: 'GoatFundedTraderXauusdScalper.py',
+    selectedStrategy: '',
     managedStrategies: () => [],
     portfolioSummary: null,
   }
@@ -119,7 +119,7 @@ let btcWs: WebSocket | null = null;
 let priceTimer: any = null;
 let spPriceTimer: any = null;
 
-const cleanSelectedName = computed(() => (props.selectedStrategy || 'GoatFundedTraderXauusdScalper').replace('.py', ''));
+const cleanSelectedName = computed(() => (props.selectedStrategy || props.portfolioSummary?.active_strategies?.[0] || props.managedStrategies?.[0]?.name || '').replace('.py', ''));
 
 const activeBots = computed(() => {
   const fromManaged = (props.managedStrategies || [])

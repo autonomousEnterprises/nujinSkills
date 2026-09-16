@@ -82,7 +82,7 @@ const props = withDefaults(
     theme: 'dark',
     strategies: () => [],
     signals: () => [],
-    activeStrategy: 'GoatFundedTraderXauusdScalper.py',
+    activeStrategy: '',
   }
 );
 

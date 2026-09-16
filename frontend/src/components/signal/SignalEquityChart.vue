@@ -172,7 +172,7 @@ const props = withDefaults(
   {
     signals: () => [],
     selectedStratTab: 'ALL',
-    cleanSelectedName: 'GoatFundedTraderXauusdScalper',
+    cleanSelectedName: '',
     liveStats: null,
     managedStrategies: () => [],
     selectedBacktestData: null,

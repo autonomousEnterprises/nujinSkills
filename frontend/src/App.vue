@@ -27,7 +27,7 @@
         :selectedStrategy="selectedStrategy"
         :tradeMarkers="currentStrategyBacktest?.trade_markers || (isLiveStrategySelected ? activeState?.trade_markers : []) || []"
         :tradesDetail="currentStrategyBacktest?.trades_detail || (isLiveStrategySelected ? activeState?.trades_detail : []) || []"
-        :activeStrategy="activeBots[0] || 'GoatFundedTraderXauusdScalper'"
+        :activeStrategy="activeBots[0] || activeState?.active_strategy || (strategies[0]?.name ? strategies[0].name.replace('.py', '') : '')"
         :strategies="strategies"
         :isActiveScreen="activeScreen === 'CHART'"
         :latestMarketTick="latestMarketTick"
@@ -76,7 +76,7 @@
         :theme="theme"
         :strategies="managedStrategies"
         :signals="signals"
-        :activeStrategy="activeState?.active_strategy || 'GoatFundedTraderXauusdScalper'"
+        :activeStrategy="activeBots[0] || activeState?.active_strategy || (strategies[0]?.name ? strategies[0].name.replace('.py', '') : '')"
         :portfolioSummary="portfolioSummary"
         :distributionAnalytics="distributionAnalytics"
         @selectStrategy="handleSelectStrategy"
@@ -175,7 +175,7 @@ const setTheme = (newTheme: 'dark' | 'light', manual: boolean = true) => {
   }
 };
 
-const selectedStrategy = ref('GoatFundedTraderXauusdScalper.py');
+const selectedStrategy = ref('');
 const selectedBacktestData = ref<any>(null);
 const strategies = ref<any[]>([]);
 const loadingBacktest = ref(false);
@@ -299,6 +299,14 @@ watch(
         sharpe: s.latest_backtest?.sharpe || 0,
         win_rate: s.latest_backtest?.win_rate || 0,
       }));
+
+      // If selectedStrategy is empty or no longer exists on disk, auto-select top strategy
+      const exists = newManaged.some((s) => s.file === selectedStrategy.value || s.name === selectedStrategy.value.replace('.py', ''));
+      if (!selectedStrategy.value || !exists) {
+        const topFile = newManaged[0].file || (newManaged[0].name.endsWith('.py') ? newManaged[0].name : `${newManaged[0].name}.py`);
+        selectedStrategy.value = topFile;
+        handleSelectStrategy(topFile);
+      }
     }
   },
   { immediate: true, deep: true }
@@ -531,14 +539,14 @@ onMounted(() => {
   fetch('/api/state')
     .then((r) => r.json())
     .then((s) => {
-      const strat = s?.active_strategy
-        ? (s.active_strategy.endsWith('.py') ? s.active_strategy : `${s.active_strategy}.py`)
-        : 'GoatFundedTraderXauusdScalper.py';
-      selectedStrategy.value = strat;
-      handleSelectStrategy(strat);
+      if (s?.active_strategy) {
+        const strat = s.active_strategy.endsWith('.py') ? s.active_strategy : `${s.active_strategy}.py`;
+        selectedStrategy.value = strat;
+        handleSelectStrategy(strat);
+      }
     })
     .catch(() => {
-      handleSelectStrategy('GoatFundedTraderXauusdScalper.py');
+      // Handled dynamically by managedStrategies watcher
     });
 
   window.addEventListener('keydown', handleKeyDown);

@@ -208,7 +208,7 @@ const props = withDefaults(
   }>(),
   {
     theme: 'dark',
-    selectedStrategy: 'GoatFundedTraderXauusdScalper.py',
+    selectedStrategy: '',
     tradeMarkers: () => [],
     tradesDetail: () => [],
     strategies: () => [],

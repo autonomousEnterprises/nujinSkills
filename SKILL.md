@@ -258,13 +258,42 @@ Nujin audits and evolves its own tool suite and knowledge base:
 | `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast In-Sample strategy coarse filter with taker fee & slippage friction | `--data`, `--rules`, `--fee-bps`, `--output` |
 | `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
 | `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
-| `tools/strategy_manager.py` | `[StrategyManager]` | Strategy lifecycle CLI: multi-bot execution, 4-pillar rankings, insights, cron drift tracking | `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `rank`, `insights`, `--json` |
+| `tools/strategy_manager.py` | `[StrategyManager]` | **Zero-Code Strategy Management:** Dynamic auto-discovery, safe file removal, 4-pillar rankings, drift tracking, and bot activation | `sync`, `add`, `remove`, `rank`, `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `insights`, `--json` |
 | `tools/state_control.py` | `[StateControl]` | Shared state CLI: read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add` |
 | `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
 | `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
 | `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
 | `tools/frontend_control.py` | `[FrontendControl]` | Build and serve the dual-screen React Cockpit | `build`, `start`, `stop`, `status`, `--port` |
 | `tools/bot_control.py` | `[BotControl]` | Launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+
+---
+
+## ⚡ Autonomous Zero-Code Strategy Management Standard
+
+Strategies are 100% dynamically managed on disk (`strategies/*.py`) with **zero hardcoded catalogs or static lists**:
+
+1. **Auto-Discovery on Disk (`strategies/`):**
+   - Any new `.py` strategy placed or generated in `strategies/` is automatically discovered, indexed, and evaluated.
+   - Metadata (`display_name`, `symbol`, `timeframe`, `target_profile`, `thesis`) is auto-extracted from file headers, docstrings, and class properties without touching backend or frontend code.
+   - Re-sync and re-rank anytime via:
+     ```bash
+     python tools/strategy_manager.py sync
+     python tools/strategy_manager.py rank
+     ```
+
+2. **Decommissioning / Removing Strategies:**
+   - Remove obsolete or failed strategies safely via CLI:
+     ```bash
+     python tools/strategy_manager.py remove <StrategyName>
+     ```
+   - Automatically removes `.py` (and `.pine`) files, prunes the registry in `data/strategies.json`, recalculates rankings, and switches active bots to the top remaining strategy if the removed one was running.
+
+3. **Adding New Alpha Models:**
+   - Add new strategy files via:
+     ```bash
+     python tools/strategy_manager.py add /path/to/NewAlphaStrategy.py
+     ```
+
 
 ---
 
