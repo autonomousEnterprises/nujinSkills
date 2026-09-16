@@ -140,6 +140,10 @@ if array.size(active_zones) > 0 and session_ok and strategy.position_size == 0
     for i = 0 to array.size(active_zones) - 1
         z = array.get(active_zones, i)
         
+        // Anti-lookahead: zone must have been formed on a prior candle
+        if z.created_bar >= bar_index
+            continue
+
         // ── DEMAND / SUPPORT ZONE (BULLISH SETUP) ──
         if z.side == -1 and allow_longs
             // Check if price taps inside the zone [bottom, top]
@@ -148,12 +152,12 @@ if array.size(active_zones) > 0 and session_ok and strategy.position_size == 0
                 z.tap_extreme := math.min(z.tap_extreme, low)
             
             // Displacement with confirmation:
-            // Tapped previously or currently, candle confirms bullish reaction,
-            // and price displaces/breaks above the upper border (z.top)
+            // Tapped previously, candle confirms bullish reaction,
+            // and price displaces back above the upper border (z.top)
             if z.tapped and not z.displaced
                 if high >= z.top and is_bullish
-                    // Entry occurs at displacement border (z.top) if low <= z.top, else open
-                    planned_long_entry := low <= z.top ? z.top : open
+                    // Realistic execution at candle close upon confirmed rejection
+                    planned_long_entry := close
                     // Structural SL at the lowest tap point or box bottom
                     planned_long_sl    := math.min(z.tap_extreme, z.bottom) - (0.2 * atr_val)
                     float risk         = planned_long_entry - planned_long_sl
@@ -171,12 +175,12 @@ if array.size(active_zones) > 0 and session_ok and strategy.position_size == 0
                 z.tap_extreme := math.max(z.tap_extreme, high)
             
             // Displacement with confirmation:
-            // Tapped previously or currently, candle confirms bearish reaction,
-            // and price displaces/breaks below the lower border (z.bottom)
+            // Tapped previously, candle confirms bearish reaction,
+            // and price displaces back below the lower border (z.bottom)
             if z.tapped and not z.displaced
                 if low <= z.bottom and is_bearish
-                    // Entry occurs at displacement border (z.bottom) if high >= z.bottom, else open
-                    planned_short_entry := high >= z.bottom ? z.bottom : open
+                    // Realistic execution at candle close upon confirmed rejection
+                    planned_short_entry := close
                     // Structural SL at the highest tap point or box top
                     planned_short_sl    := math.max(z.tap_extreme, z.top) + (0.2 * atr_val)
                     float risk          = planned_short_sl - planned_short_entry
@@ -187,22 +191,20 @@ if array.size(active_zones) > 0 and session_ok and strategy.position_size == 0
                         break
 
 // =============================================================================
-// 4. STRATEGY ORDERS EXECUTION (NOT ON CLOSE, DISPLACEMENT BORDER TRIGGER)
+// 4. STRATEGY ORDERS EXECUTION (MARKET ON CLOSE DISPLACEMENT TRIGGER)
 // =============================================================================
 var float active_sl = na
 var float active_tp = na
 var int   entry_bar = 0
 
 if trigger_long and strategy.position_size == 0
-    // Stop order enters precisely at the border displacement level
-    strategy.entry("Long Displace", strategy.long, stop=planned_long_entry)
+    strategy.entry("Long Displace", strategy.long)
     active_sl := planned_long_sl
     active_tp := planned_long_tp
     entry_bar := bar_index
 
 if trigger_short and strategy.position_size == 0
-    // Stop order enters precisely at the border displacement level
-    strategy.entry("Short Displace", strategy.short, stop=planned_short_entry)
+    strategy.entry("Short Displace", strategy.short)
     active_sl := planned_short_sl
     active_tp := planned_short_tp
     entry_bar := bar_index

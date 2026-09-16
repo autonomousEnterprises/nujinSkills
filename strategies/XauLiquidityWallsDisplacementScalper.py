@@ -176,6 +176,11 @@ class XauLiquidityWallsDisplacementScalper(IStrategy):
             bearish_conf = ((c_i < o_i and u_wick >= (0.30 if is_uptrend else 0.15)) or (u_wick >= (0.40 if is_uptrend else 0.25))) and (vz >= (0.3 if is_uptrend else 0.1))
 
             for z in active_zones:
+                # ── ANTI-LOOKAHEAD RULE: Zone must be from a prior bar ──
+                # A liquidity wall cannot be created, tapped, and displaced on the exact same candle
+                if z["created_bar"] >= i:
+                    continue
+
                 # ── DEMAND / SUPPORT ZONE (LONG SETUP) ──
                 if z["side"] == -1:
                     if l_i <= z["top"] and l_i >= z["bottom"]:
@@ -184,13 +189,9 @@ class XauLiquidityWallsDisplacementScalper(IStrategy):
 
                     if z["tapped"] and not z["displaced"]:
                         if h_i >= z["top"] and bullish_conf:
-                            # Enforce physical fill: if candle spans across z["top"], entry is at z["top"].
-                            # If candle opened entirely above z["top"], entry is at candle open.
-                            if l_i <= z["top"]:
-                                entry_p = round(z["top"], 2)
-                            else:
-                                entry_p = round(o_i, 2)
-
+                            # Realistic execution: Since confirmation requires the candle's close (wick & volume),
+                            # entry executes at candle close (market price), never retroactively at the wick/wall border.
+                            entry_p = round(c_i, 2)
                             sl_p = round(min(z["tap_extreme"], z["bottom"]) - 0.15 * atr_i, 2)
                             risk = entry_p - sl_p
                             if 0.20 <= risk <= 3.0 * atr_i and risk > 0:
@@ -210,13 +211,8 @@ class XauLiquidityWallsDisplacementScalper(IStrategy):
 
                     if z["tapped"] and not z["displaced"]:
                         if l_i <= z["bottom"] and bearish_conf:
-                            # Enforce physical fill: if candle spans across z["bottom"], entry is at z["bottom"].
-                            # If candle opened entirely below z["bottom"], entry is at candle open.
-                            if h_i >= z["bottom"]:
-                                entry_p = round(z["bottom"], 2)
-                            else:
-                                entry_p = round(o_i, 2)
-
+                            # Realistic execution: Entry at candle close upon confirmed rejection
+                            entry_p = round(c_i, 2)
                             sl_p = round(max(z["tap_extreme"], z["top"]) + 0.15 * atr_i, 2)
                             risk = sl_p - entry_p
                             if 0.20 <= risk <= 3.0 * atr_i and risk > 0:
