@@ -204,9 +204,6 @@ def evaluate_portfolio(
     4. Evaluates Bull, Bear, Range regime breakdown.
     5. Calculates blended portfolio metrics and diversification ratio.
     """
-    df = load_candle_data(data_path)
-    regimes = classify_market_regimes(df)
-
     if not strategy_names:
         strat_dir = "strategies"
         if os.path.exists(strat_dir):
@@ -215,7 +212,23 @@ def evaluate_portfolio(
             strategy_names = []
 
     if not strategy_names:
-        return {"error": "No strategies provided or found in strategies/"}
+        return {
+            "strategies": [],
+            "correlation_matrix": {},
+            "spearman_matrix": {},
+            "regime_breakdown": {},
+            "portfolio_ensemble": {
+                "blended_sharpe": 0.0,
+                "blended_total_return_pct": 0.0,
+                "blended_max_drawdown_pct": 0.0,
+                "diversification_ratio": 1.0,
+                "correlation_threshold": correlation_threshold
+            },
+            "pairwise_analysis": []
+        }
+
+    df = load_candle_data(data_path)
+    regimes = classify_market_regimes(df)
 
     strategy_returns: Dict[str, np.ndarray] = {}
     strategy_trades: Dict[str, List[Dict[str, Any]]] = {}
@@ -306,6 +319,12 @@ def print_ascii_report(report: Dict[str, Any]):
     print("\n" + "=" * 80)
     print(" 📊 NUJINSKILLS PORTFOLIO CYNIC — CORRELATION & REGIME ORTHOGONALITY")
     print("=" * 80)
+
+    if not strats:
+        print("\n  [INFO] No strategies found in strategies/ directory for correlation evaluation.")
+        print("  Mine or formulate new alpha models to analyze multi-strategy portfolio correlations.\n")
+        print("=" * 80 + "\n")
+        return
 
     # 1. Correlation Matrix Table
     print("\n[1] PAIRWISE RETURN CORRELATION MATRIX (Pearson rho):")

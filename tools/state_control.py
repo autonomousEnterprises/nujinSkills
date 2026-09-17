@@ -8,28 +8,36 @@ from typing import Optional, Dict, Any, List
 
 def get_state(key: str, endpoint: str):
     url = f"{endpoint}/api/state"
+    data = None
     try:
         with urllib.request.urlopen(url, timeout=3) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            if key:
-                # Dotted key path: e.g. "backtest_summary.sharpe"
-                for part in key.split("."):
-                    if isinstance(data, dict) and part in data:
-                        data = data[part]
-                    else:
-                        print(f"[StateControl] Key not found: {key}")
-                        sys.exit(1)
-            print(json.dumps(data, indent=2) if isinstance(data, (dict, list)) else data)
-    except Exception as e:
-        print(f"[StateControl] Error fetching state: {e}")
+    except Exception:
+        # Offline / direct disk fallback
+        import os, sys
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        from server.state_manager import state_manager
+        data = state_manager.get()
+
+    if data is not None:
+        if key:
+            # Dotted key path: e.g. "backtest_summary.sharpe"
+            for part in key.split("."):
+                if isinstance(data, dict) and part in data:
+                    data = data[part]
+                else:
+                    print(f"[StateControl] Key not found: {key}")
+                    sys.exit(1)
+        print(json.dumps(data, indent=2) if isinstance(data, (dict, list)) else data)
 
 def patch_state(patch_json: str, endpoint: str):
-    url = f"{endpoint}/api/state"
     try:
         updates = json.loads(patch_json)
     except json.JSONDecodeError as e:
         print(f"[StateControl] Invalid JSON: {e}")
         sys.exit(1)
+
+    url = f"{endpoint}/api/state"
     data = json.dumps(updates).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json"})
     try:
@@ -37,8 +45,15 @@ def patch_state(patch_json: str, endpoint: str):
             result = json.loads(resp.read().decode("utf-8"))
             print(f"[StateControl] State patched successfully.")
             print(json.dumps(result.get("state", result), indent=2))
-    except Exception as e:
-        print(f"[StateControl] Error patching state: {e}")
+            return
+    except Exception:
+        # Offline / direct disk fallback
+        import os, sys
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+        from server.state_manager import state_manager
+        res = state_manager.patch(updates)
+        print(f"[StateControl] State patched successfully (Local Direct).")
+        print(json.dumps(res, indent=2))
 
 def deploy_strategy(strategy: str, mode: str, endpoint: str):
     url = f"{endpoint}/api/bot/deploy"
