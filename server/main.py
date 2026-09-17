@@ -131,7 +131,7 @@ def _extract_primitives_for_response(strategy_name: Optional[str], candles_data:
 @app.get("/api/candles")
 async def get_candles(
     symbol: Optional[str] = None, 
-    count: int = 20000, 
+    count: int = 2500, 
     mode: str = "live",
     timeframe: Optional[str] = None,
     strategy: Optional[str] = None
@@ -242,7 +242,7 @@ async def get_candles(
                 df = pd.read_csv(csv_path)
                 time_col = "timestamp" if "timestamp" in df.columns else "time"
                 df = df.dropna(subset=[time_col, "close"]).sort_values(by=time_col)
-                records = df.tail(count * 5).to_dict(orient="records") if (count and count > 0) else df.to_dict(orient="records")
+                records = df.tail(count).to_dict(orient="records") if (count and count > 0) else df.to_dict(orient="records")
                 base_candles = [
                     {
                         "time": int(r.get("timestamp", r.get("time", 0))),

@@ -47,6 +47,7 @@
         :activeState="activeState"
         :managedStrategies="managedStrategies"
         :portfolioSummary="portfolioSummary"
+        :isActiveScreen="activeScreen === 'AGENT_DECK'"
         @inspectSignal="handleInspectSignal"
         @clearSignals="targetedSignal = null"
         @closePosition="(pos) => { if (targetedSignal?.id === pos.id) targetedSignal = null; }"
@@ -551,8 +552,12 @@ onMounted(() => {
 
   window.addEventListener('keydown', handleKeyDown);
 
-  // Periodic polling safety net & window focus auto-refresh
-  pollInterval = setInterval(pollStrategies, 3500);
+  // Periodic polling safety net & window focus auto-refresh (only fallback when WS disconnected)
+  pollInterval = setInterval(() => {
+    if (!isConnected.value) {
+      pollStrategies();
+    }
+  }, 15000);
   window.addEventListener('focus', pollStrategies);
 });
 

@@ -88,6 +88,7 @@ const props = withDefaults(
     activeState?: any;
     managedStrategies?: ManagedStrategy[];
     portfolioSummary?: PortfolioSummary | null;
+    isActiveScreen?: boolean;
   }>(),
   {
     signals: () => [],
@@ -95,6 +96,7 @@ const props = withDefaults(
     selectedStrategy: '',
     managedStrategies: () => [],
     portfolioSummary: null,
+    isActiveScreen: false,
   }
 );
 
@@ -385,20 +387,51 @@ const connectBtcWs = () => {
   } catch {}
 };
 
-onMounted(() => {
+const startDeckPolling = () => {
+  if (pollTimer) return;
   fetchSignals();
   fetchGoldPrice();
   fetchSp500Price();
   connectBtcWs();
-  pollTimer = setInterval(fetchSignals, 4000);
-  priceTimer = setInterval(fetchGoldPrice, 3000);
-  spPriceTimer = setInterval(fetchSp500Price, 3000);
-});
+  pollTimer = setInterval(fetchSignals, 5000);
+  priceTimer = setInterval(fetchGoldPrice, 4000);
+  spPriceTimer = setInterval(fetchSp500Price, 4000);
+};
+
+const stopDeckPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  if (priceTimer) {
+    clearInterval(priceTimer);
+    priceTimer = null;
+  }
+  if (spPriceTimer) {
+    clearInterval(spPriceTimer);
+    spPriceTimer = null;
+  }
+  if (btcWs) {
+    try {
+      btcWs.close();
+    } catch {}
+    btcWs = null;
+  }
+};
+
+watch(
+  () => props.isActiveScreen,
+  (active) => {
+    if (active) {
+      startDeckPolling();
+    } else {
+      stopDeckPolling();
+    }
+  },
+  { immediate: true }
+);
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer);
-  if (priceTimer) clearInterval(priceTimer);
-  if (spPriceTimer) clearInterval(spPriceTimer);
-  if (btcWs) btcWs.close();
+  stopDeckPolling();
 });
 </script>

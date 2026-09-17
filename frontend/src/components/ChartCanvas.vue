@@ -198,7 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { createChart, ColorType, LineStyle, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import ChartTopBar from './chart/ChartTopBar.vue';
 import ChartHudBar from './chart/ChartHudBar.vue';
@@ -348,9 +348,25 @@ const priceFlash = ref<'up' | 'down' | null>(null);
 const loadingCandles = ref(false);
 
 const legendData = ref<Record<string, any>>({});
-const rawCandles = ref<any[]>([]);
+const rawCandles = shallowRef<any[]>([]);
 const positionBoxes = ref<PositionBoxCoord[]>([]);
 const isInspectingTrade = ref<boolean>(false);
+
+// Cached trade exit analysis to prevent O(N) multi-thousand candle loops on every pan/zoom frame
+let cachedExitTradeKey: string | null = null;
+let cachedExitInfo: {
+  isClosed: boolean;
+  exitIdx: number;
+  exitTime?: number;
+  exitPrice?: number;
+  exitReason?: string;
+  pnlPct?: number;
+} | null = null;
+
+const invalidateTradeExitCache = () => {
+  cachedExitTradeKey = null;
+  cachedExitInfo = null;
+};
 
 // Level 3 Universal Visual Primitives state
 interface RenderedZoneBox {
@@ -942,6 +958,7 @@ const syncPriceAxisLines = (target: InspectableSignal | null | undefined) => {
 };
 
 watch(inspectedSignal, (newSignal) => {
+  invalidateTradeExitCache();
   syncPriceAxisLines(newSignal);
   nextTick(() => updateBoxCoordinates());
 }, { immediate: true });
@@ -1026,14 +1043,19 @@ const updateZoneBoxCoordinates = () => {
     if (x1 === null) x1 = 0;
     if (x2 === null) x2 = containerW;
 
+    // Viewport culling: Skip offscreen boxes to save layout/rendering cycles
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    if (maxX < -50 || minX > containerW + 50) continue;
+
     const yHigh = candleSeries.priceToCoordinate(Number(b.price_high));
     const yLow = candleSeries.priceToCoordinate(Number(b.price_low));
     if (yHigh === null || yLow === null) continue;
 
     const y = Math.min(yHigh, yLow);
     const height = Math.max(Math.abs(yLow - yHigh), 3);
-    const x = Math.min(x1, x2);
-    const width = Math.max(Math.abs(x2 - x1), 12);
+    const x = minX;
+    const width = Math.max(maxX - minX, 12);
 
     results.push({
       id: b.id,
@@ -1053,6 +1075,13 @@ const updateZoneBoxCoordinates = () => {
 
 let rafCoordId: number | null = null;
 const scheduleUpdateBoxCoordinates = () => {
+  if (props.isActiveScreen === false) return;
+  // High-performance early-exit: If no trade is inspected and no zone primitives exist, skip RAF completely
+  if (!isInspectingTrade.value && !props.targetedSignal && rawPrimitiveBoxes.value.length === 0) {
+    if (positionBoxes.value.length > 0) positionBoxes.value = [];
+    if (renderedZoneBoxes.value.length > 0) renderedZoneBoxes.value = [];
+    return;
+  }
   if (rafCoordId !== null) return;
   rafCoordId = requestAnimationFrame(() => {
     rafCoordId = null;
@@ -1139,8 +1168,14 @@ const updateBoxCoordinatesInternal = () => {
     // Live open trades: extend the box to the right infinitely across the canvas into price axis
     endX = containerW;
   } else {
-    // Closed trades: strictly from entry candle to exit candle logically wise!
-    const tradeExit = resolveTradeExit(target, entryIdx);
+    // Closed trades: strictly from entry candle to exit candle logically wise (cached to eliminate O(N) pan/zoom lag)
+    const tradeKey = `${target.id || ''}_${rawEntry}_${target.isLiveActive ? '1' : '0'}`;
+    let tradeExit = cachedExitInfo;
+    if (!tradeExit || cachedExitTradeKey !== tradeKey) {
+      tradeExit = resolveTradeExit(target, entryIdx);
+      cachedExitInfo = tradeExit;
+      cachedExitTradeKey = tradeKey;
+    }
     const exitIdx = Math.max(entryIdx + 1, tradeExit.exitIdx);
     const clampedExitIdx = Math.min(exitIdx, rawCandles.value.length - 1);
     const exitCandleLocalTime = timeToLocal(Number(rawCandles.value[clampedExitIdx].time));
@@ -1451,9 +1486,14 @@ const initChart = () => {
     scaleMargins: { top: 0.82, bottom: 0 },
   });
 
-  // Crosshair move handler (Coordinates HUD sync)
-  chart.subscribeCrosshairMove((param) => {
-    if (!param.time || !param.seriesData || !candleSeries) return;
+  // Crosshair move handler (Coordinates HUD sync throttled via RAF to display refresh rate)
+  let rafCrosshairId: number | null = null;
+  let pendingCrosshairParam: any = null;
+
+  const updateHudFromCrosshair = () => {
+    rafCrosshairId = null;
+    const param = pendingCrosshairParam;
+    if (!param || !param.time || !param.seriesData || !candleSeries) return;
     const cData: any = param.seriesData.get(candleSeries);
     if (cData) {
       legendData.value = {
@@ -1486,6 +1526,13 @@ const initChart = () => {
           currentHudItems.value = indicatorCalculator.getHudItems(idx);
         }
       }
+    }
+  };
+
+  chart.subscribeCrosshairMove((param) => {
+    pendingCrosshairParam = param;
+    if (rafCrosshairId === null) {
+      rafCrosshairId = requestAnimationFrame(updateHudFromCrosshair);
     }
   });
 
@@ -1532,10 +1579,6 @@ const initChart = () => {
 
   // Subscribe timescale changes to keep Trade Boxes pinned dynamically during pan/zoom (RAF throttled)
   chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleUpdateBoxCoordinates);
-
-  const container = chartContainerRef.value;
-  container.addEventListener('wheel', scheduleUpdateBoxCoordinates, { passive: true });
-  container.addEventListener('pointerup', scheduleUpdateBoxCoordinates);
 
   // Resize handling
   resizeObserver = new ResizeObserver((entries) => {
@@ -1672,10 +1715,11 @@ const loadCandles = async (preserveViewport = false) => {
     const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
     const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
     const apiSym = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAUUSD' : selectedSymbol.value);
-    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&timeframe=${encodeURIComponent(selectedTimeframe.value)}&strategy=${encodeURIComponent(cleanStrategyName.value)}&count=20000&mode=live`);
+    const res = await fetch(`/api/candles?symbol=${encodeURIComponent(apiSym)}&timeframe=${encodeURIComponent(selectedTimeframe.value)}&strategy=${encodeURIComponent(cleanStrategyName.value)}&count=2500&mode=live`);
     const data = await res.json();
 
     if (data.data && data.data.length > 0) {
+      invalidateTradeExitCache();
       rawCandles.value = data.data;
       if (data.primitives && (data.primitives.lines?.length || data.primitives.boxes?.length || data.primitives.levels?.length)) {
         backendPrimitives.value = data.primitives;
@@ -1901,6 +1945,7 @@ const applyMarkers = (markers: any[]) => {
 let lastGapSyncTime = 0;
 
 const updateLiveCandle = (candleData: { time: number; open: number; high: number; low: number; close: number; volume?: number }) => {
+  if (props.isActiveScreen === false) return;
   if (!candleSeries || !candleData || !candleData.time || !candleData.close || candleData.close <= 0) return;
   if (!rawCandles.value || rawCandles.value.length === 0) return;
 
@@ -1967,6 +2012,7 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     }
   } else if (rawTime > lastTime) {
     // Brand new bar started!
+    invalidateTradeExitCache();
     const newBar = {
       time: rawTime,
       open: open,
@@ -2245,13 +2291,13 @@ onUnmounted(() => {
   clearPriceLines();
   clearLevelLines();
   window.removeEventListener('keydown', handleKeyDown);
-  if (chartContainerRef.value) {
-    chartContainerRef.value.removeEventListener('wheel', scheduleUpdateBoxCoordinates);
-    chartContainerRef.value.removeEventListener('pointerup', scheduleUpdateBoxCoordinates);
-  }
   if (rafCoordId !== null) {
     cancelAnimationFrame(rafCoordId);
     rafCoordId = null;
+  }
+  if (rafCrosshairId !== null) {
+    cancelAnimationFrame(rafCrosshairId);
+    rafCrosshairId = null;
   }
   if (resizeObserver) resizeObserver.disconnect();
   for (const s of activeIndicatorSeries.values()) {
