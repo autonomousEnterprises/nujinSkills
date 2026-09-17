@@ -699,6 +699,48 @@ async def list_brokers():
     }
 
 
+@app.get("/api/brokers/accounts")
+async def list_broker_accounts(broker_id: Optional[str] = None):
+    """Returns all configured broker accounts across all users (with credentials masked)."""
+    from server.accounts_store import accounts_store
+    active_accounts = accounts_store.get_all_active_accounts(broker_id=broker_id, decrypt=False)
+    # Mask logins
+    for a in active_accounts:
+        a["login_masked"] = accounts_store.mask_login(a.get("login", ""))
+        a.pop("password_encrypted", None)
+        a.pop("password", None)
+    return {
+        "accounts": active_accounts,
+        "total": len(active_accounts)
+    }
+
+
+@app.delete("/api/brokers/accounts/{account_id}")
+async def delete_broker_account(account_id: str):
+    """Deletes a broker account by ID."""
+    from server.accounts_store import accounts_store
+    acc = accounts_store.get_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    user_id = acc.get("telegram_user_id", "")
+    ok = accounts_store.delete_account(account_id, user_id)
+    return {"deleted": ok, "account_id": account_id}
+
+
+@app.post("/api/brokers/accounts/{account_id}/toggle")
+async def toggle_broker_account(account_id: str):
+    """Toggles active status of a broker account."""
+    from server.accounts_store import accounts_store
+    acc = accounts_store.get_account_by_id(account_id)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    user_id = acc.get("telegram_user_id", "")
+    new_status = not acc.get("is_active", True)
+    ok = accounts_store.toggle_account_active(account_id, user_id, is_active=new_status)
+    return {"success": ok, "account_id": account_id, "is_active": new_status}
+
+
+
 @app.get("/api/strategies")
 async def list_strategies():
     strategies_dir = os.path.join(os.getcwd(), "strategies")
@@ -1107,6 +1149,14 @@ async def startup_event():
     asyncio.create_task(cron_backtest_scheduler())
     logger.info("[NujinSkillsServer] Launching Strategy Auto-Discovery File Watcher...")
     asyncio.create_task(strategy_auto_discovery_watcher())
+
+    # Launch interactive Telegram bot listener for multi-account onboarding & trade management
+    try:
+        from server.telegram_listener import run_telegram_listener
+        asyncio.create_task(run_telegram_listener())
+        logger.info("[NujinSkillsServer] Telegram Interactive Listener task launched.")
+    except Exception as e_tl:
+        logger.warning(f"[NujinSkillsServer] Could not launch Telegram listener: {e_tl}")
 
     # Pre-warm real-time market data providers so live candles are immediately warm
     from server.providers.base import ProviderRegistry

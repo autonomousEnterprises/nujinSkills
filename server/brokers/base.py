@@ -27,6 +27,18 @@ class BaseExecutionBroker(abc.ABC):
         self.name = name
         self.is_connected = False
 
+    @property
+    def supports_multi_account(self) -> bool:
+        """Indicates whether this broker adapter supports concurrent multi-account execution."""
+        return False
+
+    def validate_credentials(self, config: Dict[str, Any]) -> tuple[bool, str]:
+        """
+        Validates a set of credentials without modifying the primary adapter session.
+        Returns (is_valid: bool, message_or_error: str).
+        """
+        return True, "Validation passed"
+
     @abc.abstractmethod
     def connect(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """

@@ -109,6 +109,33 @@ class TelegramGateway:
 
         return any_success
 
+    def delete_message(self, chat_id: str | int, message_id: int) -> bool:
+        """Deletes a message from Telegram (e.g. to purge sensitive credentials)."""
+        if not self.bot_token or not chat_id or not message_id:
+            return False
+        url = f"https://api.telegram.org/bot{self.bot_token}/deleteMessage"
+        try:
+            resp = requests.post(url, json={"chat_id": chat_id, "message_id": message_id}, timeout=5)
+            return resp.status_code == 200
+        except Exception as e:
+            logger.debug(f"[TelegramGateway] Failed to delete message {message_id}: {e}")
+            return False
+
+    def send_user_receipt(self, chat_id: str | int, title: str, details: Dict[str, Any], is_success: bool = True) -> bool:
+        """Sends a structured execution receipt or alert directly to an individual user's chat."""
+        icon = "✅" if is_success else "❌"
+        time_str = datetime.now().astimezone().strftime("%H:%M:%S %Z")
+        lines = [
+            f"{icon} <b>{html.escape(title.upper())}</b>",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"⏰ <b>Time:</b> <code>{time_str}</code>"
+        ]
+        for k, v in details.items():
+            lines.append(f"• <b>{html.escape(str(k))}:</b> <code>{html.escape(str(v))}</code>")
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append("⚡ <i>Nujin Multi-Account Execution</i>")
+        return self.send_message("\n".join(lines), parse_mode="HTML", target_chat_id=str(chat_id))
+
     @staticmethod
     def format_broadcast_text(body: str, category: str = "general", title: str = "") -> str:
         cat = (category or "general").lower().strip()

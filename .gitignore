@@ -59,6 +59,10 @@ user_data/data/
 .env.production.local
 config.json
 user_data/config.json
+data/broker_accounts.json
+data/tradelocker_accounts.json
+*.credentials.json
+.nujin/.secret_key
 
 # --- Operating System & IDE Files ---
 .DS_Store
