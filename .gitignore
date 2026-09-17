@@ -79,3 +79,7 @@ Thumbs.db
 # Autoresearch & Nujin research artifacts
 .autoresearch/
 .nujin/
+
+# Local Systemd unit definitions (contain host-specific paths & username)
+systemd/
+
