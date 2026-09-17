@@ -14,6 +14,7 @@ import pandas as pd
 from server.state_manager import state_manager, signal_store, strategy_registry
 from server.telegram_bot import telegram_gateway
 from server.providers.base import BaseMarketDataProvider, ProviderRegistry
+from server.brokers.registry import broker_registry
 
 logger = logging.getLogger("StrategyExecutor")
 
@@ -327,21 +328,33 @@ class NativeStrategyRunner:
         """Saves signal to store, alerts Telegram, plays sound, and broadcasts to UI."""
         logger.info(f"[NativeStrategyRunner] 🚀 SIGNAL TRIGGERED for {self.strategy_name}: {sig['action']} @ {sig['price']}")
 
-        # 1. Add to SignalStore (writes to data/signals.json & state.json)
+        # 1. Execute order via Active Execution Broker (Paper, TradeLocker, etc.)
+        try:
+            broker = broker_registry.get_broker()
+            order_res = broker.execute_order(sig)
+            sig["broker_order"] = order_res
+            if order_res.get("status") == "REJECTED":
+                logger.warning(f"[NativeStrategyRunner] Broker rejected order for {self.strategy_name}: {order_res.get('error')}")
+                sig["status"] = "REJECTED_BY_BROKER"
+                sig["exit_reason"] = f"BROKER_ERROR: {order_res.get('error')}"
+        except Exception as e_broker:
+            logger.error(f"[NativeStrategyRunner] Error executing order with broker: {e_broker}")
+
+        # 2. Add to SignalStore (writes to data/signals.json & state.json)
         updated_signals = signal_store.add(sig)
         new_signal_entry = updated_signals[0]
 
-        # 2. Dispatch to Telegram
+        # 3. Dispatch to Telegram
         telegram_gateway.format_and_send_signal(new_signal_entry)
 
-        # 3. Play desktop sound chime
+        # 4. Play desktop sound chime
         try:
             from server.main import play_system_alert
             play_system_alert(new_signal_entry.get("action", ""))
         except Exception:
             pass
 
-        # 4. Broadcast to WebSocket clients
+        # 5. Broadcast to WebSocket clients
         if self.broadcast_callback:
             await self.broadcast_callback({
                 "event_type": "SIGNAL_TRIGGERED",
@@ -396,6 +409,14 @@ class NativeStrategyRunner:
 
         if exit_reason:
             logger.info(f"[NativeStrategyRunner] 🏁 Closing position #{pos['id']} ({pos['strategy']}): {exit_reason} @ {current_price}")
+            # Route exit through Active Execution Broker
+            try:
+                broker = broker_registry.get_broker()
+                broker_order_id = pos.get("broker_order", {}).get("order_id") or str(pos.get("id"))
+                broker.close_position(broker_order_id, reason=exit_reason, current_price=current_price)
+            except Exception as e_broker_close:
+                logger.error(f"[NativeStrategyRunner] Error closing position on broker: {e_broker_close}")
+
             closed = signal_store.close_position(
                 signal_id=pos["id"],
                 strategy=self.strategy_name,

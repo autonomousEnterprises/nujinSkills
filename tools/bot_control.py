@@ -1,8 +1,12 @@
-#!/usr/bin/env python3
 import argparse
 import json
+import os
 import sys
 import urllib.request
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -43,9 +47,41 @@ def check_status(endpoint: str):
     except Exception as e:
         print(f"[BotControl] Server offline or unreachable: {e}")
 
+def show_broker_status(endpoint: str):
+    url = f"{endpoint}/api/brokers"
+    try:
+        with opener.open(url) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            brokers = res.get("brokers", [])
+            active_id = res.get("active_broker", "paper")
+    except Exception:
+        from server.brokers.registry import broker_registry
+        brokers = broker_registry.list_available_brokers()
+        active_id = broker_registry.get_active_broker_id()
+
+    print("\n" + "=" * 80)
+    print(f"[BotControl] EXECUTION BROKERS & LIVE ACCOUNTS (Active: '{active_id.upper()}')")
+    print("=" * 80)
+    for b in brokers:
+        b_id = b.get("broker_id")
+        name = b.get("name")
+        is_act = "🟢 ACTIVE" if b.get("is_active") else "⚪ AVAILABLE"
+        is_pro = "💎 [PRO]" if b.get("is_pro") else "📦 [CORE]"
+        acc = b.get("account_info", {})
+        print(f"  {is_act} {is_pro} {name} (ID: '{b_id}')")
+        if acc:
+            cur = acc.get("currency", "USD")
+            bal = acc.get("balance", 0.0)
+            eq = acc.get("equity", 0.0)
+            is_demo = "Demo / Simulated" if acc.get("is_demo") else "Live Production"
+            print(f"     Mode:    {is_demo}")
+            print(f"     Balance: ${bal:,.2f} {cur} | Equity: ${eq:,.2f} {cur}")
+        print("  " + "-" * 76)
+    print("=" * 80 + "\n")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Trading Bot Supervisor Control CLI")
-    parser.add_argument("action", choices=["deploy", "stop", "status"], help="Action to execute")
+    parser.add_argument("action", choices=["deploy", "stop", "status", "broker"], help="Action to execute")
     parser.add_argument("--strategy", default="", help="Strategy name to deploy or stop (leave empty to stop all)")
     parser.add_argument("--mode", choices=["dry-run", "live", "paper"], default="dry-run", help="Execution mode (dry-run/paper or live)")
     parser.add_argument("--endpoint", default="http://localhost:8000", help="Backend API endpoint")
@@ -67,3 +103,5 @@ if __name__ == "__main__":
         stop_bot(args.endpoint, strat)
     elif args.action == "status":
         check_status(args.endpoint)
+    elif args.action == "broker":
+        show_broker_status(args.endpoint)

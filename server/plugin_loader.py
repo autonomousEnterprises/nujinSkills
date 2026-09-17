@@ -62,6 +62,11 @@ class PluginManager:
                 if os.path.exists(strat_dir) and os.path.isdir(strat_dir):
                     num_strategies = len([f for f in os.listdir(strat_dir) if f.endswith(".py")])
 
+                brokers_dir = os.path.join(plugin_path, "brokers")
+                broker_files = []
+                if os.path.exists(brokers_dir) and os.path.isdir(brokers_dir):
+                    broker_files = [f.replace(".py", "") for f in os.listdir(brokers_dir) if f.endswith(".py") and not f.startswith("__")]
+
                 plugins.append({
                     "id": manifest.get("id", entry),
                     "name": manifest.get("name", entry.capitalize()),
@@ -73,6 +78,8 @@ class PluginManager:
                     "path": plugin_path,
                     "strategies_dir": strat_dir if os.path.exists(strat_dir) else None,
                     "strategy_count": num_strategies,
+                    "brokers_dir": brokers_dir if os.path.exists(brokers_dir) else None,
+                    "brokers": manifest.get("brokers", broker_files),
                     "features": manifest.get("features", []),
                 })
         except Exception as e:

@@ -22,6 +22,7 @@ from server.xauusd_streamer import xauusd_engine
 # ── Unified State Manager — single source of truth for all consumers ──────────
 from server.state_manager import state_manager, signal_store, strategy_registry
 from server.plugin_loader import plugin_manager
+from server.brokers.registry import broker_registry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("NujinSkillsServer")
@@ -684,6 +685,18 @@ async def list_plugins():
     """Returns all discovered plugins, metadata, and status."""
     plugins = plugin_manager.get_all_plugins()
     return {"plugins": plugins, "total": len(plugins)}
+
+
+@app.get("/api/brokers")
+async def list_brokers():
+    """Returns all registered execution brokers, active broker, and connection status."""
+    brokers = broker_registry.list_available_brokers()
+    active_id = broker_registry.get_active_broker_id()
+    return {
+        "active_broker": active_id,
+        "brokers": brokers,
+        "total": len(brokers)
+    }
 
 
 @app.get("/api/strategies")
