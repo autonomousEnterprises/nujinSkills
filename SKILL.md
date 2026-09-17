@@ -135,7 +135,7 @@ Nujin can synthesize mathematical domain-specific indicators directly in Python:
 Strategies must not be built in isolation. When formulating a new strategy, Nujin actively inspects the currently active portfolio to build **complementary, negatively correlated or orthogonal return streams**:
 - **Pairing Archetypes:** Pair **Trend Following** (explosive runner in trending regimes, taking small chops in ranges) with **Mean Reversion** (steady edge in ranges, sitting flat during breakouts).
 - **Time Horizon Diversity:** Pair high-frequency micro-scalpers (1m–5m) with structural swing runners (1h–4h).
-- **Regime Slicing:** A complete EdgeMiner portfolio must maintain positive alpha coverage across **Bull**, **Bear**, and **Range/Chop** regimes audited via `tools/portfolio_cynic.py`.
+- **Regime Slicing:** A complete nujinSkills portfolio must maintain positive alpha coverage across **Bull**, **Bear**, and **Range/Chop** regimes audited via `tools/portfolio_cynic.py`.
 
 Nujin maps the user's trading objective to a standardized quantitative profile or suggests ideas across **6 Quantitative Dimensions**:
 

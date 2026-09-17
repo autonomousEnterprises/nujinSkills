@@ -1,5 +1,5 @@
 /**
- * EdgeMiner Web Audio Tone Synthesizer
+ * nujinSkills Web Audio Tone Synthesizer
  * 
  * Generates crisp, harmonic audio chimes using the native Web Audio API.
  * - Zero external assets or network dependencies
@@ -8,7 +8,7 @@
  * - Persistent mute/unmute preferences via localStorage
  */
 
-const STORAGE_KEY = 'edgeminer_sound_enabled';
+const STORAGE_KEY = 'nujinskills_sound_enabled';
 
 let audioCtx: AudioContext | null = null;
 let isUnlocked = false;
@@ -61,7 +61,7 @@ export function isAudioEnabled(): boolean {
 export function setAudioEnabled(enabled: boolean) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, enabled ? 'true' : 'false');
-  window.dispatchEvent(new CustomEvent('edgeminer-sound-toggled', { detail: { enabled } }));
+  window.dispatchEvent(new CustomEvent('nujinskills-sound-toggled', { detail: { enabled } }));
 }
 
 /**

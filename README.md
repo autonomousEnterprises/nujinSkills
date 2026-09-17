@@ -1,4 +1,4 @@
-# ⚡ NujinAI / EdgeMiner — Autonomous Quant Trading Agent Skill
+# ⚡ NujinAI / nujinSkills — Autonomous Quant Trading Agent Skill
 
 [![System: NujinAI](https://img.shields.io/badge/System-NujinAI-blue.svg)](SKILL.md)
 [![Year: 2026 Standard](https://img.shields.io/badge/Standard-2026%20Quant%20Agent-emerald.svg)](references/quant_strategies.md)
@@ -12,7 +12,7 @@
 
 ## 🎯 What is NujinAI?
 
-**NujinAI (EdgeMiner)** is a self-evolving quantitative trading assistant and execution engine packaged as an open, agent-agnostic **AI Skill**. 
+**NujinAI (nujinSkills)** is a self-evolving quantitative trading assistant and execution engine packaged as an open, agent-agnostic **AI Skill**. 
 
 Instead of getting bogged down in boilerplate code, slippage modeling, or curve-fitted indicators:
 1. **You stay creative:** State your market intuition, target asset, risk tolerance, and profit milestones in natural language.
@@ -28,8 +28,8 @@ Instead of getting bogged down in boilerplate code, slippage modeling, or curve-
 Simply clone or open this directory in **any AI agent or IDE** (Google Antigravity, Claude Code, Cursor, Windsurf, OpenClaw, Hermes):
 
 ```bash
-git clone https://github.com/autonomousEnterprises/EdgeMiner.git
-cd EdgeMiner
+git clone https://github.com/autonomousEnterprises/nujinSkills.git
+cd nujinSkills
 ```
 
 Initialize your virtual environment & dependencies:
