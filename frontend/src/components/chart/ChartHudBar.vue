@@ -25,7 +25,7 @@
     <div class="h-3 w-[1px] bg-base-content/20 shrink-0" />
 
     <!-- 2. Dedicated Strategy Technical Indicator Coordinates -->
-    <div class="flex items-center gap-2.5 shrink-0">
+    <div v-if="(hudItems && hudItems.length > 0) || (strategyProfile && legendData.open !== undefined)" class="flex items-center gap-2.5 shrink-0">
       <span class="text-base-content/40 font-bold uppercase text-[9px]">Strategy Alpha:</span>
 
       <!-- Dynamic Dedicated Indicator Chips -->
@@ -43,8 +43,8 @@
         </span>
       </template>
 
-      <!-- Fallback generic indicators if profile not computed yet -->
-      <template v-else>
+      <!-- Fallback generic indicators if profile not computed yet (only when a strategy IS active) -->
+      <template v-else-if="strategyProfile">
         <span v-if="legendData.ema9" class="text-sky-400">EMA9: <strong>{{ formatPrice(legendData.ema9, isGoldStrategy || isSpStrategy) }}</strong></span>
         <span v-if="legendData.ema21" class="text-indigo-400">EMA21: <strong>{{ formatPrice(legendData.ema21, isGoldStrategy || isSpStrategy) }}</strong></span>
         <span v-if="legendData.ema200" class="text-amber-400">EMA200: <strong>{{ formatPrice(legendData.ema200, isGoldStrategy || isSpStrategy) }}</strong></span>
@@ -54,6 +54,7 @@
         <span v-if="legendData.hurst" class="text-pink-400">Hurst: <strong>{{ legendData.hurst?.toFixed(3) }}</strong></span>
       </template>
     </div>
+
 
     <!-- 3. Target Trade Coordinates (When inspecting a jump) -->
     <template v-if="inspectedSignal && isInspectingTrade">

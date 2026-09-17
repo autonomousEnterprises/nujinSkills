@@ -1653,9 +1653,22 @@ const applyStrategyIndicators = () => {
     return;
   }
 
-  // 3. Built-in profile fallback
+  // 3. Built-in profile fallback (null when no strategy selected)
   const profile = getStrategyIndicatorProfile(props.selectedStrategy);
+
+  // No strategy selected: clear all indicator series and HUD, render clean chart
+  if (!profile) {
+    for (const [id, s] of activeIndicatorSeries.entries()) {
+      try { chart.removeSeries(s); } catch (e) {}
+      activeIndicatorSeries.delete(id);
+    }
+    currentProfile.value = null;
+    currentHudItems.value = [];
+    return;
+  }
+
   currentProfile.value = profile;
+
 
   // Remove obsolete series from chart that are not in the new profile
   const currentConfigIds = new Set(profile.seriesConfigs.map((c) => c.id));

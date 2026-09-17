@@ -373,11 +373,15 @@ export function calculateHurstProxy(data: { close: number }[], period: number = 
 
 // ── Strategy Indicator Profile Registry ──────────────────────────────────────
 
-export function getStrategyIndicatorProfile(rawStratName?: string): StrategyIndicatorProfile {
+export function getStrategyIndicatorProfile(rawStratName?: string): StrategyIndicatorProfile | null {
   const name = (rawStratName || '').toLowerCase().replace('.py', '');
+
+  // No strategy selected — return null so the chart renders clean
+  if (!name) return null;
 
   // 1. Opening Flush Reversal Scalper (S&P 500 / ES 1m)
   if (name.includes('opening') || name.includes('reversal') || (name.includes('sp') && !name.includes('atr'))) {
+
     return {
       strategyKey: 'OpeningFlushReversalScalper',
       strategyDisplayName: 'S&P 500 Opening Flush Reversal Scalper',
