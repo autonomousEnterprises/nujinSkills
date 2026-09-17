@@ -23,6 +23,7 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 | Portfolio Correlation & Regime Cynic | `python tools/portfolio_cynic.py --threshold 0.50` |
 | Portfolio Correlation CLI | `python tools/strategy_manager.py correlation` |
 | Sync Strategies on Disk | `python tools/strategy_manager.py sync` |
+| Inspect Installed Plugins & Extensions | `python tools/strategy_manager.py plugins` |
 | Remove Decommissioned Strategy | `python tools/strategy_manager.py remove <strategy_name>` |
 | Add Strategy to Production | `python tools/strategy_manager.py add <path_to_strategy.py>` |
 | Deploy Trading Bot | `python tools/bot_control.py deploy --strategy strategies/live_alpha.py --mode dry-run` |

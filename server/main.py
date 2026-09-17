@@ -21,6 +21,7 @@ from server.xauusd_streamer import xauusd_engine
 
 # ── Unified State Manager — single source of truth for all consumers ──────────
 from server.state_manager import state_manager, signal_store, strategy_registry
+from server.plugin_loader import plugin_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("NujinSkillsServer")
@@ -678,6 +679,13 @@ async def get_live_signal_stats(strategy: Optional[str] = None):
     return signal_store.get_stats(strategy)
 
 
+@app.get("/api/plugins")
+async def list_plugins():
+    """Returns all discovered plugins, metadata, and status."""
+    plugins = plugin_manager.get_all_plugins()
+    return {"plugins": plugins, "total": len(plugins)}
+
+
 @app.get("/api/strategies")
 async def list_strategies():
     strategies_dir = os.path.join(os.getcwd(), "strategies")
@@ -689,16 +697,20 @@ async def list_strategies():
     strategy_files = []
     for s in managed:
         file_name = s.get("file") or f"{s.get('name')}.py"
-        file_path = os.path.join(strategies_dir, file_name)
+        rel_path = s.get("path") or f"strategies/{file_name}"
+        abs_path = os.path.join(os.getcwd(), rel_path)
         stat_size = 0
         stat_mtime = 0
-        if os.path.exists(file_path):
-            st = os.stat(file_path)
+        if os.path.exists(abs_path):
+            st = os.stat(abs_path)
             stat_size = st.st_size
             stat_mtime = st.st_mtime
         strategy_files.append({
             "name": file_name,
-            "path": f"strategies/{file_name}",
+            "path": rel_path,
+            "is_pro": s.get("is_pro", False),
+            "plugin_name": s.get("plugin_name"),
+            "plugin_id": s.get("plugin_id"),
             "display_name": s.get("display_name", file_name.replace(".py", "")),
             "symbol": s.get("symbol", "XAU/USD" if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else ("S&P 500 (ES)" if any(k in file_name.upper() for k in ["SP", "ES", "OPENING"]) else "BTC/USDT")),
             "timeframe": s.get("timeframe", "1m" if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT", "SP", "ES", "OPENING"]) else "15m"),

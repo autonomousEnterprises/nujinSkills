@@ -23,6 +23,31 @@ def _fetch_json(url: str, method: str = "GET", data: dict = None, timeout: int =
     except Exception:
         return None
 
+def list_plugins_cli(endpoint: str):
+    res = _fetch_json(f"{endpoint}/api/plugins")
+    if res and "plugins" in res:
+        plugins = res["plugins"]
+    else:
+        from server.plugin_loader import plugin_manager
+        plugins = plugin_manager.get_all_plugins()
+
+    print(f"\n{TOOL_NAME} INSTALLED PLUGINS & EXTENSIONS ({len(plugins)} Total Active):")
+    print("-" * 88)
+    if not plugins:
+        print("  No plugins installed. (Drop plugins into plugins/ folder to activate)")
+    else:
+        for p in plugins:
+            pro_badge = "💎 [PRO]" if p.get("is_pro") else "📦 [COMMUNITY]"
+            print(f"  {pro_badge} {p.get('name')} (v{p.get('version')}) — ID: {p.get('id')}")
+            print(f"     Description: {p.get('description')}")
+            print(f"     Author:      {p.get('author')}")
+            print(f"     Strategies:  {p.get('strategy_count')} active ready-to-use alpha(s)")
+            print(f"     Location:    {p.get('path')}")
+            if p.get("features"):
+                print(f"     Features:    {', '.join(p.get('features'))}")
+            print("  " + "-" * 84)
+    print()
+
 def list_strategies(endpoint: str):
     res = _fetch_json(f"{endpoint}/api/strategies/manage")
     if res and "strategies" in res:
@@ -41,6 +66,8 @@ def list_strategies(endpoint: str):
         bt = s.get("latest_backtest", {})
         rank_str = f"#{s.get('rank', '-')}"
         name = s.get("name", "")[:30]
+        if s.get("is_pro"):
+            name = f"💎 {name}"[:30]
         status = s.get("status", "")
         tier = s.get("tier", "").split(" ")[0]
         sharpe = f"{bt.get('sharpe', 0.0):.2f}"
@@ -252,7 +279,10 @@ def rank_strategies(endpoint: str, as_json: bool = False):
         rsk_sub = int(round(rb.get("risk_score", 0)))
         drf_sub = int(round(rb.get("drift_score", 0)))
         sub_str = f"{e_sub:>2}/{rob_sub:>2}/{rsk_sub:>2}/{drf_sub:>2}"
-        name = s.get("name", "")[:26]
+        name = s.get("name", "")
+        if s.get("is_pro"):
+            name = f"💎 {name}"
+        name = name[:28]
         sharpe = f"{bt.get('sharpe', 0.0):.2f}"
         dsr = f"{bt.get('dsr', 0.0):.2f}"
         win = f"{bt.get('win_rate', 0.0) * 100:.1f}%" if bt.get('win_rate', 0.0) <= 1.0 else f"{bt.get('win_rate', 0.0):.1f}%"
@@ -477,8 +507,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EdgeMiner AI Strategy Management CLI")
     parser.add_argument(
         "action",
-        choices=["list", "status", "backtest", "cron", "rank", "insights", "register", "summary", "portfolio", "correlation", "drift", "signals", "sync", "remove", "add"],
-        help="list | status | backtest | cron | rank | insights | register | summary | portfolio | correlation | drift | signals | sync | remove | add"
+        choices=["list", "plugins", "status", "backtest", "cron", "rank", "insights", "register", "summary", "portfolio", "correlation", "drift", "signals", "sync", "remove", "add"],
+        help="list | plugins | status | backtest | cron | rank | insights | register | summary | portfolio | correlation | drift | signals | sync | remove | add"
     )
     parser.add_argument("pos_strategy", nargs="?", default=None, help="Optional positional strategy name or file path")
     parser.add_argument("pos_status", nargs="?", default=None, help="Optional positional status")
@@ -500,6 +530,7 @@ if __name__ == "__main__":
     effective_file = args.file or args.pos_strategy
 
     if   args.action == "list":        list_strategies(args.endpoint)
+    elif args.action == "plugins":     list_plugins_cli(args.endpoint)
     elif args.action == "status":      update_status(effective_strategy, effective_status, args.endpoint, args.exclusive)
     elif args.action == "backtest":    run_backtest(effective_strategy, args.endpoint)
     elif args.action == "cron":        run_cron(args.endpoint)

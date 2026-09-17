@@ -13,6 +13,7 @@ htmlcov/
 .mypy_cache/
 
 # --- Virtual Environments ---
+.venv
 .venv/
 venv/
 env/
@@ -27,7 +28,9 @@ frontend_server.log
 .frontend.pid
 
 # --- Node.js & Frontend Build Artifacts ---
+node_modules
 node_modules/
+frontend/node_modules
 frontend/node_modules/
 frontend/dist-ssr/
 frontend/.vite/
@@ -83,3 +86,8 @@ Thumbs.db
 # Local Systemd unit definitions (contain host-specific paths & username)
 systemd/
 
+# Proprietary and User Plugins
+plugins/*
+!plugins/.gitkeep
+!plugins/__init__.py
+!plugins/README.md

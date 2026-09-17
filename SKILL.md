@@ -20,6 +20,12 @@ Nujin discovers mathematical market edges, formulates non-consensus trading stra
 
 What makes Nujin unique is its **autonomous self-improving engine**: it does not stop after 1 or 2 trials, but persistently mutates hypotheses on disk, evaluates against fixed historical regime slices using strict binary criteria, overcomes plateaus, and actively audits and improves its own tools and reference knowledge base.
 
+### 🔌 Modular Plugin Architecture & Pro Alpha Suite
+Nujin features a zero-touch **Plug-and-Play Plugin System** (`plugins/`). Users and institutional traders can mount proprietary extension packs (such as **Nujin Pro** / `nujinPro`):
+- **Auto-Discovery:** Drop any extension into `plugins/<plugin_name>` — strategies and indicators are instantly indexed without touching core code.
+- **Pro Strategy Tiers:** Pre-built institutional alphas (e.g. `ICTLiquiditySweepPro.py`) automatically receive `💎 [PRO]` badges in StrategyManager and the visual cockpit.
+- **Developer Isolation:** Seamlessly develops against local repositories via symbolic links (`plugins/pro -> ../../nujinPro`) while ensuring private code is never leaked into the public repository.
+
 ---
 
 ## 🖥️ The Dual-Screen Cockpit & User Experience

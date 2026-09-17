@@ -15,6 +15,11 @@ from server.state_manager import state_manager, strategy_registry
 from server.data_manager import sync_30d_candles, sync_xauusd_scalp_candles
 from tools.validation_cynic import compute_dsr, run_monte_carlo, run_parameter_stability
 
+try:
+    from server.plugin_loader import plugin_manager
+except ImportError:
+    plugin_manager = None
+
 logger = logging.getLogger("BacktestEngine")
 
 def _ensure_freqtrade_shim():
@@ -46,13 +51,20 @@ def _ensure_freqtrade_shim():
 
 def load_strategy_instance(strategy_name: str) -> Optional[Any]:
     """
-    Dynamically loads and instantiates a strategy class from strategies/<name>.py.
+    Dynamically loads and instantiates a strategy class from core strategies/ or installed plugins.
     Single Source of Truth: Executes the actual Python class implementing the strategy.
     """
     _ensure_freqtrade_shim()
     clean_name = strategy_name.replace(".py", "")
     cwd = os.getcwd()
     strat_path = os.path.join(cwd, "strategies", f"{clean_name}.py")
+
+    # If not in core, check plugin paths
+    if not os.path.exists(strat_path) and plugin_manager:
+        resolved = plugin_manager.resolve_strategy_path(clean_name)
+        if resolved and os.path.exists(resolved):
+            strat_path = resolved
+
     if not os.path.exists(strat_path):
         logger.warning(f"[BacktestEngine] Strategy file not found at {strat_path}")
         return None

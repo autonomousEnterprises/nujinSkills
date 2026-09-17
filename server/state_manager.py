@@ -40,6 +40,11 @@ SIGNALS_FILE = os.path.join(_ROOT, "data", "signals.json")
 STRATEGIES_FILE = os.path.join(_ROOT, "data", "strategies.json")
 STRATEGIES_DIR = os.path.join(_ROOT, "strategies")
 
+try:
+    from server.plugin_loader import plugin_manager
+except ImportError:
+    plugin_manager = None
+
 # ─────────────────────────────────────────────────────────────
 # Canonical schema / default state
 # ─────────────────────────────────────────────────────────────
@@ -483,31 +488,47 @@ class StrategyRegistry:
         """
         curr = state_manager.get().get("active_strategy", "")
         clean = curr.replace(".py", "").strip()
-        if clean and os.path.exists(os.path.join(self._dir, f"{clean}.py")):
-            return clean
-
-        # Fallback to #1 ranked strategy from strategies directory
-        py_files = sorted([f for f in os.listdir(self._dir) if f.endswith(".py")]) if os.path.exists(self._dir) else []
-        if not py_files:
-            return ""
+        if clean:
+            # Check core or plugin paths
+            if os.path.exists(os.path.join(self._dir, f"{clean}.py")):
+                return clean
+            if plugin_manager and plugin_manager.resolve_strategy_path(clean):
+                return clean
 
         # Check ranked list in memory/disk
         raw = self._read_raw()
         for s in raw:
+            s_name = s.get("name", "")
             s_file = s.get("file", "")
-            if s_file in py_files:
+            if os.path.exists(os.path.join(self._dir, s_file)):
                 top_name = s.get("name", s_file.replace(".py", ""))
                 state_manager.patch({"active_strategy": top_name})
                 return top_name
+            if plugin_manager and plugin_manager.resolve_strategy_path(s_name):
+                state_manager.patch({"active_strategy": s_name})
+                return s_name
 
-        top_name = py_files[0].replace(".py", "")
-        state_manager.patch({"active_strategy": top_name})
-        return top_name
+        # Fallback to #1 ranked strategy from core strategies directory
+        py_files = sorted([f for f in os.listdir(self._dir) if f.endswith(".py")]) if os.path.exists(self._dir) else []
+        if py_files:
+            top_name = py_files[0].replace(".py", "")
+            state_manager.patch({"active_strategy": top_name})
+            return top_name
+
+        # Fallback to plugin strategy if available
+        if plugin_manager:
+            plugin_strats = plugin_manager.get_plugin_strategy_files()
+            if plugin_strats:
+                top_name = plugin_strats[0]["strategy_name"]
+                state_manager.patch({"active_strategy": top_name})
+                return top_name
+
+        return ""
 
     def remove_strategy(self, strategy_name: str) -> bool:
         """
-        Safely removes a strategy from the strategies directory and synchronizes registry.
-        Removes both .py and companion .pine files if present.
+        Safely removes a strategy from disk (if core) and synchronizes registry.
+        If the strategy is in a plugin, it warns or safely unlinks.
         """
         clean = strategy_name.replace(".py", "").strip()
         py_path = os.path.join(self._dir, f"{clean}.py")
@@ -526,6 +547,15 @@ class StrategyRegistry:
             except Exception as e:
                 logger.error(f"[StrategyRegistry] Error removing {pine_path}: {e}")
 
+        if not removed and plugin_manager:
+            p_path = plugin_manager.resolve_strategy_path(clean)
+            if p_path and os.path.exists(p_path):
+                try:
+                    os.remove(p_path)
+                    removed = True
+                except Exception as e:
+                    logger.error(f"[StrategyRegistry] Error removing plugin strategy {p_path}: {e}")
+
         # Resync filesystem and rankings
         self.sync_with_filesystem()
 
@@ -537,14 +567,14 @@ class StrategyRegistry:
 
         return removed
 
-    def _infer_metadata(self, filename: str) -> Dict[str, Any]:
+    def _infer_metadata(self, filename: str, filepath_override: Optional[str] = None) -> Dict[str, Any]:
         """
-        Dynamically extracts all strategy metadata from any Python file in strategies/.
+        Dynamically extracts all strategy metadata from any Python file.
         Parses header comments, docstrings, and class variables.
         Zero hardcoded catalogs or static dictionary lookups.
         """
         clean = filename.replace(".py", "")
-        filepath = os.path.join(self._dir, filename)
+        filepath = filepath_override or os.path.join(self._dir, filename)
 
         thesis = ""
         symbol = ""
@@ -875,24 +905,56 @@ class StrategyRegistry:
         return ranked
 
     def sync_with_filesystem(self) -> List[Dict[str, Any]]:
-        """Syncs data/strategies.json with files in strategies/*.py and active state."""
+        """Syncs data/strategies.json with files in strategies/*.py, installed plugins, and active state."""
         existing = {s["file"]: s for s in self._read_raw() if "file" in s}
         active_strat = self.get_active_strategy_name()
         clean_active = active_strat.replace(".py", "")
 
         os.makedirs(self._dir, exist_ok=True)
-        py_files = sorted([f for f in os.listdir(self._dir) if f.endswith(".py")])
+        # Collect core strategy files
+        strategy_candidates = []
+        for f in sorted(os.listdir(self._dir)):
+            if f.endswith(".py"):
+                strategy_candidates.append({
+                    "filename": f,
+                    "filepath": os.path.join(self._dir, f),
+                    "path_rel": f"strategies/{f}",
+                    "is_pro": False,
+                    "plugin_id": None,
+                    "plugin_name": None,
+                })
+
+        # Collect plugin strategy files
+        if plugin_manager:
+            for pfile in plugin_manager.get_plugin_strategy_files():
+                rel_p = os.path.relpath(pfile["path"], _ROOT)
+                strategy_candidates.append({
+                    "filename": pfile["filename"],
+                    "filepath": pfile["path"],
+                    "path_rel": rel_p,
+                    "is_pro": pfile.get("is_pro", True),
+                    "plugin_id": pfile.get("plugin_id"),
+                    "plugin_name": pfile.get("plugin_name"),
+                })
 
         now_iso = _now_local_iso()
         updated_list: List[Dict[str, Any]] = []
 
-        for py_file in py_files:
+        for candidate in strategy_candidates:
+            py_file = candidate["filename"]
             clean_name = py_file.replace(".py", "")
-            meta = self._infer_metadata(py_file)
+            meta = self._infer_metadata(py_file, filepath_override=candidate["filepath"])
             is_active_sys = (clean_name == clean_active)
 
             if py_file in existing:
                 item = existing[py_file]
+                item["path"] = candidate["path_rel"]
+                item["is_pro"] = candidate["is_pro"]
+                if candidate.get("plugin_name"):
+                    item["plugin_name"] = candidate["plugin_name"]
+                if candidate.get("plugin_id"):
+                    item["plugin_id"] = candidate["plugin_id"]
+
                 # If system active strategy matches, sync status
                 if is_active_sys and item.get("status") != "ACTIVE_LIVE":
                     item["status"] = "ACTIVE_LIVE"
@@ -959,7 +1021,10 @@ class StrategyRegistry:
                     "id": py_file,
                     "name": clean_name,
                     "file": py_file,
-                    "path": f"strategies/{py_file}",
+                    "path": candidate["path_rel"],
+                    "is_pro": candidate["is_pro"],
+                    "plugin_id": candidate.get("plugin_id"),
+                    "plugin_name": candidate.get("plugin_name"),
                     "display_name": meta["display_name"],
                     "target_profile": meta["target_profile"],
                     "thesis": meta["thesis"],
@@ -968,7 +1033,7 @@ class StrategyRegistry:
                     "status": default_status,
                     "rank": 99,
                     "ranking_score": 0.0,
-                    "tier": "C-Tier (Sub-Hurdle)",
+                    "tier": "PRO-Tier" if candidate["is_pro"] else "C-Tier (Sub-Hurdle)",
                     "latest_backtest": {
                         "sharpe": 0.0,
                         "win_rate": 0.0,
