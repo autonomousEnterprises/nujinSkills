@@ -1,14 +1,52 @@
 # Reference: Non-Consensus Alpha Ideation & Strategy Profiles
 
-## 1. Quantitative Rationale: Trapped Counterparty Alpha
+## 1. Quantitative Rationale: First-Principles Edge vs Indicator Dogmatism
 
-Sustainable quantitative trading edges do not derive from standard technical analysis indicators (moving averages, simple RSI levels, or MACD crossovers). Because retail momentum and breakout setups are heavily crowded, large institutional market participants use passive limit orders to absorb aggressive retail takers at key liquidity pools (session highs/lows, range boundaries).
+Sustainable quantitative trading edges do not derive from arbitrary technical indicators (moving averages, simple RSI levels, or MACD crossovers). An indicator is **never the edge**; it is merely a lossy mathematical compression of past price/volume data. 
 
-**Nujin's Core Alpha Thesis:** Every profitable trading strategy must mathematically target a **trapped counterparty** whose position is forced into mechanical liquidation or stop-out.
+**Core Neutrality vs. Dynamic Injection:**
+1. **The Core Engine is 100% Neutral:** The foundational mining and anomaly scanning kernel computes only scale-invariant mathematical primitives (variance ratios, normalized shocks, Markov runs, volume dispersion) and tests any user columns dynamically without lookahead. It presumes zero indicators.
+2. **The AI Dynamically Injects Fitting Indicators:** When the user specifies an objective or domain (e.g. crypto funding arbitrage, FX order flow, equities mean reversion, news NLP), the AI agent dynamically synthesizes and injects whatever specific indicators, features, or math formulations fit the user's request.
+3. **The Result:** The AI is never trapped in a hardcoded bubble; it can mine *any* edge across *any* domain.
+
+**Nujin's Core Alpha Thesis:** Every profitable trading strategy must exploit a verifiable **structural market asymmetry** where an identifiable counterparty is forced into an economically disadvantageous action.
+
+### The 4 Invariant Sources of Market Edge
+
+| Inefficiency Class | Market Mechanism | Systematic Exploitation |
+| :--- | :--- | :--- |
+| **1. Behavioral & Psychological Traps** | Retail FOMO breakout chasing, panic stop runs, forced margin liquidations, disposition effect. | Liquidity sweep rejections, capitulation volume absorption, false breakout fades. |
+| **2. Structural & Institutional Constraints** | Pension/index rebalancing (e.g. 16:00 London fix), ETF creation/redemption, options dealer gamma hedging. | Session killzone drift, anchored VWAP mean reversion, volatility compression breakouts. |
+| **3. Risk & Liquidity Premium** | Market makers & liquidity providers require compensation for absorbing aggressive inventory risk during expansions. | Mean-reversion envelope scalping, volatility selling/fading during range regimes. |
+| **4. Information & Lead-Lag Asymmetry** | Macro releases (CPI, FOMO), cross-market lead-lag (e.g. US500 futures leading BTC; DXY leading Gold). | Intermarket divergence triggers, high-frequency event momentum, news volatility fades. |
 
 ---
 
-## 2. The 3-Step Dialectic Ideation Engine
+## 2. The Two-Tiered Empirical Discovery Pipeline
+
+Rather than relying on ungrounded LLM text guessing, Nujin couples **empirical statistical numbers** with **causal economic reasoning**:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ TIER 1: EMPIRICAL ANOMALY SCANNER (tools/anomaly_scanner.py)           │
+│   • Vectorized calculation of Lo-MacKinlay Variance Ratios & Hurst     │
+│   • Hourly session volatility and directional drift t-statistics       │
+│   • Conditional forward return distributions P(R_{t+k} | Condition)    │
+│   • Alpha Decay Half-Life curve estimation (h*)                        │
+│   • Emits: .nujin/empirical_briefing.json                              │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ TIER 2: LLM ECONOMIC REASONER (Hypothesis Formulation)                 │
+│   • Ingests empirical anomalies with p < 0.05 and |t| >= 2.0           │
+│   • Connects empirical statistical advantage to 1 of 4 Edge Classes    │
+│   • Defines structural invalidation anchor (where thesis fails)        │
+│   • Restricts maximum holding horizon to Alpha Half-Life (h*)          │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### The 3-Step Dialectic Ideation Engine
 
 ```
 [ Step 1: Consensus Mapping ]
@@ -20,6 +58,13 @@ Sustainable quantitative trading edges do not derive from standard technical ana
 [ Step 3: Lateral Synthesis ]
   Formulate non-consensus entry & exit rules combining orthogonal auction features.
 ```
+
+### Multi-Horizon Fractal Alignment
+Lower-timeframe execution triggers must always be conditioned on higher-timeframe market structure:
+$$\text{Strategy Rules} = \text{Macro Context (HTF)} \times \text{Local Regime (MTF)} \times \text{Precision Trigger (LTF)}$$
+- **Higher Timeframe (1h–4h):** Locates structural liquidity pools, trend bias, and institutional fair value.
+- **Medium Timeframe (15m):** Quantifies volatility expansion state and volume absorption ($V_{\text{abs}}$).
+- **Lower Timeframe (1m–5m):** Pinpoints the precise execution trigger with minimal structural stop distance.
 
 ### Step 1: Consensus Mapping
 - **Retail Setup:** Buying Bollinger Band upper-band breakouts, buying oversold RSI ($< 30$), or chasing momentum on high-volume expansion bars.

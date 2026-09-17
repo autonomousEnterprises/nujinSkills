@@ -77,3 +77,44 @@ If a trade neither reaches Take-Profit nor Stop-Loss within a predetermined maxi
 ### C. Trailing Stops & Breakeven Locks
 - Once price reaches $+1.0\times \text{Risk}$ ($1\text{R}$ profit), move Stop-Loss to Breakeven $+ \text{fee buffer}$.
 - Trail stop $1.5\times \text{ATR}$ behind trailing peaks during trending regimes ($H > 0.55$).
+
+---
+
+## 6. Combinatorially Purged Cross-Validation (CPCV & Embargoing)
+
+Standard K-Fold cross-validation is fatally flawed for financial time series because of **information leakage** across the train-test boundary:
+1. **Label Overlap:** If a trade initiated at bar $t$ closes at $t+8$, training on $t+2$ leaks the forward outcome.
+2. **Feature Lookback Leakage:** Rolling indicators (e.g. 50 EMA, 20 ATR) computed across the split point contaminate out-of-sample data with in-sample information.
+
+### The Two De Prado Protections (López de Prado, 2018)
+
+```
+[ Train Partition ] ──► [ Purged Buffer ] ──► [ Test Partition ] ──► [ Embargo Buffer ] ──► [ Train Partition ]
+```
+
+1. **Purging:** Removing all training observations whose evaluation window overlaps with the test slice.
+2. **Embargoing:** Imposing a temporal cooling-off window (default: $1.0\times$ max holding bars) immediately following the test partition to eliminate serial autocorrelation bleed.
+
+All validation runs in Nujin programmatically purge overlapping bar spans to ensure that historical backtest alpha accurately reflects live out-of-sample execution.
+
+---
+
+## 7. Dynamic Strategy Lifecycle & Decommissioning Gates
+
+A strategy is never permanent. Because market microstructures evolve, edges decay:
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  CANDIDATE   │ ──► │   DRY-RUN    │ ──► │  PRIME LIVE  │ ──► │ DECOMMISSION │
+│ Vector Screener    │ Paper Bot    │     │  Production  │     │ Decay Gate   │
+│ DSR >= 0.95  │     │ Zero Slip    │     │ Capital Allocation │ Prune File   │
+└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+```
+
+### Decommissioning Triggers (Automatic Demotion / Removal)
+1. **Drawdown Breach:** Live cumulative drawdown exceeds $1.5\times$ the maximum historical drawdown observed during backtesting.
+2. **Sharpe Decay:** Rolling 30-day realized Sharpe Ratio drops below $1.00$.
+3. **Expectancy Inversion:** Realized average trade pnl drops below $2\times$ taker fees ($< 14\text{ bps}$).
+
+When any of these triggers fire, Nujin's supervisor halts execution, shifts risk allocation to $0$, and automatically decommissions the strategy file via `tools/strategy_manager.py remove <StrategyName>`.
+

@@ -13,7 +13,9 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 |------|---------|
 | Start Telemetry Server (port 8000) | `python tools/server_control.py start --port 8000 --daemon` |
 | Start Visual Cockpit (port 3000) | `python tools/frontend_control.py start --port 3000 --daemon` |
+| Empirical Anomaly & Half-Life Scan | `python tools/anomaly_scanner.py --data data/candles_15m.csv` |
 | Continuous Quant Edge Mining | `python tools/nujin_miner.py run --archetype mean_reversion --cycles 10` |
+| Empirical Briefing Mining Scan | `python tools/nujin_miner.py scan --data data/candles_15m.csv` |
 | Vectorized Strategy Screener | `python tools/vectorized_screener.py --data data/candles_15m.csv --strategy strategies/candidate.py` |
 | 5-Gate Cynic Audit (DSR >= 0.95) | `python tools/validation_cynic.py --strategy strategies/candidate.py --strict` |
 | Strategy Ranking & Tiers | `python tools/strategy_manager.py rank` |

@@ -42,12 +42,28 @@ def generate_freqtrade_code(thesis: str, class_name: str, rules: Dict[str, Any])
     indicators = []
     
     # Range & Geometry
-    if any(k in rule_text for k in ["wick", "body_ratio", "total_range", "buying_pressure", "selling_pressure"]):
-        indicators.append("""        # Bar Geometry
+    if any(k in rule_text for k in ["wick", "body_ratio", "total_range", "buying_pressure", "selling_pressure", "close_location"]):
+        indicators.append("""        # Bar Geometry & Auction Physics
         dataframe['total_range'] = (dataframe['high'] - dataframe['low']).replace(0, 1e-6)
         dataframe['body_ratio'] = (dataframe['close'] - dataframe['open']).abs() / dataframe['total_range']
         dataframe['upper_wick'] = (dataframe['high'] - np.maximum(dataframe['close'], dataframe['open'])) / dataframe['total_range']
-        dataframe['lower_wick'] = (np.minimum(dataframe['close'], dataframe['open']) - dataframe['low']) / dataframe['total_range']""")
+        dataframe['lower_wick'] = (np.minimum(dataframe['close'], dataframe['open']) - dataframe['low']) / dataframe['total_range']
+        dataframe['upper_wick_ratio'] = dataframe['upper_wick']
+        dataframe['lower_wick_ratio'] = dataframe['lower_wick']
+        dataframe['close_location'] = (dataframe['close'] - dataframe['low']) / dataframe['total_range']""")
+
+    # Scale-Invariant Mathematical Primitives (Normalized Returns, Relative Range/Volume, Run Counters)
+    if any(k in rule_text for k in ["ret_zscore", "relative_range", "relative_vol", "consecutive_", "run_"]):
+        indicators.append("""        # Mathematical & Auction Primitives
+        log_ret = np.log(dataframe['close'] / dataframe['close'].shift(1).replace(0, 1e-6)).fillna(0.0)
+        dataframe['ret_zscore'] = (log_ret - log_ret.rolling(50).mean()) / log_ret.rolling(50).std().replace(0, 1e-6)
+        norm_range = (dataframe['high'] - dataframe['low']) / dataframe['open'].replace(0, 1e-6)
+        dataframe['relative_range'] = norm_range / norm_range.rolling(50).median().replace(0, 1e-6)
+        dataframe['relative_vol'] = dataframe['volume'] / dataframe['volume'].rolling(50).median().replace(0, 1e-6)
+        is_up = (dataframe['close'] > dataframe['close'].shift(1)).astype(int)
+        is_down = (dataframe['close'] < dataframe['close'].shift(1)).astype(int)
+        dataframe['consecutive_up'] = is_up * (is_up.groupby((is_up != is_up.shift(1)).cumsum()).cumcount() + 1)
+        dataframe['consecutive_down'] = is_down * (is_down.groupby((is_down != is_down.shift(1)).cumsum()).cumcount() + 1)""")
 
     # Volume Z-score
     if "volume_zscore" in rule_text:

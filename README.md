@@ -83,7 +83,8 @@ claude skill add ./
               ▼
 ┌────────────────────────────────────────────────────────┐
 │               PHASE 1–4: DISCOVERY & BENCHMARK         │
-│  • Microstructure features (VSA, wicks, Parkinson vol) │
+│  • Empirical math primitives (Variance Ratios, Hurst)  │
+│  • Anomaly & Alpha Half-Life Scan (p < 0.05, |t| >= 2) │
 │  • Strict Binary Criteria (Sharpe ≥ 1.8, MaxDD ≤ 4.5%) │
 │  • Apples-to-apples baseline on historical regimes     │
 └─────────────────────────────┬──────────────────────────┘
@@ -129,7 +130,11 @@ Access the interactive trading cockpit at **`http://localhost:3000`**:
 All tools conform to the 2026 Nujin Agent Standard and execute directly in your terminal:
 
 ```bash
-# Continuous quant alpha mining
+# Scan market data for empirical variance ratios, Hurst exponent, and alpha half-life
+python tools/anomaly_scanner.py --data data/candles_15m.csv
+
+# Ingest empirical briefing & start continuous quant alpha mining
+python tools/nujin_miner.py scan --data data/candles_15m.csv
 python tools/nujin_miner.py run --archetype mean_reversion --cycles 10
 
 # Screen strategies using fast vectorized VectorBT filter
@@ -169,11 +174,12 @@ NujinAI does not stop at strategy generation:
 
 For in-depth mathematical derivations and architecture specifications:
 - [`SKILL.md`](SKILL.md) — Master Autonomous Quant Engine Protocol & Instructions
+- [`references/alpha_ideation.md`](references/alpha_ideation.md) — Non-Consensus Alpha Ideation & Empirical Discovery Protocol
 - [`references/cockpit_telemetry.md`](references/cockpit_telemetry.md) — Dual-Screen Cockpit, WebSocket Bus & UI Controls
-- [`references/quant_strategies.md`](references/quant_strategies.md) — 2026 Quant Landscape, SMC/ICT, 0DTE & Microstructure
+- [`references/quant_strategies.md`](references/quant_strategies.md) — 2026 Quant Landscape, Universal Strategy Spec & Lifecycle
 - [`references/strategy_ranking_tiers.md`](references/strategy_ranking_tiers.md) — 4-Pillar Scoring Model & Tier Hurdles
-- [`references/statistical_validation.md`](references/statistical_validation.md) — Deflated Sharpe Ratio & Adversarial Falsification
-- [`references/feature_engineering.md`](references/feature_engineering.md) — Raw Auction Dynamics, Bar Physics & VSA
+- [`references/statistical_validation.md`](references/statistical_validation.md) — Deflated Sharpe Ratio, CPCV & Adversarial Falsification
+- [`references/feature_engineering.md`](references/feature_engineering.md) — 4 Open Information Domains, Orthogonality Law & Alpha Decay
 - [`references/execution_and_signals.md`](references/execution_and_signals.md) — Bot Supervisors & Telegram Signal Gateway
 - [`references/extending_nujin.md`](references/extending_nujin.md) — Developer Guide: Adding REST endpoints, WS feeds & Vue 3 decks
 

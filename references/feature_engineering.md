@@ -1,14 +1,38 @@
-# Reference: Feature Engineering, Bar Physics & Auction Microstructure
+# Reference: Feature Engineering, Information Domains & Alpha Half-Life
 
-## 1. Overview: Raw Auction Dynamics vs. Lagging Indicators
+## 1. Overview: The 4 Open Information Domains
 
-Standard technical analysis tools (simple moving averages, raw RSI, MACD) smooth historical prices over fixed rolling windows, introducing unavoidable mathematical lag. In contrast, **NujinAI** extracts orthogonal features directly from raw OHLCV price auction dynamics:
-- **Intra-bar geometry:** Footprints of aggressive takers vs. passive limit absorption.
-- **Volume participation (VSA):** Relative effort vs. observed price progress.
-- **Time series memory & regimes:** Differentiating anti-persistent mean reversion from persistent trend expansion.
-- **Dispersion anchors:** Distance from volume-weighted fair value levels.
+Standard technical indicators (simple moving averages, raw RSI, MACD) smooth historical prices over fixed rolling windows, introducing severe mathematical lag and collinearity. In **NujinAI**, features are not limited to pre-packaged retail indicators. Features can be drawn from **4 open, orthogonal information domains**:
 
-All features are engineered by `tools/feature_miner.py` and output to `data/features.csv`.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                      THE 4 OPEN INFORMATION DOMAINS                     │
+├────────────────────────────────────────────────────────────────────────┤
+│ 1. SPATIAL & GEOMETRIC DOMAIN                                          │
+│    • Swing highs/lows, break of structure (BOS/CHoCH), FVGs            │
+│    • Wick rejection ratios, consolidation box boundaries, trendlines   │
+├────────────────────────────────────────────────────────────────────────┤
+│ 2. STATISTICAL & DISTRIBUTIONAL DOMAIN                                 │
+│    • Lo-MacKinlay Variance Ratios, rolling Hurst exponent estimates    │
+│    • Normalized Z-scores, empirical returns skewness & kurtosis        │
+│    • Parkinson / Garman-Klass intra-bar volatility estimators          │
+├────────────────────────────────────────────────────────────────────────┤
+│ 3. AUCTION & MICROSTRUCTURE DOMAIN                                     │
+│    • Volume-Spread Analysis (VSA), Volume Absorption (V_abs)           │
+│    • Cumulative Volume Delta (CVD), order book bid/ask imbalances      │
+│    • Session time-of-day killzones (London, NY Open, Asian range)     │
+├────────────────────────────────────────────────────────────────────────┤
+│ 4. EXTERNAL & ALTERNATIVE DOMAIN                                       │
+│    • Intermarket lead-lag (e.g. US500 futures leading BTC; DXY / Gold)│
+│    • Scheduled economic calendar prints (CPI, FOMC, NFP volatility)    │
+│    • LLM sentiment scoring of real-time financial news feeds           │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### The Orthogonality Law: $\text{Feature}_A \perp \text{Feature}_B$
+Stacking features from the same mathematical family (e.g. 14 RSI + 9 Stochastic + 12/26 MACD) increases parameters without adding new information. Every robust edge must combine **features from disjoint domains**.
+
+All native features can be computed with `tools/feature_miner.py` and statistically verified with `tools/anomaly_scanner.py`.
 
 ---
 
@@ -167,4 +191,34 @@ When designing a strategy, select exactly ONE indicator from each pillar:
 2. **Pillar 2 (Volatility Regime):** Parkinson Volatility, ATR Trailing Band, or Volatility Squeeze $S_v$.
 3. **Pillar 3 (Momentum Speed):** ADX trend strength, RSI exhaustion, or Linear Regression Slope.
 4. **Pillar 4 (Microstructure / Volume):** Volume Z-Score, Wick Imbalance $L_{\text{imb}}$, or Fair Value Gap.
+
+---
+
+## 6. Alpha Decay & Optimal Half-Life Horizon ($h^*$)
+
+Every market inefficiency has an ephemeral shelf-life. An aggressive order flow imbalance or liquidity sweep does not produce edge indefinitely; its predictive power decays rapidly as the market digests the imbalance:
+
+```
+Predictive Alpha (t-statistic)
+  ▲
+  │       Peak Alpha (h*)
+  │           ▲
+  │          ╱ ╲
+  │         ╱   ╲
+  │        ╱     ╲
+  │       ╱       ╲__________ Baseline Noise / Random Walk
+  └──────┼────────┼───────────► Forward Holding Horizon (k bars)
+         0        h*          24+
+```
+
+### Mathematical Formulation
+For any entry signal event $E_t$, compute the forward cumulative return distribution across horizons $k \in \{1, 2, \dots, K\}$:
+$$R_{t, k} = \frac{P_{t+k} - P_t}{P_t}$$
+Compute the $t$-statistic against $H_0: \mu_k = 0$:
+$$t_k = \frac{\bar{R}_k}{\sigma_k / \sqrt{N}}$$
+
+### The Golden Rule of Exit Timing
+$$\text{Max Hold Bars} \le h^* = \arg\max_k |t_k|$$
+- If an agent sets `max_bars_held = 40` on a micro-scalp whose alpha decays at $k = 8$, **$80\%$ of the holding time is uncompensated exposure to market risk and fee drag**.
+- `tools/anomaly_scanner.py` automatically evaluates the decay curve and sets the empirical half-life cutoff.
 

@@ -224,23 +224,43 @@ This matrix maps strategies across both domains into programmatic parameters com
 
 ---
 
-## Part 5: Roadmap for Nujin Autonomous Edge Mining Implementation
+## Part 5: The Universal Strategy Specification & 3-Layer Exit Architecture
 
-To integrate these 2026 strategies into Nujin's autonomous mutation engine:
+> [!IMPORTANT]
+> **Case Studies, NOT Creative Limits:**
+> The strategies documented in this manual and in `strategies/*.py` are **concrete benchmarked case studies** across distinct trading paradigms (Price Action SMC, Quant Statistical, Momentum Trend, Volatility Scalping). They are **not exhaustive limits**. Nujin is designed from the ground up to synthesize completely novel strategies across any paradigm requested by the user or discovered empirically.
 
-1. **Feature Engineering Ingestion:**
-   - Ingest order book imbalance metrics (`tools/feature_miner.py`) to complement existing bar-geometry indicators (`upper_wick`, `lower_wick`, `volume_zscore`, `hurst_proxy`).
-2. **Strategy Code Generation:**
-   - Implement Python templates in `strategies/` for:
-     - `strategies/OrderFlowImbalanceScalper.py`
-     - `strategies/ZeroDteGammaPinReversal.py`
-     - `strategies/AsianRangeLiquidityFade.py`
-3. **Cynic Audit Verification:**
-   - Subject all candidate variants to the 5-Gate Cynic Audit (`python tools/validation_cynic.py --strategy ... --strict`):
-     - $\text{DSR} \ge 0.95$
-     - Maximum Drawdown $\le 4.5\%$
-     - Parameter stability across $\pm 10\%$ drift
-     - Positive alpha across Bull, Bear, and Range historical slices.
+Regardless of whether a strategy uses pure zero-indicator price action geometry, machine-learning order flow representations, or macroeconomic event signals, **every institutional-grade strategy must adhere to the Universal Specification**:
+
+### 5.1 The 5 Invariant Architectural Pillars
+
+1. **Market Inefficiency Thesis (The "Why"):** Explicitly identifies which counterparty is trapped or forced to trade (retail FOMO, stop-out cascades, institutional rebalancing, inventory absorption).
+2. **Open Information Space (The "What"):** Uses clean, non-collinear features from any of the 4 Information Domains (Geometric, Statistical, Microstructure, Alternative).
+3. **Two-Phase Signal Filtering:**
+   - **Filter A (Regime / State):** When is the edge active? (e.g. $H < 0.45$ for mean reversion; $H > 0.55$ for trend; session killzones).
+   - **Filter B (Precision Trigger):** What exact discrete event enters the trade? (e.g. wick rejection, volume sweep, FVG retest).
+4. **The 3-Layer Asymmetric Exit Architecture:**
+   - **Layer 1: Structural Stop Loss:** Placed where the *market structure invalidates the thesis* (e.g. 1 tick beyond the swept high/low), **never** a naive fixed pip/percent distance.
+   - **Layer 2: Alpha Decay Half-Life Cutoff:** If the anticipated impulse does not materialize within $h^*$ bars (determined empirically by `tools/anomaly_scanner.py`), the position is closed flat. Holding dead money converts statistical edge into random fee drag.
+   - **Layer 3: Dynamic Volatility Runner:** Trailing stops pegged to dynamic volatility (ATR Chandelier or structural swing breaks) to let winners run while volatility compresses.
+5. **The Invariant Cynic Referee:** Evaluated with mandatory 5 bps taker fee + 2 bps slippage, Combinatorially Purged Cross-Validation (CPCV), $\text{DSR} \ge 0.95$, and verified positive alpha across Bull, Bear, and Range regimes.
+
+### 5.2 The 4-Stage Strategy Lifecycle
+
+Quantitative alpha is non-stationary. Every edge eventually decays as counterparty behavior evolves:
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  INCUBATION  │ ──► │   DRY-RUN    │ ──► │  PRIME LIVE  │ ──► │ DECOMMISSION │
+│  Vectorized  │     │  Paper Bot   │     │  Full Risk   │     │  Alpha Decay │
+│ DSR >= 0.95  │     │ Real Ticks   │     │  Allocation  │     │  Auto-Prune  │
+└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+```
+
+1. **Incubation / Candidate:** Vectorized screening + 5-Gate Cynic audit ($DSR \ge 0.95$, MaxDD $\le 4.5\%$).
+2. **Dry-Run / Paper:** Live tick verification via `tools/bot_control.py deploy --mode dry-run` to confirm execution matches model without slippage blowouts.
+3. **Prime Live:** Active execution with risk budget allocated proportionally to its rolling Sharpe and low portfolio correlation ($\rho \le 0.50$).
+4. **Decay / Decommission:** When cumulative rolling drawdown exceeds $1.5\times$ historical max drawdown or rolling Sharpe drops below $1.0$, Nujin's supervisor scales risk to zero and automatically retires the strategy via `python tools/strategy_manager.py remove <StrategyName>`.
 
 ---
 
