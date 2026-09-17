@@ -86,6 +86,7 @@
         @runBacktest="handleRunManageBacktest"
         @triggerCron="handleTriggerCron"
         @navigateToBacktest="handleNavigateToBacktest"
+        @navigateToChart="handleNavigateToChart"
       />
     </main>
 
@@ -246,6 +247,7 @@ const currentStrategyBacktest = computed(() => {
     return {
       strategy: m.name,
       summary: m.latest_backtest,
+      time_period: m.time_period,
       falsification_gates: m.falsification_gates,
       equity_curve: m.backtest_equity_curve || [],
       thesis_props: m.thesis_props,
@@ -473,8 +475,29 @@ const handleTriggerCron = async () => {
   }
 };
 
+const handleNavigateToChart = (stratName: string) => {
+  const clean = stratName.replace('.py', '');
+  const stratFile = clean.endsWith('.py') ? clean : `${clean}.py`;
+  const matched = strategies.value.find(
+    (s) =>
+      s.name.toLowerCase() === stratFile.toLowerCase() ||
+      s.name.toLowerCase().includes(clean.toLowerCase())
+  );
+  const targetFile = matched ? matched.name : stratFile;
+  handleSelectStrategy(targetFile);
+  activeScreen.value = 'CHART';
+};
+
 const handleNavigateToBacktest = (stratName: string) => {
-  selectedStrategy.value = stratName;
+  const clean = stratName.replace('.py', '');
+  const stratFile = clean.endsWith('.py') ? clean : `${clean}.py`;
+  const matched = strategies.value.find(
+    (s) =>
+      s.name.toLowerCase() === stratFile.toLowerCase() ||
+      s.name.toLowerCase().includes(clean.toLowerCase())
+  );
+  const targetFile = matched ? matched.name : stratFile;
+  handleSelectStrategy(targetFile);
   activeScreen.value = 'BACKTEST';
 };
 

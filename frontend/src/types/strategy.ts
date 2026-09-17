@@ -39,6 +39,22 @@ export interface ManagedStrategy {
     trades?: number;
     expectancy_bps?: number;
     last_run?: string;
+    start_time?: number;
+    end_time?: number;
+    start_date?: string;
+    end_date?: string;
+    duration_days?: number;
+    period_label?: string;
+    candles_count?: number;
+  };
+  time_period?: {
+    start_time?: number;
+    end_time?: number;
+    start_date?: string;
+    end_date?: string;
+    duration_days?: number;
+    period_label?: string;
+    candles_count?: number;
   };
   backtest_equity_curve?: any[];
   live_equity_curve?: any[];
@@ -97,6 +113,7 @@ export interface DriftSnapshot {
   deltaSharpe?: number;
   deltaWinRate?: number;
   deltaPf?: number;
+  period_label?: string;
   isLatest?: boolean;
   isBaseline?: boolean;
   trajectory?: 'GAINING' | 'DECAYING' | 'STABLE';

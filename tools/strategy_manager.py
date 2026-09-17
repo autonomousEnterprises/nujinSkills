@@ -321,6 +321,8 @@ def show_insights(strategy_name: Optional[str], endpoint: str, as_json: bool = F
     print(f"  Rank & Tier:      Rank #{target.get('rank')} — {target.get('tier')}")
     print(f"  Status / Profile: {target.get('status')} | {target.get('target_profile')}")
     print(f"  Asset Scope:      {target.get('symbol')} ({target.get('timeframe')})")
+    period = target.get("time_period", {}).get("period_label") or bt.get("period_label", "N/A")
+    print(f"  Time Period:      {period}")
     print(f"  Thesis:           {target.get('thesis')}")
     print("  " + "-" * 80)
     print(f"  COMPOSITE SCORE:  {target.get('ranking_score', 0.0):.1f} / 100.0")

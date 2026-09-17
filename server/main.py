@@ -589,11 +589,22 @@ async def select_and_run_strategy(req: SelectStrategyRequest):
             "target_profile": strat_record.get("target_profile", f"{clean_name} Profile")
         }
         
+        tp = strat_record.get("time_period") or {
+            "start_time": summary.get("start_time"),
+            "end_time": summary.get("end_time"),
+            "start_date": summary.get("start_date"),
+            "end_date": summary.get("end_date"),
+            "duration_days": summary.get("duration_days"),
+            "period_label": summary.get("period_label"),
+            "candles_count": summary.get("candles_count")
+        }
+
         result = {
             "strategy": clean_name,
             "symbol": symbol,
             "timeframe": timeframe,
             "summary": summary,
+            "time_period": tp,
             "falsification_gates": gates,
             "equity_curve": eq,
             "thesis_props": thesis_props,

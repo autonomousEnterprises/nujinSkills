@@ -16,9 +16,17 @@
             </span>
           </div>
           <h2 class="text-lg font-bold tracking-wide mt-0.5 text-base-content">{{ cleanSelectedName }}</h2>
-          <p class="text-xs text-base-content/70">
-            Target Profile: <span class="text-primary font-bold">{{ selectedBacktestData?.thesis_props?.target_profile || activeState?.target_profile || 'Prop Firm Challenge' }}</span>
-          </p>
+          <div class="flex flex-wrap items-center gap-3 mt-1 text-xs text-base-content/70">
+            <div>
+              Target Profile: <span class="text-primary font-bold">{{ selectedBacktestData?.thesis_props?.target_profile || activeState?.target_profile || 'Prop Firm Challenge' }}</span>
+            </div>
+            <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-base-300/80 border border-base-content/10 font-mono text-[11px] text-base-content">
+              <Calendar class="w-3.5 h-3.5 text-primary shrink-0" />
+              <span class="text-base-content/50 uppercase font-bold text-[9px]">Time Period:</span>
+              <span class="font-bold text-primary">{{ periodInfo?.period_label }}</span>
+              <span v-if="periodInfo?.candles_count" class="text-base-content/40 text-[10px]">({{ periodInfo.candles_count.toLocaleString() }} bars)</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -54,15 +62,25 @@
 </template>
 
 <script setup lang="ts">
-import { Cpu } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { Cpu, Calendar } from 'lucide-vue-next';
 import type { BacktestSummary } from '../../types';
-import { getValColor } from '../../utils/formatters';
+import { getValColor, getTimePeriodInfo, getDatasetFallbackPeriod } from '../../utils/formatters';
 
-defineProps<{
+const props = defineProps<{
   cleanSelectedName: string;
   activeName: string;
   activeState?: any;
   selectedBacktestData?: any;
   summary?: BacktestSummary | null;
+  strategyRecord?: any;
 }>();
+
+const periodInfo = computed(() => {
+  return getTimePeriodInfo(props.selectedBacktestData) ||
+         getTimePeriodInfo(props.strategyRecord) ||
+         getTimePeriodInfo(props.summary) ||
+         getTimePeriodInfo(props.activeState) ||
+         getDatasetFallbackPeriod(props.cleanSelectedName);
+});
 </script>

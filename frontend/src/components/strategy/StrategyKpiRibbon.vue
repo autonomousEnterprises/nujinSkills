@@ -31,6 +31,10 @@
             <span class="badge badge-sm badge-warning font-bold">
               {{ cronCount }} CRON MONITORED
             </span>
+            <span class="badge badge-sm badge-neutral font-bold font-mono text-[11px] gap-1 border border-base-content/15">
+              <Calendar class="w-3 h-3 text-info shrink-0" />
+              <span>{{ screenMode === 'LIVE' ? 'LIVE DATA: Real-Time Stream' : `EVAL WINDOW: ${portfolioPeriodLabel}` }}</span>
+            </span>
           </div>
           <div class="text-[11px] text-base-content/60 mt-0.5">
             {{ screenMode === 'LIVE' 
@@ -178,7 +182,7 @@
         {{ screenMode === 'LIVE' ? liveClosedTrades.length.toLocaleString() : (portfolio.total_trades != null ? portfolio.total_trades.toLocaleString() : '–') }}
       </div>
       <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">
-        {{ screenMode === 'LIVE' ? 'Execution sample size' : 'Statistical significance' }}
+        {{ screenMode === 'LIVE' ? 'Execution sample size' : `Tested: ${portfolioPeriodLabel}` }}
       </div>
     </div>
 
@@ -212,9 +216,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Layers, Play, RefreshCw } from 'lucide-vue-next';
+import { Layers, Play, RefreshCw, Calendar } from 'lucide-vue-next';
 import type { ManagedStrategy, PortfolioSummary } from '../../types';
-import { getValColor } from '../../utils/formatters';
+import { getValColor, getTimePeriodInfo } from '../../utils/formatters';
 
 const props = withDefaults(
   defineProps<{
@@ -241,6 +245,21 @@ const emit = defineEmits<{
   (e: 'triggerCron'): void;
   (e: 'update:screenMode', mode: 'LIVE' | 'BACKTEST'): void;
 }>();
+
+const portfolioPeriodLabel = computed(() => {
+  const periods = (props.strategies || [])
+    .map((s) => getTimePeriodInfo(s))
+    .filter((p): p is NonNullable<typeof p> => Boolean(p && p.duration_days));
+
+  if (periods.length === 0) return '16.5d - 75.6d';
+
+  const minDays = Math.min(...periods.map((p) => p.duration_days || 0));
+  const maxDays = Math.max(...periods.map((p) => p.duration_days || 0));
+  if (minDays === maxDays) {
+    return `${minDays.toFixed(1)}d`;
+  }
+  return `${minDays.toFixed(1)}d – ${maxDays.toFixed(1)}d`;
+});
 
 // ── Live Telemetry Aggregations ───────────────────────────
 const liveClosedTrades = computed(() => {

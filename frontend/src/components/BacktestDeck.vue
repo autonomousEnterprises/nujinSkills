@@ -16,6 +16,7 @@
           :activeState="activeState"
           :selectedBacktestData="selectedBacktestData"
           :summary="summary"
+          :strategyRecord="matchedManagedStrategy"
         />
 
         <!-- ── 2. QUANT EDGE THESIS & COUNTERPARTY MECHANICS ── -->
@@ -32,10 +33,16 @@
           <!-- Left 2 Cols: Main Equity Curve -->
           <div class="card bg-base-200 border border-base-content/10 p-4 lg:col-span-2 space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-content/10 pb-2">
-              <span class="font-bold text-xs flex items-center gap-2 text-primary">
-                <TrendingUp class="w-4 h-4" />
-                EQUITY GROWTH CURVE &amp; DRAWDOWN ENVELOPE
-              </span>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-bold text-xs flex items-center gap-2 text-primary">
+                  <TrendingUp class="w-4 h-4" />
+                  EQUITY GROWTH CURVE &amp; DRAWDOWN ENVELOPE
+                </span>
+                <span v-if="timePeriodLabel" class="badge badge-xs badge-neutral border-base-content/20 font-mono text-[10px] text-base-content/70 gap-1">
+                  <Calendar class="w-2.5 h-2.5 text-primary" />
+                  {{ timePeriodLabel }}
+                </span>
+              </div>
 
               <!-- Regime filter toggle buttons -->
               <div class="join">
@@ -107,7 +114,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { TrendingUp } from 'lucide-vue-next';
+import { TrendingUp, Calendar } from 'lucide-vue-next';
 import DaisyEquityChart from './charts/DaisyEquityChart.vue';
 import DaisyHistogramChart from './charts/DaisyHistogramChart.vue';
 import BacktestTopBanner from './backtest/BacktestTopBanner.vue';
@@ -118,6 +125,7 @@ import BacktestTradeLog from './backtest/BacktestTradeLog.vue';
 import BacktestFalsificationGates from './backtest/BacktestFalsificationGates.vue';
 import BacktestAlphaDriftCard from './backtest/BacktestAlphaDriftCard.vue';
 import type { StrategyFile, BacktestSummary, ThesisProps, RegimeData } from '../types';
+import { getTimePeriodInfo, getDatasetFallbackPeriod } from '../utils/formatters';
 
 const props = withDefaults(
   defineProps<{
@@ -148,6 +156,18 @@ const selectedRegimeFilter = ref<'ALL' | 'bull_market' | 'bear_market' | 'rangin
 
 const cleanSelectedName = computed(() => (props.selectedStrategy || props.activeState?.active_strategy || props.strategies?.[0]?.name || '').replace('.py', ''));
 const activeName = computed(() => props.activeState?.active_strategy || cleanSelectedName.value);
+
+const matchedManagedStrategy = computed(() => {
+  return props.managedStrategies?.find((s) => s.name === props.selectedStrategy || s.name.replace('.py','') === props.selectedStrategy.replace('.py',''));
+});
+
+const timePeriodLabel = computed(() => {
+  const info = getTimePeriodInfo(props.selectedBacktestData) ||
+               getTimePeriodInfo(matchedManagedStrategy.value) ||
+               getTimePeriodInfo(props.activeState) ||
+               getDatasetFallbackPeriod(cleanSelectedName.value);
+  return info ? info.period_label : '';
+});
 
 const summary = computed<BacktestSummary | null>(() => props.selectedBacktestData?.summary || props.activeState?.backtest_summary || null);
 const thesisInfo = computed<ThesisProps | null>(() => props.selectedBacktestData?.thesis_props || null);
@@ -197,9 +217,5 @@ const regimeCards = computed<RegimeData[]>(() => {
       curve: breakdown.ranging_market?.equity_curve || []
     }
   ];
-});
-
-const matchedManagedStrategy = computed(() => {
-  return props.managedStrategies?.find((s) => s.name === props.selectedStrategy || s.name.replace('.py','') === props.selectedStrategy.replace('.py',''));
 });
 </script>

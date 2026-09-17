@@ -1,3 +1,15 @@
+export interface TimePeriodInfo {
+  start_time?: number;
+  end_time?: number;
+  start_date?: string;
+  end_date?: string;
+  duration_days?: number;
+  period_label?: string;
+  candles_count?: number;
+  first_trade_time?: number;
+  last_trade_time?: number;
+}
+
 export interface BacktestSummary {
   sharpe?: number;
   win_rate?: number;
@@ -9,6 +21,13 @@ export interface BacktestSummary {
   expectancy_bps?: number;
   last_run?: string;
   equity_peak?: number;
+  start_time?: number;
+  end_time?: number;
+  start_date?: string;
+  end_date?: string;
+  duration_days?: number;
+  period_label?: string;
+  candles_count?: number;
 }
 
 export interface ThesisProps {

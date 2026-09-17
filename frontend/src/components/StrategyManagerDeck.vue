@@ -38,6 +38,7 @@
         :screenMode="screenMode"
         :selectedScope="selectedScope"
         @selectScope="handleSelectScope"
+        @navigateToChart="emit('navigateToChart', $event)"
         @navigateToBacktest="emit('navigateToBacktest', $event)"
         @runBacktest="handleRunBacktest"
         @updateStatus="handleUpdateStatus"
@@ -93,6 +94,7 @@ const emit = defineEmits<{
   (e: 'runBacktest', stratName: string): void;
   (e: 'triggerCron'): void;
   (e: 'navigateToBacktest', stratName: string): void;
+  (e: 'navigateToChart', stratName: string): void;
 }>();
 
 // Global Screen Mode for the entire Strategies Deck: LIVE vs BACKTEST

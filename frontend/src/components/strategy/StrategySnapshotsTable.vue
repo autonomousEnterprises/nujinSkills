@@ -7,9 +7,15 @@
           <History class="w-3.5 h-3.5 text-info" />
           HISTORICAL EVALUATION RUNS
         </span>
-        <span class="text-[10px] text-base-content/50">
-          {{ (strat.cron_config?.drift_history || []).length || 1 }} Logged
-        </span>
+        <div class="flex items-center gap-2">
+          <span v-if="timePeriodText" class="badge badge-xs badge-neutral border-base-content/20 font-mono text-[9px] gap-1 text-primary">
+            <Calendar class="w-2.5 h-2.5" />
+            {{ timePeriodText }}
+          </span>
+          <span class="text-[10px] text-base-content/50">
+            {{ (strat.cron_config?.drift_history || []).length || 1 }} Logged
+          </span>
+        </div>
       </div>
 
       <div class="space-y-1">
@@ -133,6 +139,10 @@
         <p class="text-base-content/80 line-clamp-2 leading-relaxed">
           {{ strat.thesis || 'Mathematical regime exploitation strategy with strict stop loss bounds.' }}
         </p>
+        <div v-if="timePeriodText" class="flex items-center gap-1.5 text-[9px] text-base-content/60 font-mono pt-1 border-t border-base-content/5">
+          <Calendar class="w-3 h-3 text-primary shrink-0" />
+          <span>Evaluation Window: <strong class="text-primary">{{ timePeriodText }}</strong></span>
+        </div>
       </div>
     </div>
 
@@ -172,10 +182,10 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { History, ShieldCheck, Sparkles, TrendingUp } from 'lucide-vue-next';
+import { History, ShieldCheck, Sparkles, TrendingUp, Calendar } from 'lucide-vue-next';
 import DaisyEquityChart from '../charts/DaisyEquityChart.vue';
 import type { ManagedStrategy } from '../../types';
-import { formatSnapTime, formatWinRate, formatMdd, getTierBadgeClass } from '../../utils/formatters';
+import { formatSnapTime, formatWinRate, formatMdd, getTierBadgeClass, getTimePeriodInfo } from '../../utils/formatters';
 
 const props = defineProps<{
   strat: ManagedStrategy;
@@ -186,6 +196,11 @@ const emit = defineEmits<{
 }>();
 
 const equityMode = ref<'BACKTEST' | 'LIVE'>('BACKTEST');
+
+const timePeriodText = computed(() => {
+  const info = getTimePeriodInfo(props.strat);
+  return info ? info.period_label : '';
+});
 
 const snapshotsWithDelta = computed(() => {
   const history = props.strat.cron_config?.drift_history;

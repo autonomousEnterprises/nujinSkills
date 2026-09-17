@@ -28,6 +28,12 @@
         >
           {{ selectedScope === 'ALL' ? 'BLENDED PORTFOLIO BENCHMARK' : 'BACKTEST BENCHMARK' }}
         </span>
+
+        <!-- Time Period Badge -->
+        <span class="badge badge-sm badge-neutral border-base-content/20 font-bold gap-1 text-[10px] font-mono">
+          <Calendar class="w-3 h-3 text-primary shrink-0" />
+          <span>{{ equityPeriodLabel }}</span>
+        </span>
       </div>
 
       <!-- Scope Selector Dropdown & Screen Mode Pill -->
@@ -74,8 +80,8 @@
       </div>
     </div>
 
-    <!-- 6 Quick Metric Strip -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
+    <!-- 7 Quick Metric Strip -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 pt-1">
       <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
         <span class="text-[9px] text-base-content/50 uppercase font-bold">Baseline Capital</span>
         <span class="text-xs font-bold font-mono mt-0.5 text-base-content/80">100.00%</span>
@@ -127,6 +133,15 @@
           :class="scopeWinRate >= 0.5 ? 'text-success' : 'text-warning'"
         >
           {{ (scopeWinRate * 100).toFixed(1) }}%
+        </span>
+      </div>
+
+      <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
+        <span class="text-[9px] text-base-content/50 uppercase font-bold flex items-center gap-1">
+          <Calendar class="w-2.5 h-2.5 text-primary shrink-0" /> Time Window
+        </span>
+        <span class="text-[11px] font-bold font-mono mt-0.5 text-primary truncate" :title="equityPeriodLabel">
+          {{ equityPeriodLabel }}
         </span>
       </div>
     </div>
@@ -190,9 +205,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { LineChart, TrendingUp } from 'lucide-vue-next';
+import { LineChart, TrendingUp, Calendar } from 'lucide-vue-next';
 import DaisyEquityChart from '../charts/DaisyEquityChart.vue';
 import type { SignalData, ManagedStrategy } from '../../types';
+import { getTimePeriodInfo, getDatasetFallbackPeriod } from '../../utils/formatters';
 
 interface Point {
   time?: number;
@@ -320,6 +336,26 @@ const benchmarkEquityCurve = computed<Point[]>(() => {
     .filter((c) => c.length > 1);
 
   if (validCurves.length > 1) {
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    for (const curve of validCurves) {
+      const t0 = Number(curve[0]?.time ?? 0);
+      const t1 = Number(curve[curve.length - 1]?.time ?? 0);
+      if (t0 > 1000000000) minTime = Math.min(minTime, t0);
+      if (t1 > 1000000000) maxTime = Math.max(maxTime, t1);
+    }
+    if (!isFinite(minTime) || !isFinite(maxTime)) {
+      for (const s of candidateStrats) {
+        const info = getTimePeriodInfo(s);
+        if (info?.start_time && info?.end_time) {
+          minTime = Math.min(minTime, info.start_time);
+          maxTime = Math.max(maxTime, info.end_time);
+        }
+      }
+    }
+    if (!isFinite(minTime)) minTime = 1788127440;
+    if (!isFinite(maxTime)) maxTime = 1789629120;
+
     const numSteps = 50;
     const blended: Point[] = [];
     let peak = 100.0;
@@ -339,7 +375,9 @@ const benchmarkEquityCurve = computed<Point[]>(() => {
       const eq = Math.round((100.0 + avgDelta) * 100) / 100;
       peak = Math.max(peak, eq);
       const dd = peak > 0 ? Math.round(((peak - eq) / peak) * 10000) / 100 : 0.0;
+      const stepTime = Math.round(minTime + (i / (numSteps - 1)) * (maxTime - minTime));
       blended.push({
+        time: stepTime,
         equity_pct: eq,
         drawdown_pct: dd,
       });
@@ -435,5 +473,72 @@ const timeRangeText = computed(() => {
   };
 
   return `${format(first)} → ${format(last)}`;
+});
+
+const matchedScopeStrategy = computed(() => {
+  if (props.selectedScope === 'ALL') return null;
+  const target = props.selectedScope.toLowerCase().replace('.py', '');
+  return props.strategies.find((m) =>
+    m.name.toLowerCase().replace('.py', '') === target ||
+    m.name.toLowerCase().includes(target)
+  );
+});
+
+const equityPeriodLabel = computed(() => {
+  if (props.screenMode === 'LIVE') {
+    const trades = scopedSignals.value;
+    if (trades.length >= 2) {
+      const t0 = trades[trades.length - 1].time;
+      const t1 = trades[0].time;
+      const minT = Math.min(Number(t0), Number(t1));
+      const maxT = Math.max(Number(t0), Number(t1));
+      if (minT > 1000000000 && maxT > 1000000000) {
+        const d0 = new Date(minT * 1000);
+        const d1 = new Date(maxT * 1000);
+        const days = ((maxT - minT) / 86400).toFixed(1);
+        return `${d0.toISOString().slice(0, 10)} → ${d1.toISOString().slice(0, 10)} (${days}d)`;
+      }
+    }
+    return 'Live Real-Time Stream';
+  }
+
+  // Backtest mode: single strategy selected
+  if (matchedScopeStrategy.value) {
+    const info = getTimePeriodInfo(matchedScopeStrategy.value) || getDatasetFallbackPeriod(matchedScopeStrategy.value);
+    if (info) return info.period_label;
+  }
+
+  // Blended ALL mode: check points on displayedCurve first
+  const pts = displayedCurve.value;
+  if (pts && pts.length >= 2) {
+    const t0 = Number(pts[0]?.time);
+    const t1 = Number(pts[pts.length - 1]?.time);
+    if (t0 > 1000000000 && t1 > 1000000000) {
+      const d0 = new Date(t0 * 1000);
+      const d1 = new Date(t1 * 1000);
+      const days = ((t1 - t0) / 86400).toFixed(1);
+      return `${d0.toISOString().slice(0, 10)} → ${d1.toISOString().slice(0, 10)} (${days}d)`;
+    }
+  }
+
+  // Or aggregate across candidate/provided strategies
+  const candidateStrats = (props.strategies || []);
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  for (const s of candidateStrats) {
+    const info = getTimePeriodInfo(s);
+    if (info?.start_time && info?.end_time) {
+      minStart = Math.min(minStart, info.start_time);
+      maxEnd = Math.max(maxEnd, info.end_time);
+    }
+  }
+  if (isFinite(minStart) && isFinite(maxEnd) && minStart > 1000000000 && maxEnd > 1000000000) {
+    const d0 = new Date(minStart * 1000);
+    const d1 = new Date(maxEnd * 1000);
+    const days = ((maxEnd - minStart) / 86400).toFixed(1);
+    return `${d0.toISOString().slice(0, 10)} → ${d1.toISOString().slice(0, 10)} (${days}d)`;
+  }
+
+  return getDatasetFallbackPeriod().period_label;
 });
 </script>

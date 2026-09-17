@@ -925,6 +925,32 @@ class StrategyRegistry:
                         "trades": bt.get("trades", 0),
                         "profit_factor": bt.get("profit_factor", 0.0),
                     }]
+
+                # Ensure time_period is populated from backtest equity curve if missing
+                if not item.get("time_period") or not item.get("latest_backtest", {}).get("period_label"):
+                    eq = item.get("backtest_equity_curve", [])
+                    if eq and len(eq) >= 2:
+                        t0 = eq[0].get("time", 0)
+                        t1 = eq[-1].get("time", 0)
+                        if t0 and t1 and t0 > 1000000000:
+                            dt0 = datetime.fromtimestamp(t0, tz=timezone.utc)
+                            dt1 = datetime.fromtimestamp(t1, tz=timezone.utc)
+                            days = round((t1 - t0) / 86400, 1)
+                            lbl = f"{dt0.strftime('%Y-%m-%d')} → {dt1.strftime('%Y-%m-%d')} ({days:.1f}d)"
+                            item["time_period"] = {
+                                "start_time": t0,
+                                "end_time": t1,
+                                "start_date": dt0.strftime("%Y-%m-%d %H:%M UTC"),
+                                "end_date": dt1.strftime("%Y-%m-%d %H:%M UTC"),
+                                "duration_days": days,
+                                "period_label": lbl,
+                            }
+                            if "latest_backtest" in item:
+                                item["latest_backtest"]["period_label"] = lbl
+                                item["latest_backtest"]["duration_days"] = days
+                                item["latest_backtest"]["start_date"] = dt0.strftime("%Y-%m-%d")
+                                item["latest_backtest"]["end_date"] = dt1.strftime("%Y-%m-%d")
+
                 updated_list.append(item)
             else:
                 # Initialize new strategy record
@@ -1094,6 +1120,25 @@ class StrategyRegistry:
         step = max(1, len(eq) // 80) if len(eq) > 80 else 1
         compact_eq = eq[::step] if eq else []
 
+        # Resolve time period info
+        tp = bt_result.get("time_period") or {}
+        if not tp and compact_eq and len(compact_eq) >= 2:
+            t0 = compact_eq[0].get("time", 0)
+            t1 = compact_eq[-1].get("time", 0)
+            if t0 and t1 and t0 > 1000000000:
+                dt0 = datetime.fromtimestamp(t0, tz=timezone.utc)
+                dt1 = datetime.fromtimestamp(t1, tz=timezone.utc)
+                days = round((t1 - t0) / 86400, 1)
+                tp = {
+                    "start_time": t0,
+                    "end_time": t1,
+                    "start_date": dt0.strftime("%Y-%m-%d %H:%M UTC"),
+                    "end_date": dt1.strftime("%Y-%m-%d %H:%M UTC"),
+                    "duration_days": days,
+                    "period_label": f"{dt0.strftime('%Y-%m-%d')} → {dt1.strftime('%Y-%m-%d')} ({days:.1f}d)",
+                    "candles_count": summary.get("candles_count")
+                }
+
         target_strat = None
         for s in strategies:
             if s.get("file") == target_file or s.get("name") == clean_name:
@@ -1107,7 +1152,15 @@ class StrategyRegistry:
                     "trades": summary.get("trades", 0),
                     "expectancy_bps": summary.get("expectancy_bps", 0.0),
                     "last_run": now_iso,
+                    "start_time": tp.get("start_time") or summary.get("start_time"),
+                    "end_time": tp.get("end_time") or summary.get("end_time"),
+                    "start_date": tp.get("start_date") or summary.get("start_date"),
+                    "end_date": tp.get("end_date") or summary.get("end_date"),
+                    "duration_days": tp.get("duration_days") or summary.get("duration_days"),
+                    "period_label": tp.get("period_label") or summary.get("period_label"),
+                    "candles_count": tp.get("candles_count") or summary.get("candles_count"),
                 }
+                s["time_period"] = tp
                 s["backtest_equity_curve"] = compact_eq
                 s["falsification_gates"] = gates
                 s["trade_markers"] = bt_result.get("trade_markers", [])
@@ -1128,6 +1181,7 @@ class StrategyRegistry:
                     "max_drawdown": summary.get("max_drawdown", 0.0),
                     "trades": summary.get("trades", 0),
                     "profit_factor": summary.get("profit_factor", 0.0),
+                    "period_label": tp.get("period_label") or summary.get("period_label", ""),
                 }
                 if is_cron:
                     today_str = (now_iso or "")[:10]

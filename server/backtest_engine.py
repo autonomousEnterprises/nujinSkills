@@ -557,11 +557,35 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         oos_status = "FAIL"
         oos_reason = "Insufficient return samples for OOS walk-forward (< 30)"
 
-    # 4. Genuine Cynic Audit: Gate 2 Parameter Stability Surface
+    # Genuine Cynic Audit: Gate 2 Parameter Stability Surface
     param_grid = {"atr_band": ["0.9x", "1.0x", "1.1x"], "wick_ratio": ["0.9x", "1.0x", "1.1x"]}
     param_res = run_parameter_stability(param_grid, sharpe if sharpe > 0 else 1.0)
     param_status = param_res.get("status", "PASS") if trades >= 10 else "FAIL"
     plateau_status = param_res.get("plateau_status", "STABLE_PLATEAU") if trades >= 10 else "INSUFFICIENT_SAMPLES"
+
+    # Derive accurate dataset time period
+    valid_ts = df_c[df_c['timestamp'] > 1000000000]['timestamp'] if 'timestamp' in df_c.columns else pd.Series([])
+    ds_start_ts = int(valid_ts.iloc[0]) if len(valid_ts) > 0 else (int(trades_detail[0]["entry_time"]) if trades_detail else int(time.time()))
+    ds_end_ts = int(valid_ts.iloc[-1]) if len(valid_ts) > 0 else (int(trades_detail[-1]["exit_time"]) if trades_detail else int(time.time()))
+    dt_start = datetime.fromtimestamp(ds_start_ts, tz=timezone.utc)
+    dt_end = datetime.fromtimestamp(ds_end_ts, tz=timezone.utc)
+    duration_days = round((ds_end_ts - ds_start_ts) / 86400, 1)
+    start_date_str = dt_start.strftime("%Y-%m-%d %H:%M UTC")
+    end_date_str = dt_end.strftime("%Y-%m-%d %H:%M UTC")
+    period_label = f"{dt_start.strftime('%Y-%m-%d')} → {dt_end.strftime('%Y-%m-%d')} ({duration_days:.1f}d)"
+    candles_count = len(df_c)
+
+    time_period_info = {
+        "start_time": ds_start_ts,
+        "end_time": ds_end_ts,
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+        "duration_days": duration_days,
+        "period_label": period_label,
+        "candles_count": candles_count,
+        "first_trade_time": trades_detail[0]["entry_time"] if trades_detail else ds_start_ts,
+        "last_trade_time": trades_detail[-1]["exit_time"] if trades_detail else ds_end_ts,
+    }
 
     backtest_summary = {
         "sharpe": round(sharpe, 2),
@@ -571,7 +595,14 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         "dsr": real_dsr,
         "trades": trades,
         "profit_factor": profit_factor,
-        "expectancy_bps": round(expectancy_bps, 2)
+        "expectancy_bps": round(expectancy_bps, 2),
+        "start_time": ds_start_ts,
+        "end_time": ds_end_ts,
+        "start_date": start_date_str,
+        "end_date": end_date_str,
+        "duration_days": duration_days,
+        "period_label": period_label,
+        "candles_count": candles_count
     }
 
     # 5. Equity Curve, Return Distribution & Market Regime Breakdown
@@ -689,6 +720,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         "status": "ACTIVE_DEPLOYED" if save_as_active else curr_sys_state.get("status", "PREVIEW"),
         "backtest_summary": backtest_summary,
         "summary": backtest_summary,
+        "time_period": time_period_info,
         "signals_count": len(trades_detail),
         "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "trade_markers": trade_markers,
@@ -771,6 +803,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         "state": state,
         "candidate_returns": returns_arr.tolist(),
         "summary": backtest_summary,
+        "time_period": time_period_info,
         "thesis_props": thesis_props,
         "trade_markers": trade_markers,
         "trades_detail": trades_detail,

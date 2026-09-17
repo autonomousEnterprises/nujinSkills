@@ -168,6 +168,10 @@
                   </button>
                 </div>
                 <div class="text-[10px] text-base-content/50 truncate max-w-xs">{{ strat.target_profile }}</div>
+                <div class="flex items-center gap-1 text-[10px] font-mono text-base-content/60 mt-0.5">
+                  <Calendar class="w-3 h-3 text-primary/70 shrink-0" />
+                  <span>{{ getStrategyTimePeriod(strat) }}</span>
+                </div>
               </td>
 
               <!-- Symbol -->
@@ -266,14 +270,13 @@
               <!-- Actions -->
               <td class="text-right whitespace-nowrap" @click.stop>
                 <div class="flex items-center justify-end gap-1">
-                  <!-- Focus Curve Action -->
+                  <!-- View on Chart Action -->
                   <button
-                    @click="emit('selectScope', strat.name)"
-                    class="btn btn-xs btn-ghost border border-base-content/10"
-                    :class="selectedScope === strat.name ? 'btn-primary btn-outline' : ''"
-                    title="View in Equity Growth Curve above"
+                    @click="emit('navigateToChart', strat.name)"
+                    class="btn btn-xs btn-ghost border border-base-content/10 hover:btn-primary"
+                    title="View Strategy on Chart (F1)"
                   >
-                    <LineChart class="w-3 h-3" />
+                    <BarChart2 class="w-3 h-3" />
                   </button>
 
                   <button
@@ -345,6 +348,17 @@
                         <div class="font-bold text-accent">{{ strat.ranking_breakdown.drift_score?.toFixed(1) }} / 100</div>
                       </div>
                     </div>
+                    <div class="divider divider-horizontal my-0 hidden xl:flex"></div>
+                    <div class="flex flex-col">
+                      <span class="text-[10px] uppercase font-bold text-base-content/50">Evaluation Period</span>
+                      <div class="flex items-center gap-1.5 font-mono text-xs text-primary font-bold mt-0.5">
+                        <Calendar class="w-3.5 h-3.5 shrink-0" />
+                        <span>{{ getStrategyTimePeriod(strat) }}</span>
+                      </div>
+                      <span class="text-[9px] text-base-content/50 mt-0.5">
+                        {{ getStrategyTimePeriodDetails(strat) }}
+                      </span>
+                    </div>
                   </div>
                   <div class="flex flex-col text-left sm:text-right max-w-md">
                     <span class="text-[9px] text-base-content/50 uppercase font-bold">Institutional Tier Rationale</span>
@@ -405,7 +419,7 @@
 import { ref, computed } from 'vue';
 import {
   Search, ChevronDown, ChevronRight, Award, Eye, Play,
-  Activity, TrendingUp, TrendingDown, LineChart
+  Activity, TrendingUp, TrendingDown, LineChart, Calendar, BarChart2
 } from 'lucide-vue-next';
 import StrategySnapshotsTable from './StrategySnapshotsTable.vue';
 import DaisyDriftSparkline from '../charts/DaisyDriftSparkline.vue';
@@ -414,7 +428,23 @@ import {
   getValColor,
   getTierBadgeClass,
   getStatusBadgeClass,
+  getTimePeriodInfo,
+  formatTimePeriod,
+  getDatasetFallbackPeriod,
 } from '../../utils/formatters';
+
+const getStrategyTimePeriod = (strat: ManagedStrategy) => {
+  const info = getTimePeriodInfo(strat) || getDatasetFallbackPeriod(strat);
+  return info.period_label;
+};
+
+const getStrategyTimePeriodDetails = (strat: ManagedStrategy) => {
+  const info = getTimePeriodInfo(strat) || getDatasetFallbackPeriod(strat);
+  if (info.candles_count) {
+    return `${info.duration_days ? info.duration_days.toFixed(1) + ' days' : ''} (${info.candles_count.toLocaleString()} bars)`;
+  }
+  return info.duration_days ? `${info.duration_days.toFixed(1)} days duration` : 'Validated timeframe';
+};
 
 const props = withDefaults(
   defineProps<{
@@ -435,6 +465,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
+  (e: 'navigateToChart', stratName: string): void;
   (e: 'navigateToBacktest', stratName: string): void;
   (e: 'runBacktest', stratName: string): void;
   (e: 'updateStatus', stratName: string, newStatus: string): void;
