@@ -624,10 +624,17 @@ class StrategyRegistry:
                             tf = line_s.split("=")[-1].strip().strip("'\"")
                             if tf:
                                 timeframe = tf
-                        elif "symbol =" in line_s or "symbol=" in line_s:
+                        elif line_s.startswith("symbol =") or line_s.startswith("symbol="):
                             sym = line_s.split("=")[-1].strip().strip("'\"")
-                            if sym:
-                                symbol = sym
+                            if sym and sym.lower() not in ["pair", "symbol", "none", "self.symbol"] and not sym.startswith("self."):
+                                if "XAU" in sym.upper() or "GOLD" in sym.upper():
+                                    symbol = "XAU/USD"
+                                elif "SP" in sym.upper() or "ES" in sym.upper():
+                                    symbol = "S&P 500 (ES)"
+                                elif "BTC" in sym.upper():
+                                    symbol = "BTC/USDT"
+                                else:
+                                    symbol = sym
 
                     # Docstring inspection fallback for thesis & display_name
                     if not thesis or not display_name:
@@ -643,16 +650,16 @@ class StrategyRegistry:
                                     rationale = " ".join(doc_lines[1:]) if len(doc_lines) > 1 else doc_lines[0]
                                     thesis = rationale[:200]
             except Exception as e:
-                logger.debug(f"[StrategyRegistry] Metadata extract error for {filename}: {e}")
+                logger.warning(f"[StrategyRegistry] Metadata extraction failed for {py_path}: {e}")
 
-        # Humanize filename cleanly
-        humanized_name = re.sub(r'([A-Z]+)', r' \1', clean).replace('_', ' ').strip()
+        # Derive readable fallback name
+        humanized_name = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', clean)
         humanized_name = re.sub(r'\s+', ' ', humanized_name)
 
         if not display_name:
             display_name = humanized_name
 
-        if not symbol:
+        if not symbol or symbol.lower() in ["pair", "symbol", "none"]:
             clean_up = clean.upper()
             if any(k in clean_up for k in ["SP500", "SPX", "ES", "FLUSH"]):
                 symbol = "S&P 500 (ES)"

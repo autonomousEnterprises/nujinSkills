@@ -294,7 +294,7 @@ const resolveStrategySymbol = (stratName?: string): string => {
       if (sym.includes('SP') || sym.includes('ES') || sym.includes('S&P') || sym.includes('US500')) return 'S&P 500 (ES)';
       if (sym.includes('XAU') || sym.includes('GOLD')) return 'XAU/USD';
       if (sym.includes('BTC')) return 'BTC/USDT';
-      return match.symbol;
+      if (sym !== 'PAIR' && sym !== 'SYMBOL' && sym !== 'NONE' && sym !== '') return match.symbol;
     }
   }
   // 2. Canonical mapping for known strategies
