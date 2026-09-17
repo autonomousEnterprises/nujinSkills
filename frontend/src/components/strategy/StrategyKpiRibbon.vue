@@ -127,7 +127,9 @@
         class="stat-value text-xl font-mono mt-0.5" 
         :class="displayedNetPnl >= 0 ? 'text-success' : 'text-error'"
       >
-        {{ displayedNetPnl > 0 ? '+' : '' }}{{ displayedNetPnl.toFixed(2) }}%
+        {{ (screenMode === 'LIVE' ? liveClosedTrades.length > 0 : displayedNetPnl !== 0)
+            ? `${displayedNetPnl > 0 ? '+' : ''}${displayedNetPnl.toFixed(2)}%`
+            : '–' }}
       </div>
       <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">
         {{ screenMode === 'LIVE' ? 'Across closed live signals' : 'Theoretical blended backtest' }}
@@ -153,7 +155,7 @@
         {{ screenMode === 'LIVE' ? 'LIVE WIN RATE' : 'BLENDED WIN RATE' }}
       </div>
       <div class="stat-value text-xl font-mono mt-0.5" :class="getValColor(displayedWinRate - 50)">
-        {{ displayedWinRate >= 0 ? `${displayedWinRate.toFixed(1)}%` : '–' }}
+        {{ displayedWinRate > 0 ? `${displayedWinRate.toFixed(1)}%` : '–' }}
       </div>
       <div class="stat-desc text-[10px] text-base-content/50 mt-0.5">
         {{ screenMode === 'LIVE' ? `${liveClosedWins} W / ${liveClosedTrades.length} Trades` : 'Across simulated positions' }}
@@ -172,6 +174,7 @@
         {{ screenMode === 'LIVE' ? 'Gross wins / Gross losses' : 'Hurdle: >= 1.30' }}
       </div>
     </div>
+
 
     <!-- Tile 6: Live Trades Count / Total Simulated Trades -->
     <div class="stat bg-base-200 border border-base-content/10 rounded-box p-3">
@@ -251,7 +254,7 @@ const portfolioPeriodLabel = computed(() => {
     .map((s) => getTimePeriodInfo(s))
     .filter((p): p is NonNullable<typeof p> => Boolean(p && p.duration_days));
 
-  if (periods.length === 0) return '16.5d - 75.6d';
+  if (periods.length === 0) return '–';
 
   const minDays = Math.min(...periods.map((p) => p.duration_days || 0));
   const maxDays = Math.max(...periods.map((p) => p.duration_days || 0));
@@ -280,9 +283,10 @@ const liveOpenPositions = computed(() => {
 
 const liveWinRate = computed(() => {
   if (liveClosedTrades.value.length === 0) {
+    // Only use portfolio value if it's a real non-zero number from the backend
     return props.portfolio.live_win_rate != null && props.portfolio.live_win_rate > 0
       ? props.portfolio.live_win_rate
-      : 50.0;
+      : 0;  // No trades yet → 0, not a phantom 50%
   }
   return (liveClosedWins.value / liveClosedTrades.value.length) * 100;
 });
@@ -307,34 +311,35 @@ const liveProfitFactor = computed(() => {
     if (pnl > 0) grossWin += pnl;
     else if (pnl < 0) grossLoss += Math.abs(pnl);
   }
-  if (grossLoss === 0) return grossWin > 0 ? 3.0 : 1.5;
+  // No trades yet or no closed trades → 0 (not a phantom 1.5)
+  if (liveClosedTrades.value.length === 0) return 0;
+  if (grossLoss === 0) return grossWin > 0 ? grossWin : 0;
   return Math.round((grossWin / grossLoss) * 100) / 100;
 });
 
 const liveSharpe = computed(() => {
   const returns = liveClosedTrades.value.map((t) => Number(t.pnl_pct || 0) / 100);
-  if (returns.length < 2) {
-    return props.portfolio.blended_sharpe || 2.0;
-  }
+  // No meaningful sample → 0, not a phantom 2.0
+  if (returns.length < 2) return 0;
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (returns.length - 1);
   const std = Math.sqrt(variance);
-  if (std === 0) return 2.0;
+  if (std === 0) return 0;
   return Number(((mean / std) * Math.sqrt(252)).toFixed(2));
 });
 
 // ── Backtest Aggregations ───────────────────────────────
 const backtestCompoundPnl = computed(() => {
-  if (props.portfolio.backtest_net_pnl != null) {
+  if (props.portfolio.backtest_net_pnl != null && props.portfolio.backtest_net_pnl !== 0) {
     return props.portfolio.backtest_net_pnl;
   }
-  // Sum or average from latest backtest
+  // Sum from latest backtests — zero if no strategies have been evaluated
   const valid = props.strategies.filter((s) => s.latest_backtest?.expectancy_bps != null);
   if (valid.length > 0) {
     const sum = valid.reduce((acc, s) => acc + ((s.latest_backtest.expectancy_bps || 0) * (s.latest_backtest.trades || 10) / 100), 0);
     return Number(sum.toFixed(2));
   }
-  return 12.45;
+  return 0;  // No strategies evaluated yet
 });
 
 const cynicAuditedCount = computed(() => {
@@ -355,6 +360,6 @@ const displayedWinRate = computed(() => {
 });
 
 const displayedPf = computed(() => {
-  return props.screenMode === 'LIVE' ? liveProfitFactor.value : (props.portfolio.combined_profit_factor || 1.0);
+  return props.screenMode === 'LIVE' ? liveProfitFactor.value : (props.portfolio.combined_profit_factor || 0);
 });
 </script>

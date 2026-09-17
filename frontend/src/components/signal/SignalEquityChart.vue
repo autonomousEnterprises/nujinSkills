@@ -56,20 +56,23 @@
       </div>
 
       <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
-        <span class="text-[9px] text-base-content/50 uppercase font-bold">Current Equity</span>
+        <span class="text-[9px] text-base-content/50 uppercase font-bold">Current {{ effectiveMode === 'LIVE' ? 'Live' : 'Backtest' }} Equity</span>
         <span 
           class="text-xs font-bold font-mono mt-0.5"
-          :class="netChangePct >= 0 ? 'text-success' : 'text-error'"
+          :class="displayedCurve.length === 0 ? 'text-base-content/40' : (netChangePct >= 0 ? 'text-success' : 'text-error')"
         >
-          {{ currentEquity.toFixed(2) }}%
-          <span class="text-[10px] ml-0.5 font-normal">({{ netChangePct >= 0 ? '+' : '' }}{{ netChangePct.toFixed(2) }}%)</span>
+          <template v-if="displayedCurve.length > 0">
+            {{ currentEquity.toFixed(2) }}%
+            <span class="text-[10px] ml-0.5 font-normal">({{ netChangePct >= 0 ? '+' : '' }}{{ netChangePct.toFixed(2) }}%)</span>
+          </template>
+          <template v-else>–</template>
         </span>
       </div>
 
       <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
         <span class="text-[9px] text-base-content/50 uppercase font-bold">Peak Trajectory</span>
-        <span class="text-xs font-bold text-success font-mono mt-0.5">
-          +{{ peakGainPct.toFixed(2) }}%
+        <span class="text-xs font-bold font-mono mt-0.5" :class="displayedCurve.length > 0 && peakGainPct > 0 ? 'text-success' : 'text-base-content/40'">
+          {{ displayedCurve.length > 0 ? `+${peakGainPct.toFixed(2)}%` : '–' }}
         </span>
       </div>
 
@@ -77,29 +80,30 @@
         <span class="text-[9px] text-base-content/50 uppercase font-bold">Max Drawdown</span>
         <span 
           class="text-xs font-bold font-mono mt-0.5"
-          :class="maxDrawdown > 0 ? 'text-error' : 'text-base-content/60'"
+          :class="displayedCurve.length === 0 ? 'text-base-content/40' : (maxDrawdown > 0 ? 'text-error' : 'text-base-content/60')"
         >
-          {{ maxDrawdown > 0 ? `-${maxDrawdown.toFixed(2)}%` : '0.00%' }}
+          {{ displayedCurve.length === 0 ? '–' : (maxDrawdown > 0 ? `-${maxDrawdown.toFixed(2)}%` : '0.00%') }}
         </span>
       </div>
 
       <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
         <span class="text-[9px] text-base-content/50 uppercase font-bold">Sample Points</span>
         <span class="text-xs font-bold text-base-content font-mono mt-0.5">
-          {{ effectiveMode === 'LIVE' ? `${closedTradesCount} Closed Trades` : `${displayedCurve.length} Points` }}
+          {{ effectiveMode === 'LIVE' ? `${closedTradesCount} Closed Trades` : (displayedCurve.length > 0 ? `${displayedCurve.length} Points` : '–') }}
         </span>
       </div>
 
       <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
-        <span class="text-[9px] text-base-content/50 uppercase font-bold">Win Rate (Scope)</span>
+        <span class="text-[9px] text-base-content/50 uppercase font-bold">{{ effectiveMode === 'LIVE' ? 'Live Win Rate' : 'Backtest Win Rate' }}</span>
         <span 
           class="text-xs font-bold font-mono mt-0.5"
-          :class="scopeWinRate >= 0.5 ? 'text-success' : 'text-warning'"
+          :class="scopeWinRate == null ? 'text-base-content/40' : (scopeWinRate >= 0.5 ? 'text-success' : 'text-warning')"
         >
-          {{ (scopeWinRate * 100).toFixed(1) }}%
+          {{ scopeWinRate != null ? `${(scopeWinRate * 100).toFixed(1)}%` : '–' }}
         </span>
       </div>
     </div>
+
 
     <!-- Equity Curve SVG Container -->
     <div class="pt-1">
@@ -350,12 +354,17 @@ const maxDrawdown = computed(() => {
 const scopeWinRate = computed(() => {
   if (effectiveMode.value === 'LIVE') {
     const trades = closedSignals.value;
-    if (trades.length === 0) return props.liveStats?.win_rate ?? 0.5;
+    if (trades.length === 0) {
+      const wr = props.liveStats?.win_rate;
+      return (wr != null && wr > 0) ? wr : null;  // null = no data yet
+    }
     const wins = trades.filter((t) => (t.pnl_pct || 0) > 0).length;
     return wins / trades.length;
   }
-  return props.selectedBacktestData?.summary?.win_rate ?? props.liveStats?.win_rate ?? 0.5;
+  const wr = props.selectedBacktestData?.summary?.win_rate ?? props.liveStats?.win_rate;
+  return (wr != null && wr > 0) ? wr : null;  // null = no data yet
 });
+
 
 const timeRangeText = computed(() => {
   const pts = displayedCurve.value;
