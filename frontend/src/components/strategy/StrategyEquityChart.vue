@@ -84,19 +84,18 @@
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 pt-1">
       <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
         <span class="text-[9px] text-base-content/50 uppercase font-bold">Baseline Capital</span>
-        <span class="text-xs font-bold font-mono mt-0.5 text-base-content/80">100.00%</span>
+        <span class="text-xs font-bold font-mono mt-0.5 text-base-content/80">0.00%</span>
       </div>
 
       <div class="p-2 rounded-box bg-base-300/40 border border-base-content/10 flex flex-col">
         <span class="text-[9px] text-base-content/50 uppercase font-bold">
-          {{ screenMode === 'LIVE' ? 'Current Live Equity' : 'Ending Backtest Equity' }}
+          {{ screenMode === 'LIVE' ? 'Current Live Return' : 'Ending Backtest Return' }}
         </span>
         <span 
           class="text-xs font-bold font-mono mt-0.5"
           :class="netChangePct >= 0 ? 'text-success' : 'text-error'"
         >
-          {{ currentEquity.toFixed(2) }}%
-          <span class="text-[10px] ml-0.5 font-normal">({{ netChangePct >= 0 ? '+' : '' }}{{ netChangePct.toFixed(2) }}%)</span>
+          {{ netChangePct >= 0 ? '+' : '' }}{{ netChangePct.toFixed(2) }}%
         </span>
       </div>
 
