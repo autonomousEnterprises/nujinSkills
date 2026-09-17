@@ -175,14 +175,7 @@ const gates = computed(() => props.selectedBacktestData?.falsification_gates || 
 const tradesDetail = computed(() => props.selectedBacktestData?.trades_detail || []);
 
 const distributionBins = computed(() => {
-  return props.selectedBacktestData?.return_distribution || [
-    { bin_label: "<-3.0%", count: 1, win: false },
-    { bin_label: "-3.0% to -1.5%", count: 3, win: false },
-    { bin_label: "-1.5% to 0%", count: 5, win: false },
-    { bin_label: "0% to +1.5%", count: 8, win: true },
-    { bin_label: "+1.5% to +3.0%", count: 12, win: true },
-    { bin_label: ">+3.0%", count: 4, win: true }
-  ];
+  return props.selectedBacktestData?.return_distribution || [];
 });
 
 const currentEquityCurve = computed(() => {
@@ -199,21 +192,21 @@ const regimeCards = computed<RegimeData[]>(() => {
       key: 'bull_market',
       label: 'BULL REGIME',
       icon: '🐂',
-      data: breakdown.bull_market || { trade_count: 14, win_rate: 0.643, profit_factor: 1.82, net_pnl_pct: 12.4 },
+      data: breakdown.bull_market || null,
       curve: breakdown.bull_market?.equity_curve || []
     },
     {
       key: 'bear_market',
       label: 'BEAR REGIME',
       icon: '🐻',
-      data: breakdown.bear_market || { trade_count: 8, win_rate: 0.500, profit_factor: 1.45, net_pnl_pct: 4.8 },
+      data: breakdown.bear_market || null,
       curve: breakdown.bear_market?.equity_curve || []
     },
     {
       key: 'ranging_market',
       label: 'RANGING / CHOP',
       icon: '🔄',
-      data: breakdown.ranging_market || { trade_count: 18, win_rate: 0.556, profit_factor: 1.58, net_pnl_pct: 8.2 },
+      data: breakdown.ranging_market || null,
       curve: breakdown.ranging_market?.equity_curve || []
     }
   ];

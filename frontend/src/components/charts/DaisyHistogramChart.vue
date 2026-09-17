@@ -6,8 +6,14 @@
       <span class="text-[10px] text-base-content/60">{{ totalCount }} Closed Trades Simulated</span>
     </div>
 
+    <!-- Empty state -->
+    <div v-if="totalCount === 0" class="rounded-box bg-base-200/40 p-4 border border-base-content/10 flex flex-col items-center justify-center gap-1 text-center min-h-[80px]">
+      <span class="text-[11px] text-base-content/40 font-mono uppercase tracking-wider">NO BACKTEST DATA</span>
+      <span class="text-[10px] text-base-content/30">Run a backtest to populate the return distribution</span>
+    </div>
+
     <!-- Bars Container -->
-    <div class="rounded-box bg-base-200/40 p-3 border border-base-content/10 flex flex-col gap-2">
+    <div v-else class="rounded-box bg-base-200/40 p-3 border border-base-content/10 flex flex-col gap-2">
       <div class="flex items-end justify-between gap-2 h-24 pt-2 px-1 border-b border-base-content/10">
         <div 
           v-for="(bin, idx) in formattedBins" 
@@ -59,14 +65,7 @@ const props = withDefaults(
     title?: string;
   }>(),
   {
-    data: () => [
-      { bin_label: "<-3.0%", count: 1, win: false },
-      { bin_label: "-3.0% to -1.5%", count: 3, win: false },
-      { bin_label: "-1.5% to 0%", count: 5, win: false },
-      { bin_label: "0% to +1.5%", count: 8, win: true },
-      { bin_label: "+1.5% to +3.0%", count: 7, win: true },
-      { bin_label: ">+3.0%", count: 5, win: true }
-    ]
+    data: () => []
   }
 );
 

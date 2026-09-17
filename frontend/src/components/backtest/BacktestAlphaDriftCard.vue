@@ -324,30 +324,7 @@ const emit = defineEmits<{
 const driftSnapshots = computed(() => {
   const cronHist = props.managedStrategy?.cron_config?.drift_history;
   if (cronHist && cronHist.length > 0) return cronHist;
-
-  if (props.summary && props.summary.sharpe) {
-    return [
-      {
-        timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
-        sharpe: Math.max(0.5, Number((props.summary.sharpe - 0.15).toFixed(2))),
-        dsr: 0.94,
-        win_rate: Math.max(0.4, Number((((props.summary.win_rate || 0.5) - 0.02)).toFixed(3))),
-        profit_factor: Math.max(1.0, Number(((props.summary.profit_factor || 1.4) - 0.1).toFixed(2))),
-        max_drawdown: Number(((props.summary.max_drawdown || 0.02) * 1.1).toFixed(3)),
-        trades: Math.max(10, (props.summary.trades || 30) - 8),
-      },
-      {
-        timestamp: props.summary.last_run || new Date().toISOString(),
-        sharpe: props.summary.sharpe,
-        dsr: props.summary.dsr || 0.96,
-        win_rate: props.summary.win_rate,
-        profit_factor: props.summary.profit_factor,
-        max_drawdown: props.summary.max_drawdown,
-        trades: props.summary.trades,
-      },
-    ];
-  }
-
+  // No synthetic fallback — only real recorded drift history is shown
   return [];
 });
 
