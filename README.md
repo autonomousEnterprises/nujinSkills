@@ -1,263 +1,184 @@
-# ⚡ NujinAI: Autonomous Quant Trading Engine & Dual-Screen Cockpit
+# ⚡ NujinAI / EdgeMiner — Autonomous Quant Trading Agent Skill
 
-> **An agent-agnostic quantitative alpha discovery engine, self-improving strategy builder, 24/7 Telegram signal gateway, and interactive dual-screen telemetry Cockpit.**
+[![System: NujinAI](https://img.shields.io/badge/System-NujinAI-blue.svg)](SKILL.md)
+[![Year: 2026 Standard](https://img.shields.io/badge/Standard-2026%20Quant%20Agent-emerald.svg)](references/quant_strategies.md)
+[![Cockpit: Dual--Screen Vue 3](https://img.shields.io/badge/Cockpit-Dual--Screen%20Vue%203-indigo.svg)](references/cockpit_telemetry.md)
+[![Engine: VectorBT & DSR](https://img.shields.io/badge/Audit-DSR%20%E2%89%A5%200.95-amber.svg)](references/statistical_validation.md)
+[![Signals: 24/7 Telegram](https://img.shields.io/badge/Signals-24%2F7%20Telegram-sky.svg)](references/execution_and_signals.md)
 
----
-
-## 🌟 Key Capabilities
-
-- 🤖 **Nujin the Self-Improving Quant Agent:** An autonomous AI quant researcher that formulates non-consensus trading rules, runs vectorized backtests with taker friction, audits candidate returns via Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$), and continually self-improves its hypotheses, tools, and research methodology.
-- 🔁 **Continuous Autonomous Research Engine (`tools/nujin_miner.py`):** Persistent, disk-backed optimization loop (`.nujin/`) testing candidate rules against fixed historical regime slices (Bull, Bear, Range) with strict apples-to-apples validation scoring and confidence margins.
-- 📐 **Strict Binary Evaluation Criteria:** 4–6 strict yes/no programmatic checks (`vectorized_screener.py`, `validation_cynic.py`, `run_backtest_audit.py`) eliminating subjective ratings (Net Sharpe $\ge 1.8$, MaxDD $\le 4.5\%$, Win Rate $\ge 50\%$, Expectancy $\ge 2\times$ fees, DSR $\ge 0.95$, parameter plateau stability).
-- 🧬 **Structured Mutation Operators & Plateau Breakers:** Systematically mutates candidate rules via `add_constraint`, `add_negative_example`, `restructure_exit`, `tighten_thresholds`, `remove_bloat`, `directional_bias_flip`, and `plateau_break` (synthesizing fresh hypotheses from accumulated failure memory).
-- 🛠️ **Meta-Tool Evolution:** Nujin audits, benchmarks, and evolves its own CLI tools (`python tools/nujin_miner.py improve-tool`), expands reference documentation with empirical discoveries, and refactors computational bottlenecks.
-- 🖥️ **Dual-Screen Visual Cockpit:** High-speed Web UI (`frontend_control.py`) featuring TradingView Lightweight Charts, live execution telemetry, backtest analytics, and the Strategy Manager command deck.
-- 💬 **24/7 Telegram Signal Gateway:** Integrated Telegram bot dispatcher broadcasting real-time trade signals, regime shifts, and PnL alerts to user messaging channels.
-- 🚀 **Standard Bot Code Emission:** Emits production-ready Freqtrade/Jesse `IStrategy` code and deploys paper or live trading bots via `bot_control.py`.
+> **Unlock the trading world effortlessly.** You bring the creative vision and define your financial goals; your AI agent handles the heavy algorithmic grinding, statistical falsification, 24/7 live signaling, and tool self-evolution.
 
 ---
 
-## 🤖 Integration & Usage Guide Across AI Environments
+## 🎯 What is NujinAI?
 
-**NujinSkills** is built around an agent-agnostic `SKILL.md` contract and local CLI tools.
+**NujinAI (EdgeMiner)** is a self-evolving quantitative trading assistant and execution engine packaged as an open, agent-agnostic **AI Skill**. 
 
-### 1. Google Antigravity IDE
-Antigravity automatically discovers and loads skills from customization roots:
-- **Global Customizations Skill (Available in All Workspaces):**
-  Place NujinSkills in `~/.gemini/config/skills/NujinSkills/` (containing `SKILL.md`).
-  ```bash
-  mkdir -p ~/.gemini/config/skills/NujinSkills
-  cp -r * ~/.gemini/config/skills/NujinSkills/
-  ```
-- **Workspace-Scoped Skill (Project Specific):**
-  Place NujinSkills in `.agents/skills/NujinSkills/` inside your project root.
-  ```bash
-  mkdir -p .agents/skills/NujinSkills
-  cp -r * .agents/skills/NujinSkills/
-  ```
+Instead of getting bogged down in boilerplate code, slippage modeling, or curve-fitted indicators:
+1. **You stay creative:** State your market intuition, target asset, risk tolerance, and profit milestones in natural language.
+2. **The Agent grinds:** Researches market microstructure, writes vectorized backtests, stress-tests against historical regimes, audits returns via the **Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$)**, and verifies parameter stability.
+3. **Deploys & Broadcasts:** Streams visual telemetry to a dual-screen Vue 3 Cockpit and broadcasts actionable 24/7 signals directly to your Telegram.
+4. **Continuously Self-Improves:** Retains empirical memory on disk of what works and what fails, mutates trading hypotheses, refines its own Python tools, and records your personal financial objectives.
 
 ---
 
-### 2. OpenClaw / Hermes CLI Agents
-Register the repository directly into your CLI agent's skill directory:
+## ⚡ Quick Start: Zero to Alpha in Minutes
+
+### Option 1: Direct Agent Execution (Easiest)
+Simply clone or open this directory in **any AI agent or IDE** (Google Antigravity, Claude Code, Cursor, Windsurf, OpenClaw, Hermes):
+
 ```bash
-# Register skill into OpenClaw / Hermes
-openclaw skill add ./
-# Or symlink to global skills directory
-ln -s $(pwd) ~/.openclaw/skills/NujinSkills
+git clone https://github.com/autonomousEnterprises/EdgeMiner.git
+cd EdgeMiner
 ```
 
----
-
-### 3. Claude Code / Cursor / Windsurf / VS Code Copilot
-Open this project folder directly in your editor. The AI assistant ingests `SKILL.md` and `references/` when processing context.
-
----
-
-## 💬 User Strategy Prompts & Profiles
-
-Prompt Nujin naturally with your quantitative trading goal:
-
-1. **Prop Firm Strategy:**
-   > *"I need a prop firm trading strategy."*  
-   > *(Nujin sets strict Max DD $\le 4.5\%$, Sharpe $\ge 1.8$, DSR $\ge 0.95$, executes the self-improving loop, emits Freqtrade code, and launches paper trading).*
-
-2. **BTC Swing Trading Strategy:**
-   > *"Make me a btc market cycle swing trade strategy."*  
-   > *(Nujin extracts multi-day trend/chop regimes using Hurst $H > 0.55$, optimizes dynamic holding periods, and projects markers on the Lightweight Chart).*
-
-3. **Conservative Wealth Preservation:**
-   > *"Make me a longterm conservative investment strategy."*  
-   > *(Nujin targets capital preservation, Parkinson volatility compression, Max DD $\le 6\%$, and low trade turnover).*
-
-4. **News Volatility Strategy:**
-   > *"How can news be traded effectively?"*  
-   > *(Nujin mines post-event V-Spread spikes and wick rejection fades, stress-tests with Monte Carlo reshuffling, and relays alerts to Telegram).*
-
----
-
-## 🔄 The Self-Improving Quant Workflow Funnel
-
-```
-                        [ USER PROMPT ]
-  ("I need a prop firm strategy" / "Make me a BTC swing strategy")
-                                │
-                                ▼
-                ┌───────────────────────────────┐
-                │ 1. Scan Market & Features     │
-                │    python tools/feature_...   │
-                └───────────────┬───────────────┘
-                                │
-                                ▼
-                ┌───────────────────────────────┐
-                │ 2. Define Binary Evals (M=6)  │
-                │    (Sharpe, MaxDD, DSR, etc.) │
-                └───────────────┬───────────────┘
-                                │
-                                ▼
-                ┌───────────────────────────────┐
-                │ 3. Init Research Loop (.nujin)│
-                │    python tools/nujin_miner.py│
-                │    init                       │
-                └───────────────┬───────────────┘
-                                │
-                                ▼
-┌───────────────────────────────────────────────────────────────┐
-│              4. CONTINUOUS AUTONOMOUS ALPHA LOOP              │
-│                                                               │
-│   • Evaluate candidate rules on fixed validation slices       │
-│   • Score binary criteria (0 to 6)                            │
-│   • KEEP if validation_score > best by margin, else DISCARD   │
-│   • Apply structured mutations (add_constraint, exit, etc.)  │
-│   • Trigger plateau_break after 5 consecutive failures        │
-│   • Dispatch real-time UI telemetry widget to Cockpit         │
-└───────────────────────────────┬───────────────────────────────┘
-                                │
-                                ▼ (DSR >= 0.95 & Score 6/6)
-                ┌───────────────────────────────┐
-                │ 5. Emit Code & Live Deploy    │
-                │    - Emit Freqtrade Strategy  │
-                │    - Register in StrategyMgr  │
-                │    - Launch Paper Bot         │
-                │    - Stream Telegram Alerts   │
-                └───────────────────────────────┘
-```
-
----
-
-## 📂 Repository Architecture
-
-```
-NujinSkills/
-├── SKILL.md                       <-- Master Skill Contract, Nujin execution manual
-├── README.md                      <-- This file
-├── requirements.txt               <-- Python dependencies (polars, vectorbt, uvicorn, etc.)
-├── .nujin/                        <-- Single Source of Truth for Autonomous Alpha Loop
-│   ├── state.json                 # Live run counter, best scores, plateau counter
-│   ├── rules.json                 # Current candidate rules
-│   ├── best_rules.json            # Current champion rules
-│   └── results.jsonl              # Append-only audit history of every research cycle
-├── data/
-│   ├── state.json                 # ★ Single Source of Truth — read by all consumers
-│   ├── strategies.json            # Strategy registry (ACTIVE_LIVE, CRON_BACKTEST, DEACTIVATED)
-│   ├── signals.json               # Persisted live signals (managed by SignalStore)
-│   ├── features.csv               # Extracted OHLCV feature matrix
-│   ├── candles_15m.csv            # BTC/USDT 15m historical candles
-│   └── candidate_returns.json     # Trade return arrays for DSR audit
-├── references/                    <-- Production-Grade Reference Manuals (Zero Bloat)
-│   ├── alpha_ideation.md          # Dialectic ideation, 6 quant dimensions, strategy profiles, 7 mutations
-│   ├── feature_engineering.md     # Bar physics, wicks, VSA, Parkinson, Hurst proxy, AVWAP
-│   ├── statistical_validation.md  # Strict binary metrics, DSR formula, parameter plateau, ATR stops
-│   ├── self_improving_loop.md     # Autonomous research engine, disk state, validation slicing, plateau breakers
-│   ├── execution_and_signals.md   # Freqtrade/Jesse code emission, 24/7 Telegram signal gateway, bot supervisor
-│   ├── state_architecture.md      # StateManager, SignalStore, atomic file locks, tri-state lifecycle, cron drift
-│   ├── cockpit_telemetry.md       # Dual-screen Cockpit UI architecture, TradingView charts, WS bus, F1–F4 hotkeys
-│   └── extending_nujin.md         # Developer guide: REST endpoints, WS events, React screens, tool authoring standard
-├── tools/                         <-- Nujin AI CLI Tools (one consistent standard)
-│   ├── nujin_miner.py             # [NujinMiner]      ★ Autonomous Alpha Loop & Tool Evolver
-│   ├── feature_miner.py           # [FeatureMiner]    Bar geometry, Hurst, VSA, Parkinson, AVWAP
-│   ├── vectorized_screener.py     # [VectorizedScreener] Vectorbt fast In-Sample filter
-│   ├── validation_cynic.py        # [ValidationCynic] DSR gate, Monte Carlo, OOS audit
-│   ├── run_backtest_audit.py      # [BacktestAudit]   Full backtest & 5-Gate Cynic report
-│   ├── strategy_manager.py        # [StrategyManager] Lifecycle, portfolio & cron drift CLI
-│   ├── state_control.py           # [StateControl]    Shared state CLI for AI agents
-│   ├── strategy_emitter.py        # [StrategyEmitter] Freqtrade IStrategy code generator
-│   ├── ui_dispatcher.py           # [UIDispatcher]    WebSocket event dispatcher
-│   ├── server_control.py          # [ServerControl]   Start/stop FastAPI server
-│   ├── frontend_control.py        # [FrontendControl] Build/serve Cockpit dashboard
-│   └── bot_control.py             # [BotControl]      Deploy/manage paper trading bot
-├── server/                        <-- Telemetry Backend & Telegram Gateway
-│   ├── main.py                    # FastAPI app & REST API
-│   ├── state_manager.py           # ★ StateManager & SignalStore — canonical file-locked writes
-│   ├── backtest_engine.py         # Vectorized backtest & regime analysis engine
-│   ├── websocket.py               # Real-time WebSocket event broadcaster
-│   ├── telegram_bot.py            # Telegram signal gateway (24/7 alerts)
-│   ├── bot_runner.py              # Freqtrade/Jesse paper-trading supervisor
-│   └── data_manager.py            # OHLCV data loader & Binance live feed
-├── strategies/                    <-- Strategy .py files (loaded by backtest engine)
-└── frontend/                      <-- User Telemetry Cockpit
-    └── src/
-        ├── App.tsx                # Screen router, unified state via useWebSocket
-        ├── components/
-        │   ├── ChartCanvas.tsx    # F1 — Live BTC/USDT chart + backtest trade markers
-        │   ├── SignalDeck.tsx     # F2 — Live signals, PnL, win rate, Sharpe since activation
-        │   ├── BacktestDeck.tsx   # F3 — Equity curve, regime survival, 5-Gate Cynic audit
-        │   ├── StrategyManagerDeck.tsx # F4 — Command center, leaderboard, drift trajectory
-        │   └── Header.tsx         # Strategy mega-menu, WS status, screen switcher
-        └── hooks/
-            └── useWebSocket.ts    # Real-time WS client — surfaces liveSystemState
-```
-
----
-
-## ⚡ Quick Start
-
-### 1. Installation
-Clone the repository and install dependencies in virtualenv:
+Initialize your virtual environment & dependencies:
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Run Autonomous Quant Alpha Discovery
+Start the system engines:
 ```bash
-# Initialize state and baseline rules
-python tools/nujin_miner.py init --target "Prop Firm Dual Wick Rejection"
-
-# Run 10 continuous research cycles
-python tools/nujin_miner.py run --cycles 10
-
-# Inspect status and recent mutations
-python tools/nujin_miner.py status
-```
-
-### 3. Self-Audit Tools (Meta-Tool Evolution)
-Audit and benchmark any tool in `tools/`:
-```bash
-python tools/nujin_miner.py improve-tool --tool feature_miner.py
-```
-
-### 4. Launch Cockpit & Telemetry Backend
-Start services in background daemon mode:
-```bash
-# Start FastAPI Telemetry Backend & Telegram Signal Gateway (Port 8000)
+# 1. Start FastAPI Telemetry & Signal Server (Port 8000)
 python tools/server_control.py start --port 8000 --daemon
 
-# Start Dual-Screen Frontend Cockpit (Port 3000)
+# 2. Start Dual-Screen Visual Cockpit (Port 3000)
 python tools/frontend_control.py start --port 3000 --daemon
 ```
 
----
+Now, **simply prompt your AI agent**:
+> *"I want a prop-firm ready gold (XAU/USD) 1m scalping strategy targeting max 4% drawdown, minimum 1.8 Sharpe, with tight ATR trailing stops. Explore the market and build it."*
 
-## 🛠️ CLI Tools Reference
-
-| Tool Script | `[Prefix]` | Responsibilities | Key Arguments |
-| --- | --- | --- | --- |
-| `tools/nujin_miner.py` | `[NujinMiner]` | **Autonomous Alpha Loop & Tool Evolver:** hypothesis-eval-mutate cycles, binary scoring, disk state, and meta-tool auditing | `init`, `step`, `run`, `status`, `improve-tool`, `--target`, `--cycles`, `--tool` |
-| `tools/feature_miner.py` | `[FeatureMiner]` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
-| `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast Vectorbt / Polars IS strategy coarse filter with taker fee friction | `--data`, `--rules`, `--fee-bps`, `--output` |
-| `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
-| `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
-| `tools/strategy_manager.py` | `[StrategyManager]` | Strategy lifecycle CLI: multi-bot execution, rankings, drift tracking | `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `rank` |
-| `tools/state_control.py` | `[StateControl]` | Shared state CLI: read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add` |
-| `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
-| `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
-| `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
-| `tools/frontend_control.py` | `[FrontendControl]` | Build and serve the dual-screen React Cockpit | `build`, `start`, `stop`, `status`, `--port` |
-| `tools/bot_control.py` | `[BotControl]` | Launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+The agent reads [`SKILL.md`](SKILL.md), conducts feature extraction, runs adversarial backtests, and deploys it.
 
 ---
 
-## 💻 Cockpit Hotkeys
+### Option 2: Install as a Reusable Agent Skill
 
-| Key | Screen |
-|---|---|
-| **`F1`** | Chart Canvas — live BTC/USDT candlestick chart with backtest trade markers |
-| **`F2`** | Signal Deck — live signal feed, win rate, profit factor, Sharpe & PnL since activation |
-| **`F3`** | Backtest — equity curve, return distribution, regime survival, 5-Gate Cynic Audit |
-| **`F4`** | Strategy Manager — command center, multi-bot execution, leaderboard, drift trajectory |
-| **`Ctrl + Space`** | Cycle through all screens |
+Install NujinSkills globally across your favorite agentic frameworks:
+
+```bash
+# Google Antigravity (Workspace or Global Skill)
+mkdir -p ~/.gemini/config/skills/nujinskills
+cp -r ./* ~/.gemini/config/skills/nujinskills/
+
+# OpenClaw / Hermes CLI Agents
+openclaw skill add ./
+# Or symlink directly
+ln -s $(pwd) ~/.openclaw/skills/nujinskills
+
+# Claude Code
+claude skill add ./
+```
 
 ---
 
-## 📜 License
-MIT License. Built for autonomous quantitative research and strategy development.
+## 🔁 The Autonomous Alpha Loop
+
+```
+  User Financial Goal & Thesis
+              │
+              ▼
+┌────────────────────────────────────────────────────────┐
+│               PHASE 1–4: DISCOVERY & BENCHMARK         │
+│  • Microstructure features (VSA, wicks, Parkinson vol) │
+│  • Strict Binary Criteria (Sharpe ≥ 1.8, MaxDD ≤ 4.5%) │
+│  • Apples-to-apples baseline on historical regimes     │
+└─────────────────────────────┬──────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────┐
+│          PHASE 5: PERSISTENT ALPHA MINING LOOP         │
+│  • Continuous trial mutations via structured operators │
+│  • Keep/discard decisions backed by disk persistence   │
+│  • Plateau breakers triggered on stalled alpha         │
+└─────────────────────────────┬──────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+┌───────────────────────────────┐ ┌───────────────────────────────┐
+│ 5-GATE CYNIC AUDIT (DSR≥0.95) │ │ TELEMETRY & LIVE EXECUTION    │
+│  1. Deflated Sharpe Ratio     │ │  • Dual-Screen Cockpit (Vue 3)│
+│  2. Parameter Plateau Surface │ │  • 24/7 Telegram Gateway      │
+│  3. Monte Carlo Tail MDD99    │ │  • Freqtrade / Jesse Bots     │
+│  4. Out-of-Sample Retention   │ │  • Dynamic Risk Sizing        │
+│  5. Market Regime Breakdown   │ │  • Signal Conflict Guard      │
+└───────────────────────────────┘ └───────────────────────────────┘
+```
+
+---
+
+## 🖥️ The Dual-Screen Cockpit
+
+Access the interactive trading cockpit at **`http://localhost:3000`**:
+
+| Screen / Deck | Hotkey | Purpose & Telemetry |
+|---|---|---|
+| **Chart Canvas** | **`F1`** | High-performance TradingView candlestick chart overlaid with Level 3 visual primitives (multi-scale EMAs, Bollinger/Keltner bands), Fair Value Gap (FVG) imbalance boxes, liquidity sweeps, and execution markers. |
+| **Signal Deck** | **`F2`** | Live execution telemetry: win rate, profit factor, annualized Sharpe, active open position card with real-time unrealized PnL, and manual position override button. |
+| **Backtest Deck** | **`F3`** | Comprehensive backtest audit: authentic calendar time windows, equity growth curve, return distribution, regime breakdown (Bull, Bear, Range), and 5-Gate Cynic matrix. |
+| **Strategy Manager** | **`F4`** | Institutional 4-pillar strategy leaderboard, global Live vs. Backtest toggle, equity trajectory curves, correlation matrices, and direct *View on Chart (F1)* action navigation. |
+| **Cycle Screens** | **`Ctrl + Space`** | Seamlessly toggle focus between open decks. |
+
+---
+
+## 🛠️ CLI Toolkit Overview
+
+All tools conform to the 2026 Nujin Agent Standard and execute directly in your terminal:
+
+```bash
+# Continuous quant alpha mining
+python tools/nujin_miner.py run --archetype mean_reversion --cycles 10
+
+# Screen strategies using fast vectorized VectorBT filter
+python tools/vectorized_screener.py --data data/candles_15m.csv --strategy candidate.py
+
+# Adversarial 5-Gate Cynic Audit (DSR >= 0.95)
+python tools/validation_cynic.py --strategy candidate.py --strict
+
+# Institutional 4-Pillar Ranking Leaderboard
+python tools/strategy_manager.py rank
+
+# Deep strategy quantitative breakdown & tier rationale
+python tools/strategy_manager.py insights <strategy_name>
+
+# Portfolio correlation matrix & regime orthogonality
+python tools/portfolio_cynic.py --threshold 0.50
+
+# Broadcast market updates or daily performance reports to Telegram
+python tools/telegram_broadcast.py broadcast --type report --title "Daily Alpha" --message "PnL: +3.2%, Sharpe: 2.1"
+
+# Supervise paper (dry-run) or live bot execution
+python tools/bot_control.py deploy --strategy candidate --mode dry-run
+```
+
+---
+
+## 🧠 Self-Improvement & Long-Term Adaptation
+
+NujinAI does not stop at strategy generation:
+- **Disk-Grounded Learning (`.nujin/`):** Preserves run counters, empirical failure patterns, and candidate rules across sessions. It never repeats discredited parameter combinations.
+- **Goal-Aware Alignment:** Incorporates user-defined financial scope, drawdown constraints, and risk tolerances into its core binary acceptance matrix.
+- **Meta-Tool Evolution:** Audits its own internal CLI scripts (`python tools/nujin_miner.py improve-tool --tool <name.py>`), updates documentation, vectorizes bottlenecks, and refines feature miners.
+
+---
+
+## 📚 Reference Knowledge Base
+
+For in-depth mathematical derivations and architecture specifications:
+- [`SKILL.md`](SKILL.md) — Master Autonomous Quant Engine Protocol & Instructions
+- [`references/cockpit_telemetry.md`](references/cockpit_telemetry.md) — Dual-Screen Cockpit, WebSocket Bus & UI Controls
+- [`references/quant_strategies.md`](references/quant_strategies.md) — 2026 Quant Landscape, SMC/ICT, 0DTE & Microstructure
+- [`references/strategy_ranking_tiers.md`](references/strategy_ranking_tiers.md) — 4-Pillar Scoring Model & Tier Hurdles
+- [`references/statistical_validation.md`](references/statistical_validation.md) — Deflated Sharpe Ratio & Adversarial Falsification
+- [`references/feature_engineering.md`](references/feature_engineering.md) — Raw Auction Dynamics, Bar Physics & VSA
+- [`references/execution_and_signals.md`](references/execution_and_signals.md) — Bot Supervisors & Telegram Signal Gateway
+- [`references/extending_nujin.md`](references/extending_nujin.md) — Developer Guide: Adding REST endpoints, WS feeds & Vue 3 decks
+
+---
+
+## 📄 License
+
+MIT License — Autonomous Enterprises. Built for systematic quantitative traders and autonomous agent swarms.
