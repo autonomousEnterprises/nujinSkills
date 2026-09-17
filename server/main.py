@@ -729,6 +729,31 @@ async def get_portfolio_overview():
     }
 
 
+@app.get("/api/portfolio/correlation")
+async def get_portfolio_correlation(threshold: float = 0.50, strategies: Optional[str] = None, data_path: str = "data/candles_15m.csv"):
+    """
+    Returns pairwise correlation matrix, regime slicing attribution,
+    ensemble metrics, and redundancy/complementarity audit flags.
+    """
+    try:
+        from tools.portfolio_cynic import evaluate_portfolio
+        s_list = [s.strip() for s in strategies.split(",") if s.strip()] if strategies else None
+        report = evaluate_portfolio(strategy_names=s_list, data_path=data_path, correlation_threshold=threshold)
+        return report
+    except Exception as e:
+        logger.error(f"[PortfolioCynic] Error computing portfolio correlation: {e}")
+        return {
+            "error": str(e),
+            "strategies": [],
+            "correlation_matrix": {},
+            "spearman_matrix": {},
+            "individual_metrics": {},
+            "regime_breakdown": {},
+            "portfolio_ensemble": {},
+            "pairwise_analysis": []
+        }
+
+
 @app.post("/api/strategies/manage/status")
 async def update_managed_strategy_status(req: UpdateStrategyStatusRequest):
     """Update strategy lifecycle status: ACTIVE_LIVE, CRON_BACKTEST, DEACTIVATED with multi-strategy support."""

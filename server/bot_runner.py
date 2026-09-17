@@ -190,4 +190,40 @@ class BotSupervisor:
             }
         }
 
+    def check_signal_cannibalization(self, new_signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Delegates to module-level check_signal_cannibalization."""
+        return check_signal_cannibalization(new_signal)
+
+def check_signal_cannibalization(new_signal: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Signal Cannibalization Guard:
+    Checks if another active strategy currently holds an opposing position on the same asset.
+    Prevents wash-trading and commission bleed across parallel ensemble strategies.
+    Returns the conflicting active position dict if cannibalization is detected, or None.
+    """
+    from server.state_manager import signal_store
+    active_positions = signal_store.get_active_signals()
+    if not active_positions:
+        return None
+
+    incoming_pair = (new_signal.get("pair") or new_signal.get("symbol") or "").upper().replace("/", "").replace("_", "").replace("-", "")
+    incoming_action = (new_signal.get("action") or new_signal.get("side") or "").upper()
+    incoming_is_long = incoming_action in ("BUY", "LONG")
+    incoming_strategy = new_signal.get("strategy", "").replace(".py", "").lower()
+
+    for pos in active_positions:
+        pos_strategy = pos.get("strategy", "").replace(".py", "").lower()
+        if pos_strategy == incoming_strategy:
+            continue  # Handled by single-strategy position check
+
+        pos_pair = (pos.get("pair") or pos.get("symbol") or "").upper().replace("/", "").replace("_", "").replace("-", "")
+        if pos_pair == incoming_pair:
+            pos_action = (pos.get("action") or pos.get("side") or "").upper()
+            pos_is_long = pos_action in ("BUY", "LONG")
+            if incoming_is_long != pos_is_long:
+                return pos
+
+    return None
+
 bot_supervisor = BotSupervisor()
+

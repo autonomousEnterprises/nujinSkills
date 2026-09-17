@@ -108,13 +108,34 @@ Nujin verifies the computational environment and available market data:
 
 > [!IMPORTANT]
 > **The Referee vs. The Athlete Principle:**
-> - **The Referee (Verification Gates):** Unchanging and strict across all strategies (fees, slippage, DSR $\ge 0.95$, MaxDD $\le 4.5\%$).
+> - **The Referee (Verification Gates):** Unchanging and strict across all strategies (fees, slippage, DSR $\ge 0.95$, MaxDD $\le 4.5\%$, Orthogonality $\rho \le 0.50$).
 > - **The Athlete (Strategy Paradigm):** Completely unconstrained and open. Nujin adapts naturally to whatever philosophy the user requests or explores radically orthogonal archetypes:
 >   1. **Trend Following / Momentum:** EMA crosses, ADX trend strength, Donchian channel breakouts, trailing ATR stops.
 >   2. **Pure Price Action:** Bullish/Bearish Engulfing, Inside Bar continuations, Support/Resistance retests.
 >   3. **Smart Money Concepts (SMC):** Liquidity sweeps, Fair Value Gaps (FVGs), session killzones (London/NY).
 >   4. **Oscillators & Mean Reversion:** RSI divergence, Bollinger Band pierces, intra-candle rejection wicks.
 >   5. **Statistical Quant / Arbitrage:** Anchored VWAP Z-score deviations, Parkinson volatility compression, rolling Hurst regime filtering.
+
+#### 📐 The 4-Pillar Complementary Indicator Framework
+Never build strategies by stacking collinear / redundant indicators (e.g. RSI + Stochastics + MACD are all momentum derivatives of close price; stacking them produces false confidence without new information). Every robust edge must combine **complementary indicators from orthogonal domains**:
+
+1. **Trend / Baseline Direction:** Fast/Slow EMA Ribbon (e.g. 13/34/50), Donchian Channel mid-line, or Anchored VWAP.
+2. **Volatility / Envelope Regime:** Average True Range (ATR), Keltner Channels, or Parkinson Volatility.
+3. **Momentum / Speed of Auction:** ADX (trend strength), RSI (rate of change exhaustion), or Velocity Z-Score.
+4. **Volume & Market Microstructure:** Volume Z-Score, Volume Delta, Upper/Lower Wick Ratios, Fair Value Gaps, or Liquidity Pools.
+
+#### 🔬 Custom Indicator Engineering
+Nujin can synthesize mathematical domain-specific indicators directly in Python:
+- **Volume Absorption Ratio ($V_{\text{abs}}$):** $\frac{\text{Volume}}{\text{True Range} + \epsilon}$ (Identifies institutional absorption / hidden accumulation).
+- **Hurst Exponent Regime Filter ($H$):** Rolling variance-ratio estimate ($H > 0.55 \rightarrow$ trending, $H < 0.45 \rightarrow$ mean-reverting).
+- **Dynamic Volatility Squeeze ($S_v$):** $\frac{\text{Bollinger Bandwidth}}{\text{Keltner Bandwidth}}$ ($S_v < 1.0 \rightarrow$ explosive expansion imminent).
+- **Liquidity Imbalance Ratio ($L_{\text{imb}}$):** $\frac{\text{Upper Wick} - \text{Lower Wick}}{\text{Candle Body} + \epsilon}$ (Quantifies trapped retail breakout buyers/sellers).
+
+#### 🌐 Portfolio Complementarity & Regime Slicing
+Strategies must not be built in isolation. When formulating a new strategy, Nujin actively inspects the currently active portfolio to build **complementary, negatively correlated or orthogonal return streams**:
+- **Pairing Archetypes:** Pair **Trend Following** (explosive runner in trending regimes, taking small chops in ranges) with **Mean Reversion** (steady edge in ranges, sitting flat during breakouts).
+- **Time Horizon Diversity:** Pair high-frequency micro-scalpers (1m–5m) with structural swing runners (1h–4h).
+- **Regime Slicing:** A complete EdgeMiner portfolio must maintain positive alpha coverage across **Bull**, **Bear**, and **Range/Chop** regimes audited via `tools/portfolio_cynic.py`.
 
 Nujin maps the user's trading objective to a standardized quantitative profile or suggests ideas across **6 Quantitative Dimensions**:
 
@@ -154,6 +175,7 @@ Nujin defines 4–6 strict **binary (yes/no)** pass/fail evaluation criteria:
 | `fee_drag_protected`| `command` | Trade Expectancy $\ge 14.0\text{ bps}$ ($2\times \text{fees}$) | `tools/vectorized_screener.py` |
 | `dsr_gte_0_95` | `command` | Deflated Sharpe Ratio $\text{DSR} \ge 0.95$ | `tools/validation_cynic.py` |
 | `parameter_plateau` | `command` | Parameter neighbor grid forms a stable plateau | `tools/validation_cynic.py` |
+| `portfolio_orthogonality`| `command` | Return correlation $\rho \le 0.50$ vs active portfolio & balanced regime alpha | `tools/portfolio_cynic.py` |
 | `microstructure_trap`| `llm-judge`| Entry targets trapped counterparty liquidity | Dialectic audit review |
 
 ---
@@ -284,6 +306,7 @@ Nujin audits and evolves its own tool suite and knowledge base:
 | `tools/feature_miner.py` | `[FeatureMiner]` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
 | `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast In-Sample strategy coarse filter with taker fee & slippage friction | `--data`, `--rules`, `--fee-bps`, `--output` |
 | `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
+| `tools/portfolio_cynic.py` | `[PortfolioCynic]` | **Portfolio Correlation & Regime Slicing:** Pairwise $\rho_{ij}$ matrix, Bull/Bear/Range attribution, diversification ratio, and redundancy filter | `--strategies`, `--data`, `--threshold`, `--json` |
 | `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
 | `tools/strategy_manager.py` | `[StrategyManager]` | **Zero-Code Strategy Management:** Dynamic auto-discovery, safe file removal, 4-pillar rankings, drift tracking, and bot activation | `sync`, `add`, `remove`, `rank`, `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `insights`, `--json` |
 | `tools/telegram_broadcast.py` | `[TelegramBroadcast]` | **Autonomous Telegram Dispatcher:** Broadcasts quant reports, macro/market news, system/strategy updates, and alerts to users | `broadcast`, `status`, `test`, `--message`, `--file`, `--type`, `--title`, `--chat-id`, `--silent`, `--dry-run`, `--json` |

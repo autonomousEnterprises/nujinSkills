@@ -18,6 +18,8 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 | 5-Gate Cynic Audit (DSR >= 0.95) | `python tools/validation_cynic.py --strategy strategies/candidate.py --strict` |
 | Strategy Ranking & Tiers | `python tools/strategy_manager.py rank` |
 | Strategy Deep Insights | `python tools/strategy_manager.py insights <strategy_name>` |
+| Portfolio Correlation & Regime Cynic | `python tools/portfolio_cynic.py --threshold 0.50` |
+| Portfolio Correlation CLI | `python tools/strategy_manager.py correlation` |
 | Sync Strategies on Disk | `python tools/strategy_manager.py sync` |
 | Remove Decommissioned Strategy | `python tools/strategy_manager.py remove <strategy_name>` |
 | Add Strategy to Production | `python tools/strategy_manager.py add <path_to_strategy.py>` |

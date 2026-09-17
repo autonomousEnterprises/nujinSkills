@@ -122,6 +122,49 @@ When derivative or order book feeds are available, Nujin incorporates these high
 
 ## 4. Indicator Anti-Patterns (What NOT to Do)
 
-1. **Avoid Naked Moving Average Crossovers:** MA crossovers are pure lag. In ranging regimes ($H < 0.45$), they buy tops and sell bottoms.
-2. **Avoid Static RSI Overbought/Oversold Thresholds:** In a trending regime ($H > 0.55$), RSI can remain "overbought" ($> 70$) for hundreds of bars while price doubles.
-3. **Enforce Parameter Parsimony:** Never combine more than 3 continuous numerical parameters in an entry expression to prevent catastrophic curve-fitting.
+1. **Avoid Collinear Indicator Stacking:** Never combine multiple indicators that measure the exact same derivative (e.g. RSI + Stochastics + MACD). They generate false confidence without adding new statistical dimensions.
+2. **Avoid Naked Moving Average Crossovers:** MA crossovers are pure lag. In ranging regimes ($H < 0.45$), they buy tops and sell bottoms.
+3. **Avoid Static RSI Overbought/Oversold Thresholds:** In a trending regime ($H > 0.55$), RSI can remain "overbought" ($> 70$) for hundreds of bars while price doubles.
+4. **Enforce Parameter Parsimony:** Never combine more than 3 continuous numerical parameters in an entry expression to prevent catastrophic curve-fitting.
+
+---
+
+## 5. Custom Indicator Synthesis & Complementary Engineering
+
+Nujin is not restricted to standard pre-packaged indicators. It synthesizes custom mathematical signals by combining auction physics across orthogonal domains:
+
+### A. Volume Absorption Ratio ($V_{\text{abs}}$)
+Identifies institutional limit absorption where high volume fails to expand price range:
+```python
+true_range = np.maximum(high - low, np.maximum((high - close.shift(1)).abs(), (low - close.shift(1)).abs()))
+volume_absorption_ratio = (volume / (true_range + 1e-6)) / volume.rolling(50).mean()
+```
+- **High $V_{\text{abs}} > 2.5$ at support/resistance:** Institutions are absorbing all market orders; imminent sharp reversal.
+
+### B. Dynamic Volatility Squeeze ($S_v$)
+Ratios Bollinger Band width against Keltner Channel width to time explosive momentum expansions:
+```python
+bb_std = close.rolling(20).std()
+bb_width = 4.0 * bb_std
+atr20 = true_range.rolling(20).mean()
+keltner_width = 3.0 * atr20
+volatility_squeeze = bb_width / (keltner_width + 1e-6)
+```
+- **$S_v < 0.85$:** Extreme volatility compression (coiled spring). Breakout entry triggered when price breaches Donchian or EMA boundary.
+
+### C. Liquidity Imbalance Ratio ($L_{\text{imb}}$)
+Measures the directional asymmetry of rejection wicks relative to bar progress:
+```python
+candle_body = (close - open).abs()
+wick_imbalance = (upper_wick - lower_wick) / (candle_body + 1e-6)
+```
+- **$L_{\text{imb}} > 2.0$:** Severe upper rejection; trapped breakout buyers. Ideal short entry trigger.
+- **$L_{\text{imb}} < -2.0$:** Severe lower rejection; trapped breakdown sellers. Ideal long entry trigger.
+
+### D. The 4-Pillar Orthogonal Strategy Recipe
+When designing a strategy, select exactly ONE indicator from each pillar:
+1. **Pillar 1 (Trend Baseline):** EMA Ribbon (13/34/50), Donchian Channel, or SuperTrend.
+2. **Pillar 2 (Volatility Regime):** Parkinson Volatility, ATR Trailing Band, or Volatility Squeeze $S_v$.
+3. **Pillar 3 (Momentum Speed):** ADX trend strength, RSI exhaustion, or Linear Regression Slope.
+4. **Pillar 4 (Microstructure / Volume):** Volume Z-Score, Wick Imbalance $L_{\text{imb}}$, or Fair Value Gap.
+

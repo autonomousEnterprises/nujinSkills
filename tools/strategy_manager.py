@@ -95,6 +95,21 @@ def show_portfolio(endpoint: str):
     print(f"  Top Active Alpha:         {port.get('best_performer') or 'N/A'}")
     print("=" * 76 + "\n")
 
+def show_correlation(endpoint: str, threshold: float = 0.50, as_json: bool = False):
+    res = _fetch_json(f"{endpoint}/api/portfolio/correlation?threshold={threshold}")
+    if res and "correlation_matrix" in res:
+        data = res
+    else:
+        from tools.portfolio_cynic import evaluate_portfolio
+        data = evaluate_portfolio(correlation_threshold=threshold)
+
+    if as_json:
+        print(json.dumps(data, indent=2))
+        return
+
+    from tools.portfolio_cynic import print_ascii_report
+    print_ascii_report(data)
+
 def show_drift_distribution(endpoint: str):
     res = _fetch_json(f"{endpoint}/api/strategies/manage/portfolio")
     if res and "distribution_analytics" in res:
@@ -460,8 +475,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="EdgeMiner AI Strategy Management CLI")
     parser.add_argument(
         "action",
-        choices=["list", "status", "backtest", "cron", "rank", "insights", "register", "summary", "portfolio", "drift", "signals", "sync", "remove", "add"],
-        help="list | status | backtest | cron | rank | insights | register | summary | portfolio | drift | signals | sync | remove | add"
+        choices=["list", "status", "backtest", "cron", "rank", "insights", "register", "summary", "portfolio", "correlation", "drift", "signals", "sync", "remove", "add"],
+        help="list | status | backtest | cron | rank | insights | register | summary | portfolio | correlation | drift | signals | sync | remove | add"
     )
     parser.add_argument("pos_strategy", nargs="?", default=None, help="Optional positional strategy name or file path")
     parser.add_argument("pos_status", nargs="?", default=None, help="Optional positional status")
@@ -473,6 +488,7 @@ if __name__ == "__main__":
     parser.add_argument("--profile",   default="Prop Firm Challenge",              help="Target risk profile")
     parser.add_argument("--symbol",    default="BTC/USDT",                         help="Trading pair symbol")
     parser.add_argument("--timeframe", default="15m",                              help="Candle timeframe")
+    parser.add_argument("--threshold", type=float, default=0.50,                   help="Correlation threshold for orthogonality rejection")
     parser.add_argument("--endpoint",  default="http://localhost:8000",            help="Backend API endpoint")
     parser.add_argument("--json",      dest="as_json", action="store_true",        help="Output in JSON format for automated agent ingestion")
     args = parser.parse_args()
@@ -481,18 +497,19 @@ if __name__ == "__main__":
     effective_status = args.pos_status or args.status
     effective_file = args.file or args.pos_strategy
 
-    if   args.action == "list":      list_strategies(args.endpoint)
-    elif args.action == "status":    update_status(effective_strategy, effective_status, args.endpoint, args.exclusive)
-    elif args.action == "backtest":  run_backtest(effective_strategy, args.endpoint)
-    elif args.action == "cron":      run_cron(args.endpoint)
-    elif args.action == "rank":      rank_strategies(args.endpoint, as_json=args.as_json)
-    elif args.action == "insights":  show_insights(effective_strategy, args.endpoint, as_json=args.as_json)
-    elif args.action == "register":  register_strategy(effective_strategy, args.thesis, args.profile, args.symbol, args.timeframe, args.endpoint)
-    elif args.action == "summary":   summary(args.endpoint)
-    elif args.action == "portfolio": show_portfolio(args.endpoint)
-    elif args.action == "drift":     show_drift_distribution(args.endpoint)
-    elif args.action == "signals":   show_signals(effective_strategy, args.endpoint)
-    elif args.action == "sync":      sync_strategies(args.endpoint)
-    elif args.action == "remove":    remove_strategy_cli(effective_strategy, args.endpoint)
-    elif args.action == "add":       add_strategy_cli(effective_file, args.endpoint)
+    if   args.action == "list":        list_strategies(args.endpoint)
+    elif args.action == "status":      update_status(effective_strategy, effective_status, args.endpoint, args.exclusive)
+    elif args.action == "backtest":    run_backtest(effective_strategy, args.endpoint)
+    elif args.action == "cron":        run_cron(args.endpoint)
+    elif args.action == "rank":        rank_strategies(args.endpoint, as_json=args.as_json)
+    elif args.action == "insights":    show_insights(effective_strategy, args.endpoint, as_json=args.as_json)
+    elif args.action == "register":    register_strategy(effective_strategy, args.thesis, args.profile, args.symbol, args.timeframe, args.endpoint)
+    elif args.action == "summary":     summary(args.endpoint)
+    elif args.action == "portfolio":   show_portfolio(args.endpoint)
+    elif args.action == "correlation": show_correlation(args.endpoint, threshold=args.threshold, as_json=args.as_json)
+    elif args.action == "drift":       show_drift_distribution(args.endpoint)
+    elif args.action == "signals":     show_signals(effective_strategy, args.endpoint)
+    elif args.action == "sync":        sync_strategies(args.endpoint)
+    elif args.action == "remove":      remove_strategy_cli(effective_strategy, args.endpoint)
+    elif args.action == "add":         add_strategy_cli(effective_file, args.endpoint)
 

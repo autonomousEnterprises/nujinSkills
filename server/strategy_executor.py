@@ -295,6 +295,32 @@ class NativeStrategyRunner:
 
         sig = StrategyEvaluator.evaluate(self.strategy_name, self.symbol, completed_candles)
         if sig:
+            # Enforce Signal Cannibalization Guard: Prevent opposing wash trades across active strategies on same asset
+            from server.bot_runner import check_signal_cannibalization
+            conflict = check_signal_cannibalization(sig)
+            if conflict:
+                logger.warning(
+                    f"[SignalConflictGuard] ⚠️ CANNIBALIZATION BLOCKED: Strategy '{self.strategy_name}' signaled {sig['action']} on {self.symbol}, "
+                    f"but strategy '{conflict.get('strategy')}' already holds opposing position #{conflict.get('id')} ({conflict.get('action')}). "
+                    f"Suppressing order."
+                )
+                sig["status"] = "CANCELLED_CONFLICT"
+                sig["exit_reason"] = f"CONFLICT_WITH_{conflict.get('strategy')}"
+                sig["annotation"] = f"Cannibalization Suppressed ({conflict.get('strategy')})"
+                signal_store.add(sig)
+                if self.broadcast_callback:
+                    await self.broadcast_callback({
+                        "event_type": "SIGNAL_CONFLICT_SUPPRESSED",
+                        "payload": {
+                            "incoming_strategy": self.strategy_name,
+                            "conflicting_strategy": conflict.get("strategy"),
+                            "symbol": self.symbol,
+                            "action": sig["action"],
+                            "conflicting_action": conflict.get("action")
+                        }
+                    })
+                return
+
             await self._trigger_new_signal(sig)
 
     async def _trigger_new_signal(self, sig: Dict[str, Any]) -> None:

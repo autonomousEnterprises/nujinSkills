@@ -241,3 +241,35 @@ To integrate these 2026 strategies into Nujin's autonomous mutation engine:
      - Maximum Drawdown $\le 4.5\%$
      - Parameter stability across $\pm 10\%$ drift
      - Positive alpha across Bull, Bear, and Range historical slices.
+
+---
+
+## Part 6: Portfolio Complementarity & Regime Orthogonality
+
+A standalone profitable strategy is not enough. In institutional quant trading, running correlated strategies doubles tail risk without providing diversification. **Nujin evaluates portfolio complementarity programmatically via `tools/portfolio_cynic.py`**.
+
+### 6.1 The Mathematical Principle of Orthogonal Portfolios
+For two strategies $A$ and $B$ with annual returns $\mu_A, \mu_B$, standard deviations $\sigma_A, \sigma_B$, and correlation $\rho_{A,B}$:
+
+$$\sigma_{\text{portfolio}} = \sqrt{w_A^2 \sigma_A^2 + w_B^2 \sigma_B^2 + 2 w_A w_B \sigma_A \sigma_B \rho_{A,B}}$$
+
+- **When $\rho \ge 0.70$ (Collinear / Redundant):** The portfolio achieves zero diversification. When one strategy hits max drawdown, the other fails simultaneously, doubling drawdown depth.
+- **When $\rho \le 0.15$ or negative (Orthogonal / Complementary):** Portfolio volatility is cut by $35\text{--}50\%$, and the blended Sharpe ratio expands significantly:
+  $$\text{Sharpe}_{\text{blended}} > \max(\text{Sharpe}_A, \text{Sharpe}_B)$$
+
+### 6.2 The 4 Canonical Complementary Pairings
+
+| Strategy 1 | Strategy 2 | Why They Complement | Market Dynamic |
+| :--- | :--- | :--- | :--- |
+| **Trend Following** (e.g. `BtcMultiScaleTrendRibbon`) | **Mean Reversion** (e.g. `OpeningFlushReversal`) | **Regime Orthogonality:** Trend strategy bleeds small chops in consolidation and wins large in secular trends. Mean reversion profits continuously during chop and sits flat during breakouts. | Complete equity curve smoothing across all regimes. |
+| **High-Frequency Scalper** (1m–5m) | **Macro Cycle Runner** (1h–4h) | **Time Horizon Orthogonality:** Scalper extracts daily microstructure liquidity; Runner captures multi-week macro shifts. | No mutual liquidity stress or competing position orders. |
+| **Momentum Breakout** | **SMC Liquidity Sweep** | **Execution Timing Orthogonality:** Breakout buys fresh highs/lows. Liquidity sweep buys into trapped retail stops before price reclaims. | Fakeouts reward the Liquidity Sweeper; true expansions reward the Breakout. |
+| **Crypto Momentum (BTC)** | **Safe-Haven Commodity (Gold / XAU)** | **Macro Flow Orthogonality:** Risk-on liquidity beta paired with real interest rate hedge. | Surges in geopolitical tension or macro liquidity contractions are insulated. |
+
+### 6.3 Regime Slicing Benchmarks (The 3-Regime Rule)
+Every candidate strategy must be audited across three distinct regime slices:
+1. **Bull Regime:** Price above 200 EMA with positive slope.
+2. **Bear Regime:** Price below 200 EMA with negative slope.
+3. **Range/Chop Regime:** Low slope, price oscillating across mean ($H < 0.45$).
+
+**The Portfolio Rule:** Never deploy two strategies that fail in the same regime. The active production portfolio must maintain positive net expectancy in all three market conditions.
