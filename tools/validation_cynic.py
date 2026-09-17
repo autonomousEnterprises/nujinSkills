@@ -52,14 +52,14 @@ def run_monte_carlo(returns: np.ndarray, num_simulations: int = 1000) -> dict:
         
     mdd_99 = float(np.percentile(sim_mdds, 99))
     ratio = mdd_99 / (orig_mdd + 1e-6)
-    passed = (ratio <= 2.5) and (mdd_99 <= 0.045)
+    passed = (ratio <= 2.5) and (mdd_99 <= 0.030)
     
     return {
         "original_mdd": round(orig_mdd, 4),
         "mdd_99": round(mdd_99, 4),
         "mdd_ratio": round(ratio, 2),
         "status": "PASS" if passed else "FAIL",
-        "reason": "MDD99 <= 4.5% & ratio <= 2.5" if passed else ("MDD99 > 4.5%" if mdd_99 > 0.045 else "Tail ratio > 2.5")
+        "reason": "MDD99 <= 3.0% & ratio <= 2.5" if passed else ("MDD99 > 3.0%" if mdd_99 > 0.030 else "Tail ratio > 2.5")
     }
 
 def run_parameter_stability(param_grid_json: str, observed_sr: float) -> dict:

@@ -19,7 +19,7 @@ Nujin uses unambiguous **binary (yes/no)** pass/fail criteria to evaluate candid
 | Metric / Criterion | Type | Strict Hurdle | Programmatic Command Evaluator |
 | --- | --- | --- | --- |
 | **`sharpe_gte_1_8`** | `command` | Net Annualized Sharpe Ratio $\ge 1.80$ | `python tools/vectorized_screener.py` |
-| **`drawdown_lte_4_5`** | `command` | Maximum Peak-to-Trough Drawdown $\le 4.5\%$ | `python tools/vectorized_screener.py` |
+| **`drawdown_lte_3_0`** | `command` | Maximum Peak-to-Trough Drawdown $\le 3.0\%$ | `python tools/vectorized_screener.py` |
 | **`sample_trades_gte_60`**| `command` | Trade count $\ge 60$ trades & Win Rate $\ge 50.0\%$ | `python tools/vectorized_screener.py` |
 | **`fee_drag_protected`** | `command` | Trade Expectancy $\ge 14.0\text{ bps}$ ($2\times \text{fees}$) | `python tools/vectorized_screener.py` |
 | **`dsr_gte_0_95`** | `command` | Deflated Sharpe Ratio $\text{DSR} \ge 0.95$ | `python tools/validation_cynic.py` |

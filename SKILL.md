@@ -61,7 +61,7 @@ python tools/server_control.py start --port 8000 --daemon
                     │
                     ▼
 [ Phase 3: Binary Metric Definition ]
-  Formulate 4-6 strict yes/no criteria (Sharpe >= 1.8, MaxDD <= 4.5%, DSR >= 0.95).
+  Formulate 4-6 strict yes/no criteria (Sharpe >= 1.8, MaxDD <= 3.0%, DSR >= 0.95).
                     │
                     ▼
 [ Phase 4: Disk Setup & Baseline (.nujin/) ]
@@ -190,11 +190,11 @@ Here is your quantitative optimization template:
   (e.g. BTC/USDT 15m Binance, XAU/USD 1m London/NY session, SOL/USDT 1h)
 
   Context:     _______________________________________________
-  (e.g. MaxDD <= 4.5%, Net Sharpe >= 1.8, DSR >= 0.95, trailing stops)
+  (e.g. MaxDD <= 3.0%, Net Sharpe >= 1.8, DSR >= 0.95, trailing stops)
 ```
 
 **Standard Profiles:**
-- **Prop Firm Challenge:** Max DD $\le 4.5\%$, Sharpe $\ge 1.8$, Win Rate $\ge 52\%$, DSR $\ge 0.95$.
+- **Prop Firm Challenge:** Max DD $\le 3.0\%$, Sharpe $\ge 1.8$, Win Rate $\ge 52\%$, DSR $\ge 0.95$.
 - **BTC Cycle Swing:** 15m/1h/4h timeframes, Hurst Trend filter ($H > 0.55$), trailing ATR stop.
 - **Conservative Investment:** Max DD $\le 6.0\%$, low turnover ($< 30$ trades/mo), Parkinson compression.
 - **News Volatility Fade:** Fast holding windows ($2 \le \text{bars} \le 8$), post-news wick rejection.
@@ -209,7 +209,7 @@ Nujin defines 4–6 strict **binary (yes/no)** pass/fail evaluation criteria:
 | Criterion | Type | Condition for Pass (Yes) | Command / Evaluator |
 | --- | --- | --- | --- |
 | `sharpe_gte_1_8` | `command` | Net Sharpe Ratio $\ge 1.80$ after 5 bps fee & 2 bps slippage | `tools/vectorized_screener.py` |
-| `drawdown_lte_4_5` | `command` | Maximum Drawdown $\le 4.5\%$ | `tools/vectorized_screener.py` |
+| `drawdown_lte_3_0` | `command` | Maximum Drawdown $\le 3.0\%$ | `tools/vectorized_screener.py` |
 | `trades_gte_60` | `command` | Trade count $\ge 60$ & Win Rate $\ge 50.0\%$ | `tools/vectorized_screener.py` |
 | `fee_drag_protected`| `command` | Trade Expectancy $\ge 14.0\text{ bps}$ ($2\times \text{fees}$) | `tools/vectorized_screener.py` |
 | `dsr_gte_0_95` | `command` | Deflated Sharpe Ratio $\text{DSR} \ge 0.95$ | `tools/validation_cynic.py` |

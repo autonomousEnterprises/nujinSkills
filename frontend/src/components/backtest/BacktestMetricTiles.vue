@@ -19,7 +19,7 @@
       <div class="stat-value text-xl font-mono mt-0.5" :class="summary?.max_drawdown != null ? getValColor(-summary.max_drawdown) : ''">
         {{ summary?.max_drawdown != null ? `${(summary.max_drawdown * 100).toFixed(2)}%` : '–' }}
       </div>
-      <div class="stat-desc text-[10px] text-base-content/50">Cap Limit: &lt;= 4.5%</div>
+      <div class="stat-desc text-[10px] text-base-content/50">Cap Limit: &lt;= 3.0%</div>
     </div>
 
     <!-- Expectancy -->

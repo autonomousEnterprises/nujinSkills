@@ -788,8 +788,8 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
             "original_mdd": round(max_dd, 4),
             "mdd_ratio": mc_res.get("mdd_ratio", 1.0),
             "status": mc_status,
-            "max_allowed": 0.045,
-            "reason": mc_res.get("reason", "MDD99 <= 4.5%" if mc_status == "PASS" else "Monte Carlo MDD99 failed")
+            "max_allowed": 0.030,
+            "reason": mc_res.get("reason", "MDD99 <= 3.0%" if mc_status == "PASS" else "Monte Carlo MDD99 failed")
         },
         "gate_4_oos_walkforward": {
             "sharpe_is": round(sr_is, 2),

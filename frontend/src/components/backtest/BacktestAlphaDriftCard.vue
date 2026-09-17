@@ -84,7 +84,7 @@
             {{ formatMdd(latestSnapshot?.max_drawdown) }}
           </span>
           <span class="text-[10px] text-base-content/60 font-mono">
-            (Cap: 4.50%)
+            (Cap: 3.00%)
           </span>
         </div>
         <div class="text-[10px] text-success font-bold flex items-center gap-1">
@@ -151,12 +151,12 @@
           <span class="flex items-center gap-1.5 text-error">
             <ShieldCheck class="w-3.5 h-3.5" /> MAX DRAWDOWN DRIFT (%)
           </span>
-          <span class="badge badge-xs badge-ghost font-mono">Cap &lt;= 4.5%</span>
+          <span class="badge badge-xs badge-ghost font-mono">Cap &lt;= 3.0%</span>
         </div>
         <DaisyDriftSparkline
           :values="maxDdSeries"
-          :hurdle="4.50"
-          hurdleLabel="Cap 4.5%"
+          :hurdle="3.00"
+          hurdleLabel="Cap 3.0%"
           suffix="%"
           color="#f43f5e"
           idPrefix="spark_maxdd"

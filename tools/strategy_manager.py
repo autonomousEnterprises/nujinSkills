@@ -363,12 +363,12 @@ def show_insights(strategy_name: Optional[str], endpoint: str, as_json: bool = F
     print("  " + "-" * 80)
     print(f"  CYNIC AUDIT GATES ({rb.get('gates_passed', 0)}/5 PASSED):")
     g1_pass = "✅ PASS" if bt.get("sharpe", 0.0) >= 1.8 else "❌ FAIL"
-    g2_pass = "✅ PASS" if (dd_pct / 100.0) <= 0.045 else "❌ FAIL"
+    g2_pass = "✅ PASS" if (dd_pct / 100.0) <= 0.030 else "❌ FAIL"
     g3_pass = "✅ PASS" if (bt.get("trades", 0) >= 30 and wr_pct >= 50.0) else "❌ FAIL"
     g4_pass = "✅ PASS" if bt.get("profit_factor", 0.0) >= 1.3 else "❌ FAIL"
     g5_pass = "✅ PASS" if bt.get("dsr", 0.0) >= 0.95 else "❌ FAIL"
     print(f"    [Gate 1] Net Annualized Sharpe >= 1.80 : {g1_pass} ({bt.get('sharpe', 0.0):.2f})")
-    print(f"    [Gate 2] Max Drawdown <= 4.50%         : {g2_pass} ({dd_pct:.2f}%)")
+    print(f"    [Gate 2] Max Drawdown <= 3.00%         : {g2_pass} ({dd_pct:.2f}%)")
     print(f"    [Gate 3] Trades >= 30 & Win Rate >= 50%: {g3_pass} ({bt.get('trades', 0)} trades, {wr_pct:.1f}%)")
     print(f"    [Gate 4] Profit Factor >= 1.30         : {g4_pass} ({bt.get('profit_factor', 0.0):.2f})")
     print(f"    [Gate 5] Deflated Sharpe DSR >= 0.95   : {g5_pass} ({bt.get('dsr', 0.0):.2f})")

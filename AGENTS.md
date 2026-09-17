@@ -34,7 +34,7 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 ## Strict Quantitative Gates
 Never approve or deploy a strategy unless it passes all programmatic gates:
 - **Net Annualized Sharpe:** $\ge 1.8$ (after 5 bps taker fee + 2 bps slippage)
-- **Max Drawdown:** $\le 4.5\%$ across all regime slices (Bull, Bear, Range)
+- **Max Drawdown:** $\le 3.0\%$ across all regime slices (Bull, Bear, Range)
 - **Win Rate & Expectancy:** Win Rate $\ge 50\%$, Expectancy $\ge 2\times$ fees
 - **Deflated Sharpe Ratio (DSR):** $\text{DSR} \ge 0.95$ (accounting for data mining bias / trials)
 - **Parameter Plateau:** No razor-thin overfitting; must maintain positive alpha under $\pm 10\%$ parameter drift

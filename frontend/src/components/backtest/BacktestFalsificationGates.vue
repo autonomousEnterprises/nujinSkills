@@ -62,7 +62,7 @@
           class="badge badge-sm font-bold"
           :class="!gates?.gate_3_monte_carlo ? 'badge-neutral' : (g3Pass ? 'badge-success' : 'badge-error')"
         >
-          {{ !gates?.gate_3_monte_carlo ? 'UNTESTED' : (g3Pass ? `PASS (${((gates.gate_3_monte_carlo.mdd_99 ?? summary?.mdd_99 ?? 0) * 100).toFixed(2)}%)` : (gates.gate_3_monte_carlo.reason?.includes('< 10') ? 'FAIL (< 10)' : 'FAIL (> 4.5%)')) }}
+          {{ !gates?.gate_3_monte_carlo ? 'UNTESTED' : (g3Pass ? `PASS (${((gates.gate_3_monte_carlo.mdd_99 ?? summary?.mdd_99 ?? 0) * 100).toFixed(2)}%)` : (gates.gate_3_monte_carlo.reason?.includes('< 10') ? 'FAIL (< 10)' : 'FAIL (> 3%)')) }}
         </span>
       </div>
 

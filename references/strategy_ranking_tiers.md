@@ -51,10 +51,10 @@ Protects against p-hacking, selection bias, and sample insignificance:
 Penalizes capital volatility and asymmetric fat-tail risk:
 - **Maximum Drawdown Curve ($60\text{ pts}$):**
   - $\text{MaxDD} \le 1.0\%$: $60\text{ pts}$ (exceptional control).
-  - $1.0\% < \text{MaxDD} \le 2.5\%$: $50\text{ pts}$.
-  - $2.5\% < \text{MaxDD} \le 4.5\%$: $35\text{ pts}$.
-  - $4.5\% < \text{MaxDD} \le 8.0\%$: $15\text{ pts}$.
-  - $\text{MaxDD} > 8.0\%$: $0\text{ pts}$ (severe prop-firm violation).
+  - $1.0\% < \text{MaxDD} \le 2.0\%$: $50\text{ pts}$.
+  - $2.0\% < \text{MaxDD} \le 3.0\%$: $35\text{ pts}$.
+  - $3.0\% < \text{MaxDD} \le 6.0\%$: $15\text{ pts}$.
+  - $\text{MaxDD} > 6.0\%$: $0\text{ pts}$ (severe prop-firm violation).
 - **Win Rate Consistency ($40\text{ pts}$):**
   - $\text{Win Rate} \ge 55\%$: $40\text{ pts}$.
   - $50\% \le \text{Win Rate} < 55\%$: $30\text{ pts}$.
@@ -132,7 +132,7 @@ Provides the full quantitative audit breakdown, including 4-pillar sub-scores, C
   --------------------------------------------------------------------------------
   CYNIC AUDIT GATES (5/5 PASSED):
     [Gate 1] Net Annualized Sharpe >= 1.80 : ✅ PASS (4.17)
-    [Gate 2] Max Drawdown <= 4.50%         : ✅ PASS (0.33%)
+    [Gate 2] Max Drawdown <= 3.00%         : ✅ PASS (0.33%)
     [Gate 3] Trades >= 30 & Win Rate >= 50%: ✅ PASS (61 trades, 60.7%)
     [Gate 4] Profit Factor >= 1.30         : ✅ PASS (1.80)
     [Gate 5] Deflated Sharpe DSR >= 0.95   : ✅ PASS (1.00)

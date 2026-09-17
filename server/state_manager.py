@@ -773,7 +773,7 @@ class StrategyRegistry:
 
         # 5-Gate Cynic Audit Verification (max 20 pts)
         g1 = 1 if sharpe >= 1.8 else 0
-        g2 = 1 if max_dd <= 0.045 else 0
+        g2 = 1 if max_dd <= 0.030 else 0
         g3 = 1 if (trades >= 30 and win_rate >= 0.50) else 0
         g4 = 1 if profit_factor >= 1.3 else 0
         g5 = 1 if dsr >= 0.95 else 0
@@ -782,13 +782,13 @@ class StrategyRegistry:
         robustness_score = round(min(100.0, dsr_pts + n_pts + gates_pts), 1)
 
         # ── 3. Capital Preservation & Risk (0 to 100) - Weight 25% ──
-        # Max Drawdown (Gate <= 4.5%, Scalper Elite <= 1.0%)
+        # Max Drawdown (Gate <= 3.0%, Scalper Elite <= 1.0%)
         if max_dd <= 0.01:
             dd_pts = 60.0
-        elif max_dd <= 0.045:
-            dd_pts = 60.0 - ((max_dd - 0.01) / 0.035) * 25.0
-        elif max_dd <= 0.08:
-            dd_pts = max(5.0, 35.0 - ((max_dd - 0.045) / 0.035) * 30.0)
+        elif max_dd <= 0.030:
+            dd_pts = 60.0 - ((max_dd - 0.01) / 0.020) * 25.0
+        elif max_dd <= 0.06:
+            dd_pts = max(5.0, 35.0 - ((max_dd - 0.030) / 0.030) * 30.0)
         else:
             dd_pts = 0.0
 
@@ -828,7 +828,7 @@ class StrategyRegistry:
             composite_score >= 80.0 and
             sharpe >= 2.5 and
             dsr >= 0.95 and
-            max_dd <= 0.045 and
+            max_dd <= 0.030 and
             win_rate >= 0.50 and
             profit_factor >= 1.5 and
             trades >= 25
@@ -837,7 +837,7 @@ class StrategyRegistry:
             composite_score >= 65.0 and
             sharpe >= 1.8 and
             dsr >= 0.90 and
-            max_dd <= 0.05 and
+            max_dd <= 0.04 and
             profit_factor >= 1.3 and
             trades >= 20
         )
@@ -863,7 +863,7 @@ class StrategyRegistry:
             reasons = []
             if sharpe < 1.2:
                 reasons.append(f"Low Sharpe ({sharpe:.2f})")
-            if max_dd > 0.045:
+            if max_dd > 0.030:
                 reasons.append(f"High Drawdown ({max_dd*100:.1f}%)")
             if profit_factor < 1.1:
                 reasons.append(f"Low PF ({profit_factor:.2f})")

@@ -132,7 +132,7 @@ def action_init(target: str, scope: str, context: str, archetype: str = "mean_re
     state = {
         "target": target or f"{arch_name.replace('_', ' ').title()} Discovery",
         "scope": scope or "BTC/USDT 15m / XAUUSD 1m",
-        "context": context or "Net Sharpe >= 1.8, MaxDD <= 4.5%, DSR >= 0.95",
+        "context": context or "Net Sharpe >= 1.8, MaxDD <= 3.0%, DSR >= 0.95",
         "archetype": arch_name,
         "run_number": 0,
         "best_score": 0,
@@ -504,7 +504,7 @@ def action_step(features_path: str = "data/features.csv", rules_override: str = 
     # 2. Strict Binary Criteria Evaluation
     criteria = {
         "sharpe_gte_1_8": 1 if metrics["sharpe"] >= 1.80 else 0,
-        "drawdown_lte_4_5": 1 if metrics["max_drawdown"] <= 0.045 else 0,
+        "drawdown_lte_3_0": 1 if metrics["max_drawdown"] <= 0.030 else 0,
         "sample_trades_gte_60": 1 if (metrics["trades"] >= 60 and metrics["win_rate"] >= 0.50) else 0,
         "fee_drag_protected": 1 if metrics["expectancy_bps"] >= 14.0 else 0,
         "dsr_gte_0_95": 1 if metrics["dsr"] >= 0.95 else 0,

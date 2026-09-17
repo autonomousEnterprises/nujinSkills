@@ -110,7 +110,7 @@ Nujin maps natural language user prompts to standardized quantitative profiles:
 
 | User Prompt Intent | Profile Name | Target Constraints & Risk Rules | Preferred Mechanics |
 | --- | --- | --- | --- |
-| *"I need a prop firm trading strategy"* | **Prop Firm Challenge** | Max DD $\le 4.5\%$, Net Sharpe $\ge 1.8$, Win Rate $\ge 52\%$, DSR $\ge 0.95$, Strict 1:1.5+ Risk/Reward | Low-drawdown wick rejection, tight hard stops, zero overnight holding risk. |
+| *"I need a prop firm trading strategy"* | **Prop Firm Challenge** | Max DD $\le 3.0\%$, Net Sharpe $\ge 1.8$, Win Rate $\ge 52\%$, DSR $\ge 0.95$, Strict 1:1.5+ Risk/Reward | Low-drawdown wick rejection, tight hard stops, zero overnight holding risk. |
 | *"Make me a BTC swing strategy"* | **BTC Market Cycle Swing** | 15m/1h/4h timeframes, Profit Factor $\ge 1.8$, Max DD $\le 10\%$, Hurst Trend Filter ($H > 0.55$) | Trend riding, dynamic ATR trailing stops, multi-day holding capacity ($12 \le \text{bars} \le 48$). |
 | *"Make me a conservative strategy"* | **Conservative Investment** | Max DD $\le 6.0\%$, Profit Factor $\ge 1.6$, Low trade turnover ($< 30$ trades/month), Preservation focus | Volatility compression filters (`parkinson_vol`), wide fair-value anchor bands (`avwap_zscore`). |
 | *"How can news/volatility be traded?"* | **News Volatility Fade** | Short holding periods ($2 \le \text{bars} \le 8$), Expectancy $\ge 25\text{ bps}$, Monte Carlo MDD99 $\le 2.0\times$ | Post-announcement wick rejection, V-spread spike absorption, liquidity grab fades. |
