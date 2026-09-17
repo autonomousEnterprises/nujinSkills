@@ -17,10 +17,10 @@
 └────────────────────────┘            └───────────┬────────────┘
                                                   │ /ws
                                                   ▼
-                                      ┌────────────────────────┐
-                                      │ React Dual-Screen UI   │
-                                      │ (TradingView + Decks)  │
-                                      └────────────────────────┘
+                                       ┌────────────────────────┐
+                                       │ Vue 3 Dual-Screen UI   │
+                                       │ (TradingView + Decks)  │
+                                       └────────────────────────┘
 ```
 
 ---
@@ -31,11 +31,21 @@ The Cockpit runs on a 100vw / 100vh responsive layout organized into four dedica
 
 | Screen Name | Hotkey | Component | Purpose & Visual Elements |
 | --- | --- | --- | --- |
-| **Chart Canvas** | **F1** | `ChartCanvas.tsx` | Full-screen interactive **TradingView Lightweight Chart** connected to live Binance 15m/1m feeds. Overlays backtest entry/exit trade markers, stop-loss invalidation lines, and take-profit target bounds. |
-| **Signal Deck** | **F2** | `SignalDeck.tsx` | Real-time live execution telemetry: performance stats since activation (win rate, profit factor, annualized Sharpe, total net PnL %), active open position with live unrealized PnL, and signal history audit table. |
-| **Backtest Deck** | **F3** | `BacktestDeck.tsx` | Full-width analytical audit: continuous equity growth curve, return distribution histogram, market regime survival breakdown (Bull, Bear, Range), sequential trade log, and 5-Gate Cynic Audit matrix. |
-| **Strategy Manager** | **F4** | `StrategyManagerDeck.vue` | Command & Portfolio Lifecycle deck: Global Screen Mode toggle (`LIVE` vs `BACKTEST`), Realized & Benchmark Equity Growth Trajectory Curve (scope: Portfolio or individual strategy), Leaderboard with dynamic live/backtest drift metrics, sparklines, and 4-pillar Cynic audit scorecards. |
+| **Chart Canvas** | **F1** | `ChartCanvas.vue` | Full-screen interactive **TradingView Lightweight Chart** connected to live Binance 15m/1m feeds. Overlays Level 3 visual primitives (EMAs, bands, channels, S&R), Fair Value Gap (FVG) imbalance boxes, liquidity sweep levels, trade markers, and stop-loss/take-profit lines. |
+| **Signal Deck** | **F2** | `SignalDeck.vue` | Real-time live execution telemetry: performance stats since activation (win rate, profit factor, annualized Sharpe, total net PnL %), active open position card with live unrealized PnL & manual close position button, and signal history audit table. |
+| **Backtest Deck** | **F3** | `BacktestDeck.vue` | Full-width analytical audit: authentic calendar time windows (exact start/end dates & bar counts), continuous equity growth curve, return distribution histogram, market regime survival breakdown (Bull, Bear, Range), sequential trade log, and 5-Gate Cynic Audit matrix. |
+| **Strategy Manager** | **F4** | `StrategyManagerDeck.vue` | Command & Portfolio Lifecycle deck: Global Screen Mode toggle (`LIVE TELEMETRY` vs `BENCHMARK BACKTEST`), Realized & Benchmark Equity Growth Trajectory Curve (`StrategyEquityChart.vue`), Leaderboard with direct "View Strategy on Chart (F1)" action button, dynamic live/backtest drift metrics, sparklines, and 4-pillar Cynic audit scorecards. |
 | **Cycle Screens** | **Ctrl + Space** | Root Router | Seamlessly toggle focus across all open screens. |
+
+---
+
+### Chart Canvas Deck (F1) — Level 3 Universal Visual Primitives Engine
+
+The chart dynamically renders strategy visual features without manual charting code:
+- **Indicator Lines:** Auto-classifies and styles fast, mid, and slow EMAs, Donchian channels, Bollinger Bands, and support/resistance levels.
+- **Fair Value Gap (FVG) Imbalance Boxes:** Renders semi-transparent bullish (cyan/green) and bearish (rose/red) imbalance zones with auto-expiry.
+- **Liquidity Sweep Markers:** Renders high/low sweep levels and rejection signals.
+- **RAF & Viewport Throttling:** Viewport panning and zooming are throttled via `requestAnimationFrame` and bar-range caching for zero drag/zoom stutter.
 
 ---
 
@@ -50,12 +60,13 @@ The **Strategy Manager Deck** includes a global operational toggle between **`LI
 - **Dynamic Leaderboard Columns:**
   - `LIVE` Mode: Displays `Backtest → Live Sharpe (Drift)`, `Live Win Rate Drift`, `Live PF Drift`, `Live Max DD Drift`, and live realized sparkline series.
   - `BACKTEST` Mode: Displays `Baseline → Current Sharpe (Drift)`, `Win Rate Drift`, `Profit Factor Drift`, `Max DD Drift`, and cron re-evaluation snapshot series.
+- **Direct Chart Navigation:** Each leaderboard row features a direct `View Strategy on Chart (F1)` action button that switches to F1 and activates the strategy's visual primitives.
 
 ---
 
 ## 3. Real-Time Telemetry Event Bus (`/ws`)
 
-The backend broadcasts structured JSON envelopes over `/ws`. The React cockpit listens via `hooks/useWebSocket.ts`.
+The backend broadcasts structured JSON envelopes over `/ws`. The Vue 3 cockpit subscribes via `frontend/src/composables/useWebSocket.ts`.
 
 ### Supported Event Types & JSON Schemas
 
@@ -112,6 +123,15 @@ Dispatched when an active bot generates a real-time trade signal:
   }
 }
 ```
+
+#### D. Additional Core Bus Events
+- **`STATE_UPDATED`:** Real-time push of system-wide state modifications from `StateManager`.
+- **`STRATEGIES_UPDATED`:** Broadcast when strategies are ranked, added, removed, or synced. Transmits strategy list, `portfolio_summary`, and `distribution_analytics`.
+- **`MARKET_TICK`:** Real-time live OHLCV candlestick ticks from Binance or XAUUSD provider stream.
+- **`SIGNAL_CLOSED`:** Emitted when an open position reaches Take-Profit, Stop-Loss, or is manually closed.
+- **`SIGNALS_UPDATED` / `SIGNALS_CLEARED` / `SIGNAL_DELETED`:** Synchronization of the live signal ledger.
+- **`STRATEGY_DISCOVERED`:** Emitted when a new candidate strategy `.py` file is detected on disk.
+- **`TELEGRAM_ALERT` / `TELEGRAM_BROADCAST`:** Real-time push notifications delivered across Telegram subscribers.
 
 ---
 

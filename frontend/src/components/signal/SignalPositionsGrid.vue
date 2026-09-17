@@ -14,28 +14,6 @@
           {{ openPositions.length > 0 ? `${openPositions.length} ACTIVE RUNNING` : 'NO OPEN POSITIONS' }}
         </span>
       </div>
-
-      <!-- Spot Market Feeds -->
-      <div class="flex items-center gap-2">
-        <div class="px-2.5 py-1 rounded-box bg-base-300 border border-base-content/10 text-right">
-          <div class="text-[9px] text-warning font-bold uppercase">🟡 OANDA SPOT XAU</div>
-          <div class="text-xs font-bold font-mono text-warning">
-            {{ liveGoldPrice ? `$${liveGoldPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—' }}
-          </div>
-        </div>
-        <div v-if="liveSp500Price" class="px-2.5 py-1 rounded-box bg-base-300 border border-base-content/10 text-right">
-          <div class="text-[9px] text-accent font-bold uppercase">📊 CME S&P 500</div>
-          <div class="text-xs font-bold font-mono text-accent">
-            ${{ liveSp500Price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
-          </div>
-        </div>
-        <div class="px-2.5 py-1 rounded-box bg-base-300 border border-base-content/10 text-right">
-          <div class="text-[9px] text-info font-bold uppercase">🔵 BINANCE BTC/USDT</div>
-          <div class="text-xs font-bold font-mono text-info">
-            {{ liveBtcPrice ? `$${liveBtcPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—' }}
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- Position Cards Grid -->

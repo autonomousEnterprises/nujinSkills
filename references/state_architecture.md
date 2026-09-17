@@ -5,7 +5,7 @@
 **NujinAI** enforces a strict **Single Source of Truth** architecture across three concurrent consumers:
 1. **AI Agent (Nujin):** Mines alpha, audits candidates, updates parameters, and deploys bots via CLI tools.
 2. **FastAPI Telemetry Server:** Serves REST endpoints and broadcasts real-time WebSocket events.
-3. **React Cockpit Frontend:** Subscribes to state updates and renders charts, tables, and metric cards.
+3. **Vue 3 Cockpit Frontend:** Subscribes to state updates and renders charts, tables, and metric cards.
 
 All state reads and writes are mediated by `server/state_manager.py` using **atomic POSIX file locks (`fcntl.flock`)** to eliminate race conditions.
 
@@ -107,15 +107,16 @@ data/
 
 ---
 
-## 4. Multi-Factor Ranking & Scoring Formula
+## 4. Institutional 4-Pillar Composite Scoring Model
 
-Strategies in `data/strategies.json` are ranked by a composite multi-factor score:
+Strategies in `data/strategies.json` are ranked by the Institutional 4-Pillar Composite Score ($0.0 \dots 100.0$):
 
-$$\text{Score} = (0.35 \times \text{Sharpe}_{\text{Norm}}) + (0.25 \times \text{WR}_{\text{Norm}}) + (0.20 \times \text{DSR}_{\text{Norm}}) + (0.20 \times \text{Expectancy}_{\text{Norm}}) - \text{Drawdown Penalty}$$
+$$\text{Composite Score} = (0.35 \times \text{Edge}) + (0.30 \times \text{Robustness}) + (0.25 \times \text{Risk}) + (0.10 \times \text{Drift})$$
 
-- **S-Tier:** Score $\ge 85.0$, DSR $\ge 0.95$, MaxDD $\le 4.5\%$.
-- **A-Tier:** Score $\ge 70.0$, DSR $\ge 0.90$, MaxDD $\le 8.0\%$.
-- **B-Tier:** Score $< 70.0$, Borderline edge; monitored under `CRON_BACKTEST`.
+- **S-Tier (Superior Edge):** Score $\ge 80.0$, Sharpe $\ge 2.50$, DSR $\ge 0.95$, MaxDD $\le 4.5\%$, Win Rate $\ge 50\%$, PF $\ge 1.50$, Trades $\ge 25$.
+- **A-Tier (Robust Edge):** Score $\ge 65.0$, Sharpe $\ge 1.80$, DSR $\ge 0.90$, MaxDD $\le 5.0\%$, PF $\ge 1.30$, Trades $\ge 20$.
+- **B-Tier (Incubation Alpha):** Score $\ge 45.0$, positive core expectancy ($\text{Sharpe} > 1.0$, $PF > 1.1$).
+- **C-Tier (Sub-Hurdle / Decayed):** Score $< 45.0$, failed primary risk hurdles ($\text{MaxDD} > 8.0\%$ or negative Sharpe).
 
 ---
 
@@ -136,15 +137,24 @@ python tools/state_control.py signal-stats
 
 ### B. Strategy Lifecycle Manager (`tools/strategy_manager.py`)
 ```bash
-# List all registered strategies with ranks & tiers
-python tools/strategy_manager.py list
+# Display institutional 4-pillar rankings & leaderboard
+python tools/strategy_manager.py rank
 
-# Update lifecycle status
-python tools/strategy_manager.py status --strategy MyStrategy.py --to ACTIVE_LIVE
+# Deep quantitative insights & tier rationale for a strategy
+python tools/strategy_manager.py insights <StrategyName>
+
+# Portfolio correlation matrix and regime orthogonality audit
+python tools/strategy_manager.py correlation --threshold 0.50
+
+# Synchronize disk strategies/*.py with registry
+python tools/strategy_manager.py sync
+
+# Safely remove obsolete strategy from disk and registry
+python tools/strategy_manager.py remove <StrategyName>
+
+# Add new strategy file to production library
+python tools/strategy_manager.py add <path_to_strategy.py>
 
 # Trigger cron re-backtest across all CRON_BACKTEST strategies
 python tools/strategy_manager.py cron
-
-# Inspect alpha drift across daily runs
-python tools/strategy_manager.py drift --strategy MyStrategy.py
 ```

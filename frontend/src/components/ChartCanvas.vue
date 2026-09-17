@@ -1439,14 +1439,14 @@ const initChart = () => {
   const isDark = props.theme === 'dark';
   chart = createChart(chartContainerRef.value, {
     layout: {
-      background: { type: ColorType.Solid, color: isDark ? '#0d1322' : '#ffffff' },
-      textColor: isDark ? '#c9d1d9' : '#334155',
+      background: { type: ColorType.Solid, color: isDark ? '#0d1322' : '#edf0f7' },
+      textColor: isDark ? '#c9d1d9' : '#151515',
       fontSize: 11,
       fontFamily: '"JetBrains Mono", monospace',
     },
     grid: {
-      vertLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(226, 232, 240, 0.8)' },
-      horzLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(226, 232, 240, 0.8)' },
+      vertLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(200, 205, 215, 0.5)' },
+      horzLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(200, 205, 215, 0.5)' },
     },
     crosshair: {
       mode: 0,
@@ -1454,11 +1454,11 @@ const initChart = () => {
       horzLine: { color: isDark ? '#58a6ff' : '#0284c7', width: 1, style: 3 },
     },
     rightPriceScale: {
-      borderColor: isDark ? '#30363d' : '#e2e8f0',
+      borderColor: isDark ? '#30363d' : '#dcdee2',
       scaleMargins: { top: 0.1, bottom: 0.2 },
     },
     timeScale: {
-      borderColor: isDark ? '#30363d' : '#e2e8f0',
+      borderColor: isDark ? '#30363d' : '#dcdee2',
       timeVisible: true,
       secondsVisible: false,
     },
@@ -2180,12 +2180,18 @@ watch(() => props.theme, (newTheme) => {
   const isDark = newTheme === 'dark';
   chart.applyOptions({
     layout: {
-      background: { type: ColorType.Solid, color: isDark ? '#0d1322' : '#ffffff' },
-      textColor: isDark ? '#c9d1d9' : '#334155',
+      background: { type: ColorType.Solid, color: isDark ? '#0d1322' : '#edf0f7' },
+      textColor: isDark ? '#c9d1d9' : '#151515',
     },
     grid: {
-      vertLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(226, 232, 240, 0.8)' },
-      horzLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(226, 232, 240, 0.8)' },
+      vertLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(200, 205, 215, 0.5)' },
+      horzLines: { color: isDark ? 'rgba(48, 54, 61, 0.4)' : 'rgba(200, 205, 215, 0.5)' },
+    },
+    rightPriceScale: {
+      borderColor: isDark ? '#30363d' : '#dcdee2',
+    },
+    timeScale: {
+      borderColor: isDark ? '#30363d' : '#dcdee2',
     },
   });
 });

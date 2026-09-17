@@ -15,35 +15,7 @@
         @clearSignals="handleClearSignals"
       />
 
-      <!-- ── 2. STRATEGY SCOPE FILTER TABS ── -->
-      <SignalScopeFilter
-        v-model:selectedStratTab="selectedStratTab"
-        :stratOptions="stratOptions"
-        :activeBots="activeBots"
-        :actionLoading="actionLoading"
-        @deployBot="handleDeployBot"
-        @stopBot="handleStopBot"
-      />
-
-      <!-- ── 3. LIVE PERFORMANCE STATS (DAISYUI STATS) ── -->
-      <SignalPerformanceStats
-        :selectedStratTab="selectedStratTab"
-        :liveStats="liveStats"
-        :openPositionsCount="openPositions.length"
-      />
-
-      <!-- ── 4. REALIZED EQUITY TRAJECTORY CHART ── -->
-      <SignalEquityChart
-        :signals="allSignals"
-        :selectedStratTab="selectedStratTab"
-        :cleanSelectedName="cleanSelectedName"
-        :liveStats="liveStats"
-        :managedStrategies="managedStrategies"
-        :selectedBacktestData="selectedBacktestData"
-        :activeBots="activeBots"
-      />
-
-      <!-- ── 5. ACTIVE OPEN POSITIONS (MULTI-BOT PARALLEL) ── -->
+      <!-- ── 2. ACTIVE OPEN POSITIONS (MULTI-BOT PARALLEL) ── -->
       <SignalPositionsGrid
         :openPositions="openPositions"
         :liveGoldPrice="liveGoldPrice"
@@ -55,7 +27,7 @@
         @inspectPosition="(pos) => emit('inspectSignal', pos)"
       />
 
-      <!-- ── 6. SIGNAL TELEMETRY & AUDIT FEED TABLE ── -->
+      <!-- ── 3. SIGNAL TELEMETRY & AUDIT FEED TABLE ── -->
       <SignalHistoryTable
         :allSignals="allSignals"
         :cleanSelectedName="cleanSelectedName"
@@ -71,9 +43,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import SignalHeader from './signal/SignalHeader.vue';
-import SignalScopeFilter from './signal/SignalScopeFilter.vue';
-import SignalPerformanceStats from './signal/SignalPerformanceStats.vue';
-import SignalEquityChart from './signal/SignalEquityChart.vue';
 import SignalPositionsGrid from './signal/SignalPositionsGrid.vue';
 import SignalHistoryTable from './signal/SignalHistoryTable.vue';
 import type { SignalData, WidgetData, ManagedStrategy, PortfolioSummary } from '../types';

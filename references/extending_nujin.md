@@ -4,7 +4,7 @@
 
 **NujinAI** is engineered with a modular, decoupled architecture:
 - **Backend (`server/`):** Python 3.10+ FastAPI service, `StateManager` with POSIX file locks, Binance REST/WS feeds, Telegram bot dispatcher, and vectorized backtest engine.
-- **Frontend Cockpit (`frontend/`):** React 18, TypeScript, Tailwind CSS, Vite, and TradingView Lightweight Charts.
+- **Frontend Cockpit (`frontend/`):** Vue 3, TypeScript, Tailwind CSS, Vite, and TradingView Lightweight Charts.
 - **CLI Tool Suite (`tools/`):** Agent-agnostic CLI utilities conforming to a strict execution contract for AI agents (Antigravity, Claude Code, Hermes, OpenClaw).
 
 ---
@@ -39,16 +39,16 @@ await manager.broadcast({
 ## 3. Extending the Frontend Cockpit (`frontend/`)
 
 ### A. Adding a New Screen
-1. Create component in `frontend/src/components/MyNewDeck.tsx`.
-2. Add screen key in `frontend/src/App.tsx`.
-3. Map hotkey in `useEffect` listener in `App.tsx` (e.g. `F5` or `Ctrl+5`).
-4. Register tab in `frontend/src/components/Header.tsx`.
+1. Create component in `frontend/src/components/MyNewDeck.vue`.
+2. Register active screen state and import component in `frontend/src/App.vue`.
+3. Map hotkey in `window.addEventListener('keydown', ...)` in `App.vue` (e.g. `F5` or `Ctrl+5`).
+4. Register navigation tab in `frontend/src/components/Header.vue`.
 
-### B. Handling WebSocket Events in React
-In `frontend/src/hooks/useWebSocket.ts`, add event case in `ws.onmessage`:
+### B. Handling WebSocket Events in Vue 3
+In `frontend/src/composables/useWebSocket.ts`, add event case in `socket.onmessage`:
 ```typescript
 case "CUSTOM_EVENT":
-  setCustomState(data.payload);
+  customStateRef.value = payload;
   break;
 ```
 
