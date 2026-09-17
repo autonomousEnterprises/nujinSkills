@@ -295,6 +295,8 @@ class SignalStore:
             "entry_price": price,
             "stop_loss": float(signal.get("stop_loss") or default_sl),
             "take_profit": float(signal.get("take_profit") or default_tp),
+            "lots": float(signal.get("lots") or signal.get("lot_size") or 0.10),
+            "lot_size": float(signal.get("lots") or signal.get("lot_size") or 0.10),
             "status": signal.get("status", "ACTIVE_IN_POSITION"),
             "exit_price": signal.get("exit_price"),
             "exit_reason": signal.get("exit_reason"),

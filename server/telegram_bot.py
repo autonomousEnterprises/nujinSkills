@@ -217,6 +217,13 @@ class TelegramGateway:
             f"<code>{price:.2f}</code>\n"
         ]
 
+        lots = float(payload.get("lots") or payload.get("lot_size") or 0.0)
+        if lots > 0:
+            lines.extend([
+                "📦 <b>Lot Size:</b>",
+                f"<code>{lots:.2f} lots</code>\n"
+            ])
+
         if stop_loss > 0:
             lines.extend([
                 "🛡️ <b>Stop Loss:</b>",

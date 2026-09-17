@@ -55,15 +55,16 @@ class PaperExecutionBroker(BaseExecutionBroker):
     def execute_order(self, signal: Dict[str, Any]) -> Dict[str, Any]:
         fill_price = float(signal.get("price", 0.0))
         signal_id = str(signal.get("id") or int(time.time() * 1000))
+        lots = float(signal.get("lots") or signal.get("lot_size") or 1.0)
         logger.info(
             f"[PaperBroker] 📝 Simulating fill for {signal.get('strategy')} "
-            f"{signal.get('action')} {signal.get('symbol')} @ {fill_price}"
+            f"{signal.get('action')} {signal.get('symbol')} ({lots:.2f} lots) @ {fill_price}"
         )
         return {
             "status": "FILLED",
             "order_id": f"paper_{signal_id}",
             "filled_price": fill_price,
-            "filled_lots": 1.0,
+            "filled_lots": lots,
             "error": None,
         }
 

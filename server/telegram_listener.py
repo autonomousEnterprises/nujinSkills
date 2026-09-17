@@ -156,7 +156,7 @@ class TelegramListener:
             "• <code>/brokers</code> — List installed execution brokers & pro plugins\n"
             "• <code>/connect</code> — Link a broker trading account\n"
             "• <code>/accounts</code> — View your linked trading accounts\n"
-            "• <code>/risk &lt;acc_id&gt; &lt;lots&gt;</code> — Set default lot size\n"
+            "• <code>/risk</code> — View strategy-designed dynamic risk & lot sizing rules\n"
             "• <code>/pause &lt;acc_id&gt;</code> — Temporarily pause automated trades\n"
             "• <code>/resume &lt;acc_id&gt;</code> — Resume automated trades\n"
             "• <code>/disconnect &lt;acc_id&gt;</code> — Remove a linked account\n"
@@ -213,11 +213,11 @@ class TelegramListener:
                 f"{i}. <b>{broker_id}</b> (<code>{acc_id}</code>)\n"
                 f"   • Server: <code>{html.escape(server)}</code>\n"
                 f"   • Login: <code>{html.escape(login)}</code>\n"
-                f"   • Default Lots: <code>{lots}</code>\n"
+                f"   • Sizing: <code>Strategy Dynamic Smart Lotsizer</code>\n"
                 f"   • Status: <b>{status}</b>"
             )
         lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        lines.append("💡 <i>Use <code>/risk &lt;id&gt; &lt;lots&gt;</code> or <code>/pause &lt;id&gt;</code> to manage.</i>")
+        lines.append("💡 <i>Use <code>/pause &lt;id&gt;</code> or <code>/resume &lt;id&gt;</code> to manage execution.</i>")
         telegram_gateway.send_message("\n".join(lines), target_chat_id=str(chat_id))
 
     async def _cmd_connect(self, chat_id: int | str, user_id: str, msg_id: int, args: list[str]) -> None:
@@ -240,16 +240,13 @@ class TelegramListener:
             telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
             return
 
-        # If full arguments provided in one line: /connect <server> <email> <password> [acc_num] [lots]
+        # If full arguments provided in one line: /connect <server> <email> <password> [acc_num]
         if len(args) >= 3:
             telegram_gateway.delete_message(chat_id, msg_id)  # Delete password immediately
             server = args[0]
             email = args[1]
             password = args[2]
-            acc_num = args[3] if len(args) >= 4 and not self._is_float(args[3]) else ""
-            lots = float(args[4]) if len(args) >= 5 and self._is_float(args[4]) else (
-                float(args[3]) if len(args) >= 4 and self._is_float(args[3]) else 0.10
-            )
+            acc_num = args[3] if len(args) >= 4 else ""
 
             await self._validate_and_save_account(
                 chat_id=chat_id,
@@ -259,7 +256,7 @@ class TelegramListener:
                 email=email,
                 password=password,
                 acc_num=acc_num,
-                lots=lots
+                lots=0.10
             )
             return
 
@@ -273,7 +270,7 @@ class TelegramListener:
         msg = (
             f"🚀 <b>Connecting {target_broker.upper()} Account</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "Step 1/4: What is your <b>Broker Server</b> name?\n"
+            "Step 1/3: What is your <b>Broker Server</b> name?\n"
             "<i>(e.g., <code>TradeLocker Demo</code>, <code>FunderPro</code>, <code>Goat Funded Trader</code>)</i>\n\n"
             "<i>Type <code>/cancel</code> anytime to abort.</i>"
         )
@@ -292,7 +289,7 @@ class TelegramListener:
             data["server"] = text.strip()
             session["step"] = "AWAIT_EMAIL"
             msg = (
-                "Step 2/4: Enter your account <b>Email / Login</b>:\n"
+                "Step 2/3: Enter your account <b>Email / Login</b>:\n"
                 "<i>(e.g., <code>trader@gmail.com</code>)</i>"
             )
             telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
@@ -301,7 +298,7 @@ class TelegramListener:
             data["email"] = text.strip()
             session["step"] = "AWAIT_PASSWORD"
             msg = (
-                "Step 3/4: Enter your account <b>Password</b>:\n"
+                "Step 3/3: Enter your account <b>Password</b>:\n"
                 "🔒 <i>Your password message will be auto-deleted from chat immediately for your security.</i>"
             )
             telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
@@ -310,21 +307,6 @@ class TelegramListener:
             data["password"] = text.strip()
             # Delete message containing password
             telegram_gateway.delete_message(chat_id, msg_id)
-            session["step"] = "AWAIT_LOTS"
-            msg = (
-                "Step 4/4: What default <b>Lot Size</b> would you like per trade?\n"
-                "<i>(e.g., <code>0.10</code> for 0.1 lots, or type <code>skip</code> for default 0.10)</i>"
-            )
-            telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
-
-        elif step == "AWAIT_LOTS":
-            lots = 0.10
-            if text.lower().strip() != "skip":
-                try:
-                    lots = max(0.01, float(text.strip()))
-                except ValueError:
-                    lots = 0.10
-            data["lots"] = lots
 
             _USER_SESSIONS.pop(user_id, None)
 
@@ -336,7 +318,7 @@ class TelegramListener:
                 email=data.get("email", ""),
                 password=data.get("password", ""),
                 acc_num="",
-                lots=lots
+                lots=0.10
             )
 
     async def _validate_and_save_account(
@@ -348,29 +330,29 @@ class TelegramListener:
         email: str,
         password: str,
         acc_num: str,
-        lots: float
+        lots: float = 0.10
     ) -> None:
-        wait_msg = "⏳ <i>Verifying credentials with broker gateway...</i>"
-        telegram_gateway.send_message(wait_msg, target_chat_id=str(chat_id))
-
-        # Check credentials via broker adapter validate_credentials hook
+        """Validates credentials via broker adapter and writes encrypted account to disk."""
         broker = broker_registry.get_broker(broker_id)
-        config = {
+        if not broker:
+            telegram_gateway.send_message(f"❌ Broker '{broker_id}' not found.", target_chat_id=str(chat_id))
+            return
+
+        telegram_gateway.send_message("⏳ Verifying broker credentials...", target_chat_id=str(chat_id))
+
+        is_valid, message_or_err = broker.validate_credentials({
             "server": server,
             "email": email,
             "password": password,
             "acc_num": acc_num,
             "environment": "demo" if "demo" in server.lower() else "live"
-        }
-
-        # Run validation in thread
-        is_valid, message_or_err = await asyncio.to_thread(broker.validate_credentials, config)
+        })
 
         if not is_valid:
             err_msg = (
-                f"❌ <b>Connection Verification Failed</b>\n\n"
-                f"<b>Reason:</b> {html.escape(message_or_err)}\n\n"
-                f"Please verify your server, email, and password and try again with <code>/connect</code>."
+                f"❌ <b>Authentication Failed</b>\n\n"
+                f"<i>Reason:</i> <code>{html.escape(message_or_err)}</code>\n\n"
+                "Please check your server, login, and password, then try <code>/connect</code> again."
             )
             telegram_gateway.send_message(err_msg, target_chat_id=str(chat_id))
             return
@@ -395,37 +377,28 @@ class TelegramListener:
             f"• <b>Broker:</b> <code>{broker_id.upper()}</code>\n"
             f"• <b>Server:</b> <code>{html.escape(server)}</code>\n"
             f"• <b>Login:</b> <code>{accounts_store.mask_login(email)}</code>\n"
-            f"• <b>Lot Size:</b> <code>{lots}</code>\n"
+            f"• <b>Sizing Engine:</b> <code>Strategy-Designed Smart Lotsizer</code>\n"
             f"• <b>Gateway Status:</b> 🟢 {html.escape(message_or_err)}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚡ <i>This account will now automatically execute all strategy signals in real-time.</i>"
+            f"⚡ <i>This account will now automatically execute all strategy signals with dynamic smart sizing in real-time.</i>"
         )
         telegram_gateway.send_message(success_msg, target_chat_id=str(chat_id))
 
     async def _cmd_risk(self, chat_id: int | str, user_id: str, args: list[str]) -> None:
-        if len(args) < 2:
-            telegram_gateway.send_message(
-                "Usage: <code>/risk &lt;account_id&gt; &lt;lots&gt;</code>\n"
-                "Example: <code>/risk trad_a1b2 0.25</code>",
-                target_chat_id=str(chat_id)
-            )
-            return
-
-        acc_id = args[0]
-        try:
-            lots = float(args[1])
-        except ValueError:
-            telegram_gateway.send_message("❌ Invalid lot size. Must be a number (e.g. 0.10).", target_chat_id=str(chat_id))
-            return
-
-        ok = accounts_store.update_account_risk(acc_id, user_id, lots)
-        if ok:
-            telegram_gateway.send_message(
-                f"✅ Updated default risk for account <code>{acc_id}</code> to <b>{lots:.2f} lots</b>.",
-                target_chat_id=str(chat_id)
-            )
-        else:
-            telegram_gateway.send_message(f"❌ Account <code>{acc_id}</code> not found.", target_chat_id=str(chat_id))
+        """Explains dynamic strategy-driven risk sizing without allowing unsafe manual overrides."""
+        msg = (
+            "🛡️ <b>Strategy-Designed Smart Risk & Lot Sizing</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "Position lot sizing is <b>not configured by the user</b>. In accordance with quantitative "
+            "risk principles and prop firm consistency rules, position sizes are calculated dynamically "
+            "<b>by design from the strategy</b>:\n\n"
+            "• <b>Risk Budget:</b> Fixed fractional risk per trade (e.g. 0.50% account equity)\n"
+            "• <b>Structural SL Distance:</b> Dynamically scales lots inversely to stop loss width ($/point)\n"
+            "• <b>Volatility Modulation:</b> Expands in high-conviction order flow absorption, contracts in extreme ATR expansion\n"
+            "• <b>Account Tailoring:</b> Scaled in real-time to each connected account's live balance\n\n"
+            "⚡ <i>Manual lot overrides are disabled to enforce strict drawdown preservation.</i>"
+        )
+        telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
 
     async def _cmd_toggle(self, chat_id: int | str, user_id: str, args: list[str], is_active: bool) -> None:
         if not args:
