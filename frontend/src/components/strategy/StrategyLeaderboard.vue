@@ -176,8 +176,8 @@
 
               <!-- Symbol -->
               <td>
-                <span class="badge badge-xs font-bold" :class="strat.symbol?.includes('XAU') ? 'badge-warning' : 'badge-info'">
-                  {{ strat.symbol }}
+                <span class="badge badge-xs font-bold" :class="(strat.symbol?.includes('XAU') || strat.name?.toLowerCase().includes('gold') || strat.name?.toLowerCase().includes('xau')) ? 'badge-warning' : 'badge-info'">
+                  {{ (strat.symbol && !strat.symbol.toLowerCase().includes('pair') && !strat.symbol.toLowerCase().includes('self.')) ? strat.symbol : ((strat.name?.toLowerCase().includes('gold') || strat.name?.toLowerCase().includes('xau')) ? 'XAU/USD' : 'BTC/USDT') }}
                 </span>
               </td>
 

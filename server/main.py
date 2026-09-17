@@ -147,18 +147,20 @@ async def get_candles(
         rec = strategy_registry.get(clean_strat)
         if rec and rec.get("timeframe"):
             timeframe = rec.get("timeframe")
-        if not symbol and rec and rec.get("symbol"):
-            symbol = rec.get("symbol")
+        rec_sym = rec.get("symbol") if rec else None
+        if not symbol and rec_sym and str(rec_sym).lower() not in ["pair", "symbol", "none", "self.symbol"] and not str(rec_sym).startswith("self."):
+            symbol = rec_sym
 
-    if not symbol:
+    if not symbol or str(symbol).lower() in ["pair", "symbol", "none", "self.symbol"] or str(symbol).startswith("self."):
         active_strat = strategy or strategy_registry.get_active_strategy_name()
         clean_active = active_strat.replace(".py", "")
         rec = strategy_registry.get(clean_active)
-        if rec and rec.get("symbol"):
-            symbol = rec.get("symbol")
+        rec_sym = rec.get("symbol") if rec else None
+        if rec_sym and str(rec_sym).lower() not in ["pair", "symbol", "none", "self.symbol"] and not str(rec_sym).startswith("self."):
+            symbol = rec_sym
         else:
             is_sp = any(k in active_strat.upper() for k in ["SP", "ES", "OPENING"])
-            is_gold = any(k in active_strat.upper() for k in ["XAU", "GOAT", "DISPLACEMENT"])
+            is_gold = any(k in active_strat.upper() for k in ["XAU", "GOLD", "GOAT", "DISPLACEMENT"])
             symbol = "S&P 500 (ES)" if is_sp else ("XAU/USD" if is_gold else "BTC/USDT")
 
     is_sp = any(k in symbol.upper() for k in ["SP", "ES", "S&P", "US500", "OPENING"])
@@ -760,6 +762,17 @@ async def list_strategies():
             st = os.stat(abs_path)
             stat_size = st.st_size
             stat_mtime = st.st_mtime
+        raw_sym = s.get("symbol")
+        if not raw_sym or str(raw_sym).lower() in ["pair", "symbol", "none", "self.symbol"] or str(raw_sym).startswith("self."):
+            if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT"]):
+                strat_sym = "XAU/USD"
+            elif any(k in file_name.upper() for k in ["SP", "ES", "OPENING"]):
+                strat_sym = "S&P 500 (ES)"
+            else:
+                strat_sym = "BTC/USDT"
+        else:
+            strat_sym = raw_sym
+
         strategy_files.append({
             "name": file_name,
             "path": rel_path,
@@ -767,8 +780,8 @@ async def list_strategies():
             "plugin_name": s.get("plugin_name"),
             "plugin_id": s.get("plugin_id"),
             "display_name": s.get("display_name", file_name.replace(".py", "")),
-            "symbol": s.get("symbol", "XAU/USD" if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else ("S&P 500 (ES)" if any(k in file_name.upper() for k in ["SP", "ES", "OPENING"]) else "BTC/USDT")),
-            "timeframe": s.get("timeframe", "1m" if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT", "SP", "ES", "OPENING"]) else "15m"),
+            "symbol": strat_sym,
+            "timeframe": s.get("timeframe", "5m" if any(k in file_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else ("1m" if any(k in file_name.upper() for k in ["SP", "ES", "OPENING"]) else "15m")),
             "size_bytes": stat_size,
             "last_modified": stat_mtime,
             "status": s.get("status", "DEACTIVATED"),

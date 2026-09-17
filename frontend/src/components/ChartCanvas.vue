@@ -284,7 +284,15 @@ const isSignalForCurrentStrategy = (s: any): boolean => {
 const resolveStrategySymbol = (stratName?: string): string => {
   if (!stratName) return 'XAU/USD';
   const clean = stratName.replace('.py', '');
-  // 1. Prioritize canonical metadata from props.strategies if available
+  const s = clean.toLowerCase();
+  // 1. High-priority canonical strategy name check
+  if (s.includes('xau') || s.includes('gold') || s.includes('goat') || s.includes('propfirmatrhybridscalperxauusd')) {
+    return 'XAU/USD';
+  }
+  if (s.includes('sp500') || s.includes('openingflush') || s.includes('orderflow') || s.includes('reversal') || s.includes('es')) {
+    return 'S&P 500 (ES)';
+  }
+  // 2. Prioritize canonical metadata from props.strategies if available
   if (props.strategies && props.strategies.length > 0) {
     const match = props.strategies.find((st) =>
       st.name === clean || st.name === stratName || st.file === stratName || st.file === `${clean}.py` || st.id === stratName
@@ -294,16 +302,8 @@ const resolveStrategySymbol = (stratName?: string): string => {
       if (sym.includes('SP') || sym.includes('ES') || sym.includes('S&P') || sym.includes('US500')) return 'S&P 500 (ES)';
       if (sym.includes('XAU') || sym.includes('GOLD')) return 'XAU/USD';
       if (sym.includes('BTC')) return 'BTC/USDT';
-      if (sym !== 'PAIR' && sym !== 'SYMBOL' && sym !== 'NONE' && sym !== '') return match.symbol;
+      if (sym !== 'PAIR' && sym !== 'SYMBOL' && sym !== 'NONE' && !sym.includes('SELF.') && sym !== '') return match.symbol;
     }
-  }
-  // 2. Canonical mapping for known strategies
-  const s = clean.toLowerCase();
-  if (s.includes('sp500') || s.includes('openingflush') || s.includes('orderflow') || s.includes('reversal') || s.includes('es')) {
-    return 'S&P 500 (ES)';
-  }
-  if (s.includes('xau') || s.includes('gold') || s.includes('goat') || s.includes('propfirmatrhybridscalperxauusd')) {
-    return 'XAU/USD';
   }
   if (s.includes('btc') || s.includes('asian') || s.includes('trapfade') || s.includes('vsa') || s.includes('propfirmatrhybridscalper')) {
     return 'BTC/USDT';
@@ -323,20 +323,15 @@ const resolveStrategyTimeframe = (stratName?: string): string => {
     }
   }
   const s = clean.toLowerCase();
-  if (s.includes('displacement') || s.includes('liquiditywalls') || s.includes('walls')) {
-    return '5m';
-  }
-  if (s.includes('sp500') || s.includes('openingflush')) return '1m';
-  if (s.includes('btc') || s.includes('asian') || s.includes('macro')) return '15m';
-  if (s.includes('xau') || s.includes('gold') || s.includes('goat')) return '1m';
+  if (s.includes('5m') || s.includes('gold') || s.includes('xau')) return '5m';
   return '1m';
 };
 
 const selectedSymbol = ref(resolveStrategySymbol(props.selectedStrategy || props.activeStrategy));
 const selectedTimeframe = ref(resolveStrategyTimeframe(props.selectedStrategy || props.activeStrategy));
-const isGoldStrategy = computed(() => selectedSymbol.value === 'XAU/USD');
-const isSpStrategy = computed(() => selectedSymbol.value === 'S&P 500 (ES)');
-const isBtcStrategy = computed(() => selectedSymbol.value === 'BTC/USDT');
+const isGoldStrategy = computed(() => selectedSymbol.value === 'XAU/USD' || selectedSymbol.value.includes('XAU') || cleanStrategyName.value.toLowerCase().includes('gold') || cleanStrategyName.value.toLowerCase().includes('xau'));
+const isSpStrategy = computed(() => selectedSymbol.value === 'S&P 500 (ES)' || selectedSymbol.value.includes('SP') || cleanStrategyName.value.toLowerCase().includes('sp500') || cleanStrategyName.value.toLowerCase().includes('flush'));
+const isBtcStrategy = computed(() => !isGoldStrategy.value && !isSpStrategy.value);
 
 const formatPrice = (p: number | undefined | null) => {
   if (p == null || isNaN(p)) return '–';

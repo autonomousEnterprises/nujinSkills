@@ -624,9 +624,9 @@ class StrategyRegistry:
                             tf = line_s.split("=")[-1].strip().strip("'\"")
                             if tf:
                                 timeframe = tf
-                        elif line_s.startswith("symbol =") or line_s.startswith("symbol="):
-                            sym = line_s.split("=")[-1].strip().strip("'\"")
-                            if sym and sym.lower() not in ["pair", "symbol", "none", "self.symbol"] and not sym.startswith("self."):
+                        elif (line.startswith("    symbol =") or line.startswith("    symbol=") or line.startswith("symbol =") or line.startswith("symbol=")):
+                            sym = line_s.split("=")[-1].strip().rstrip(",").strip().strip("'\"")
+                            if sym and sym.lower() not in ["pair", "symbol", "none", "self.symbol", "pair_symbol"] and not sym.startswith("self."):
                                 if "XAU" in sym.upper() or "GOLD" in sym.upper():
                                     symbol = "XAU/USD"
                                 elif "SP" in sym.upper() or "ES" in sym.upper():
@@ -659,12 +659,12 @@ class StrategyRegistry:
         if not display_name:
             display_name = humanized_name
 
-        if not symbol or symbol.lower() in ["pair", "symbol", "none"]:
-            clean_up = clean.upper()
+        clean_up = clean.upper()
+        if any(k in clean_up for k in ["XAU", "GOLD"]):
+            symbol = "XAU/USD"
+        elif not symbol or symbol.lower() in ["pair", "symbol", "none", "self.symbol"] or symbol.startswith("self."):
             if any(k in clean_up for k in ["SP500", "SPX", "ES", "FLUSH"]):
                 symbol = "S&P 500 (ES)"
-            elif any(k in clean_up for k in ["XAU", "GOLD"]):
-                symbol = "XAU/USD"
             elif any(k in clean_up for k in ["MNQ", "NQ"]):
                 symbol = "MNQ (Futures)"
             elif any(k in clean_up for k in ["ETH"]):
