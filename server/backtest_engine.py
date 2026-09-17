@@ -284,6 +284,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         can_short = True
         stoploss_pct = 0.0025 if is_gold else 0.02
         minimal_roi = {"0": 0.003 if is_gold else 0.035, "12": 0.0}
+        roi_keys = [0, 12]
         atr_tp_mult = None
         atr_sl_mult = None
         min_bars = 1

@@ -13,8 +13,8 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 |------|---------|
 | Start Telemetry Server (port 8000) | `python tools/server_control.py start --port 8000 --daemon` |
 | Start Visual Cockpit (port 3000) | `python tools/frontend_control.py start --port 3000 --daemon` |
-| Continuous Quant Edge Mining | `python tools/nujin_miner.py run --dimension mean_reversion --max-iterations 10` |
-| Vectorized Strategy Screener | `python tools/vectorized_screener.py --data data/BTCUSDT_15m.csv --strategy strategies/candidate.py` |
+| Continuous Quant Edge Mining | `python tools/nujin_miner.py run --archetype mean_reversion --cycles 10` |
+| Vectorized Strategy Screener | `python tools/vectorized_screener.py --data data/candles_15m.csv --strategy strategies/candidate.py` |
 | 5-Gate Cynic Audit (DSR >= 0.95) | `python tools/validation_cynic.py --strategy strategies/candidate.py --strict` |
 | Strategy Ranking & Tiers | `python tools/strategy_manager.py rank` |
 | Strategy Deep Insights | `python tools/strategy_manager.py insights <strategy_name>` |
@@ -23,7 +23,7 @@ Whenever you operate in this repository, you **MUST immediately operate using th
 | Sync Strategies on Disk | `python tools/strategy_manager.py sync` |
 | Remove Decommissioned Strategy | `python tools/strategy_manager.py remove <strategy_name>` |
 | Add Strategy to Production | `python tools/strategy_manager.py add <path_to_strategy.py>` |
-| Deploy Trading Bot | `python tools/bot_control.py deploy --strategy strategies/live_alpha.py --mode paper` |
+| Deploy Trading Bot | `python tools/bot_control.py deploy --strategy strategies/live_alpha.py --mode dry-run` |
 | Broadcast Telegram Update / News / Report | `python tools/telegram_broadcast.py broadcast --type [report\|news\|update\|alert] --title "<Title>" --message "<Content>"` |
 | Inspect Telegram Gateway Status | `python tools/telegram_broadcast.py status` |
 

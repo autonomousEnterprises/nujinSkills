@@ -273,13 +273,22 @@ const fetchSignals = async () => {
 
 const handleDeployBot = async (strategyName?: string) => {
   const target = strategyName || (selectedStratTab.value !== 'ALL' ? selectedStratTab.value : cleanSelectedName.value);
+  if (!target) {
+    alert("No strategy available to deploy. Please create or mine a strategy first before launching the bot.");
+    return;
+  }
   try {
     actionLoading.value = true;
-    await fetch('/api/bot/deploy', {
+    const res = await fetch('/api/bot/deploy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ strategy: target, strategy_name: `${target}.py`, mode: 'dry-run' }),
     });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      alert(errData.detail || `Failed to deploy bot: HTTP ${res.status}`);
+      return;
+    }
     emit('refreshStrategies');
     await fetchSignals();
   } catch (e) {

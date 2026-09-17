@@ -493,7 +493,20 @@ async def broadcast_event(envelope: EventEnvelope):
 
 @app.post("/api/bot/deploy")
 async def deploy_bot(req: DeployBotRequest):
-    strat = req.strategy or req.strategy_name or strategy_registry.get_active_strategy_name()
+    raw_strat = req.strategy or req.strategy_name or strategy_registry.get_active_strategy_name()
+    clean_strat = (raw_strat or "").replace(".py", "").strip()
+    if not clean_strat or clean_strat == ".":
+        raise HTTPException(
+            status_code=400,
+            detail="No strategy available to deploy. Please mine or register a strategy in strategies/ first."
+        )
+    strat_path = os.path.join(os.getcwd(), "strategies", f"{clean_strat}.py")
+    if not os.path.exists(strat_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Strategy file '{clean_strat}.py' not found in strategies/. Please mine or register this strategy first."
+        )
+    strat = clean_strat
     logger.info(f"Activating & deploying strategy for system: {strat}")
     bt_result = run_real_backtest(strat, save_as_active=True)
     bot_supervisor.set_broadcast_callback(manager.broadcast)

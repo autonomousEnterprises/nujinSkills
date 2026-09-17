@@ -5,38 +5,93 @@ import sys
 import numpy as np
 import pandas as pd
 
-def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: float, output_path: str):
-    print(f"[VectorizedScreener] Loading feature dataset from {data_path}...")
-    df = pd.read_csv(data_path)
-    
-    try:
-        rules = json.loads(rules_json) if isinstance(rules_json, str) else rules_json
-    except Exception as e:
-        print(f"[VectorizedScreener] Error parsing rules JSON: {e}")
+import os
+
+def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: float, output_path: str, strategy: str = ""):
+    # 1. Resolve Data Path
+    if not os.path.exists(data_path):
+        for fallback in ["data/candles_15m.csv", "data/features.csv", "data/xauusd_candles_1m.csv"]:
+            if os.path.exists(fallback):
+                print(f"[VectorizedScreener] Notice: '{data_path}' not found. Falling back to '{fallback}'.")
+                data_path = fallback
+                break
+
+    if not os.path.exists(data_path):
+        print(f"[VectorizedScreener] ERROR: Data file '{data_path}' not found.")
         sys.exit(1)
+
+    print(f"[VectorizedScreener] Loading dataset from {data_path}...")
+    df = pd.read_csv(data_path)
+
+    # If raw candles lack features, compute essential features
+    if "lower_wick" not in df.columns and "high" in df.columns and "low" in df.columns and "close" in df.columns:
+        total_range = (df["high"] - df["low"]).clip(1e-6, None)
+        df["lower_wick"] = (df[["close", "open"]].min(axis=1) - df["low"]) / total_range
+        df["upper_wick"] = (df["high"] - df[["close", "open"]].max(axis=1)) / total_range
+        df["body_ratio"] = (df["close"] - df["open"]).abs() / total_range
+        vol_mean = df["volume"].rolling(20).mean()
+        vol_std = df["volume"].rolling(20).std().clip(1e-6, None)
+        df["volume_zscore"] = (df["volume"] - vol_mean) / vol_std
+
+    sl_stop = None
+    tp_stop = None
+    max_bars = 12
+
+    # 2. Strategy evaluation vs Rule string evaluation
+    if strategy:
+        import sys
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        if root_dir not in sys.path:
+            sys.path.insert(0, root_dir)
+        from server.backtest_engine import load_strategy_instance
+        clean_name = os.path.basename(strategy).replace(".py", "")
+        strat = load_strategy_instance(clean_name)
+        if not strat:
+            print(f"[VectorizedScreener] ERROR: Could not instantiate strategy '{clean_name}'.")
+            sys.exit(1)
         
-    entry_rule = rules.get("entry_long", rules.get("entry", "lower_wick > 0.55 and volume_zscore > 1.5"))
-    exit_rule = rules.get("exit", None)
-    max_bars = int(rules.get("max_bars_held", 12))
-    sl_stop = float(rules.get("stop_loss", 0.0)) if rules.get("stop_loss") else None
-    tp_stop = float(rules.get("take_profit", 0.0)) if rules.get("take_profit") else None
+        metadata = {"pair": "BTC/USDT"}
+        df = strat.populate_indicators(df, metadata)
+        df = strat.populate_entry_trend(df, metadata)
+        if hasattr(strat, "populate_exit_trend"):
+            df = strat.populate_exit_trend(df, metadata)
+        else:
+            df["exit_long"] = 0
+            df["exit_short"] = 0
 
-    # Evaluate Entry Conditions safely
-    try:
-        entries = df.eval(entry_rule).astype(bool)
-    except Exception as e:
-        print(f"[VectorizedScreener] Failed to evaluate entry rule '{entry_rule}': {e}")
-        # Fallback heuristic if string parsing fails
-        entries = (df['lower_wick'] > 0.5) & (df['volume_zscore'] > 1.0)
-
-    # Evaluate Exit Conditions safely
-    if exit_rule and exit_rule != "bars >= 12":
-        try:
-            raw_exits = df.eval(exit_rule).astype(bool)
-        except Exception:
-            raw_exits = pd.Series(False, index=df.index)
+        entries = (df.get("enter_long", 0) == 1) | (df.get("enter_short", 0) == 1)
+        raw_exits = (df.get("exit_long", 0) == 1) | (df.get("exit_short", 0) == 1)
+        sl_stop = getattr(strat, "stoploss", None)
+        if sl_stop is not None:
+            sl_stop = abs(float(sl_stop))
     else:
-        raw_exits = pd.Series(False, index=df.index)
+        try:
+            rules = json.loads(rules_json) if isinstance(rules_json, str) else (rules_json or {})
+        except Exception as e:
+            print(f"[VectorizedScreener] Error parsing rules JSON: {e}")
+            sys.exit(1)
+            
+        entry_rule = rules.get("entry_long", rules.get("entry", "lower_wick > 0.55 and volume_zscore > 1.5"))
+        exit_rule = rules.get("exit", None)
+        max_bars = int(rules.get("max_bars_held", 12))
+        sl_stop = float(rules.get("stop_loss", 0.0)) if rules.get("stop_loss") else None
+        tp_stop = float(rules.get("take_profit", 0.0)) if rules.get("take_profit") else None
+
+        # Evaluate Entry Conditions safely
+        try:
+            entries = df.eval(entry_rule).astype(bool)
+        except Exception as e:
+            print(f"[VectorizedScreener] Failed to evaluate entry rule '{entry_rule}': {e}")
+            entries = (df.get('lower_wick', 0) > 0.5) & (df.get('volume_zscore', 0) > 1.0)
+
+        # Evaluate Exit Conditions safely
+        if exit_rule and exit_rule != "bars >= 12":
+            try:
+                raw_exits = df.eval(exit_rule).astype(bool)
+            except Exception:
+                raw_exits = pd.Series(False, index=df.index)
+        else:
+            raw_exits = pd.Series(False, index=df.index)
 
     # Holding period exits
     exits = pd.Series(False, index=entries.index)
@@ -155,11 +210,16 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vectorized In-Sample Strategy Coarse Filter via VectorBT")
-    parser.add_argument("--data", required=True, help="Input features CSV file path")
-    parser.add_argument("--rules", required=True, help="Rule dict or JSON string specifying strategy entry/exit")
+    parser.add_argument("--data", default="data/candles_15m.csv", help="Input dataset or features CSV file path (default: data/candles_15m.csv)")
+    parser.add_argument("--rules", default="", help="Rule dict or JSON string specifying strategy entry/exit")
+    parser.add_argument("--strategy", default="", help="Strategy filename or path to screen directly")
     parser.add_argument("--fee-bps", type=float, default=5.0, help="Taker fee in bps (default: 5.0)")
     parser.add_argument("--slippage-bps", type=float, default=2.0, help="Slippage in bps (default: 2.0)")
-    parser.add_argument("--output", required=True, help="Output JSON path for trade return series")
+    parser.add_argument("--output", default="data/screener_returns.json", help="Output JSON path for trade return series")
     args = parser.parse_args()
     
-    run_screener(args.data, args.rules, args.fee_bps, args.slippage_bps, args.output)
+    if not args.rules and not args.strategy:
+        print("[VectorizedScreener] ERROR: Must provide either --rules or --strategy.")
+        sys.exit(1)
+
+    run_screener(args.data, args.rules, args.fee_bps, args.slippage_bps, args.output, strategy=args.strategy)

@@ -479,7 +479,10 @@ def action_step(features_path: str = "data/features.csv", rules_override: str = 
     print(f"  Next Mutation:      {chosen_op}")
     print(f"{TOOL_NAME} Logged to {results_path}")
 
-def action_run(cycles: int, features_path: str = "data/features.csv"):
+def action_run(cycles: int, features_path: str = "data/features.csv", archetype: str = "mean_reversion"):
+    state_path = os.path.join(AUTORESEARCH_DIR, "state.json")
+    if not os.path.exists(state_path):
+        action_init(target="", scope="", context="", archetype=archetype)
     print(f"{TOOL_NAME} Initiating continuous autonomous research loop ({cycles} cycles)...")
     for i in range(cycles):
         action_step(features_path)
@@ -593,11 +596,11 @@ if __name__ == "__main__":
     parser.add_argument("--target", default="", help="Optimization target description")
     parser.add_argument("--scope", default="", help="Target scope (symbol/timeframe)")
     parser.add_argument("--context", default="", help="Target constraints/context")
-    parser.add_argument("--archetype", default="mean_reversion", choices=["mean_reversion", "trend_following", "momentum_breakout", "price_action", "smc_liquidity", "custom"], help="Strategy archetype template")
+    parser.add_argument("--archetype", "--dimension", default="mean_reversion", choices=["mean_reversion", "trend_following", "momentum_breakout", "price_action", "smc_liquidity", "custom"], help="Strategy archetype template")
     parser.add_argument("--initial-rules", default="", help="JSON string or file path containing initial candidate rules")
     parser.add_argument("--rules-file", default="", help="Candidate rules JSON file or string to evaluate in this step")
     parser.add_argument("--features", default="data/features.csv", help="Feature data CSV path")
-    parser.add_argument("--cycles", type=int, default=5, help="Number of continuous cycles for 'run'")
+    parser.add_argument("--cycles", "--max-iterations", type=int, default=5, help="Number of continuous cycles for 'run'")
     parser.add_argument("--tool", default="feature_miner.py", help="Tool filename for 'improve-tool'")
     args = parser.parse_args()
 
@@ -606,7 +609,7 @@ if __name__ == "__main__":
     elif args.action == "step":
         action_step(args.features, rules_override=args.rules_file)
     elif args.action == "run":
-        action_run(args.cycles, args.features)
+        action_run(args.cycles, args.features, archetype=args.archetype)
     elif args.action == "status":
         action_status()
     elif args.action == "improve-tool":

@@ -102,17 +102,43 @@ def run_parameter_stability(param_grid_json: str, observed_sr: float) -> dict:
         "status": "PASS" if plateau_status == "STABLE_PLATEAU" else "FAIL"
     }
 
-def audit_candidate(returns_path: str, trials: int, param_grid: str, oos_data: str):
-    print(f"[ValidationCynic] Loading candidate trade returns from {returns_path}...")
-    try:
-        with open(returns_path, 'r') as f:
-            returns = np.array(json.load(f))
-    except Exception as e:
-        print(f"[ValidationCynic] Error reading returns file: {e}")
-        returns = np.array([])
+def audit_candidate(returns_path: str, trials: int, param_grid: str, oos_data: str, strategy: str = "", strict: bool = False):
+    returns = np.array([])
+    if strategy:
+        import os, sys
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        if root_dir not in sys.path:
+            sys.path.insert(0, root_dir)
+        from server.backtest_engine import run_real_backtest
+        print(f"[ValidationCynic] Running real backtest to audit strategy '{strategy}'...")
+        try:
+            bt_results = run_real_backtest(strategy, save_as_active=False)
+            trades = bt_results.get("trades_detail", [])
+            returns = np.array([float(t.get("pnl_pct", 0.0)) / 100.0 for t in trades])
+            print(f"[ValidationCynic] Loaded {len(returns)} trade returns from backtest.")
+        except Exception as e:
+            print(f"[ValidationCynic] Backtest error for {strategy}: {e}")
+            if strict:
+                sys.exit(1)
+            return
+    elif returns_path:
+        print(f"[ValidationCynic] Loading candidate trade returns from {returns_path}...")
+        try:
+            with open(returns_path, 'r') as f:
+                returns = np.array(json.load(f))
+        except Exception as e:
+            print(f"[ValidationCynic] Error reading returns file: {e}")
+            returns = np.array([])
+    else:
+        print("[ValidationCynic] ERROR: Either --returns or --strategy must be specified.")
+        if strict:
+            sys.exit(1)
+        return
 
     if len(returns) == 0:
         print(json.dumps({"overall_status": "REJECT", "reason": "Empty return series"}, indent=2))
+        if strict:
+            sys.exit(1)
         return
 
     # Gate 1: Deflated Sharpe Ratio
@@ -150,13 +176,17 @@ def audit_candidate(returns_path: str, trials: int, param_grid: str, oos_data: s
     }
     
     print(json.dumps(result, indent=2))
+    if strict and not overall_pass:
+        sys.exit(1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Adversarial Audit & Falsification Cynic CLI")
-    parser.add_argument("--returns", required=True, help="JSON file path containing candidate returns")
+    parser.add_argument("--returns", default="", help="JSON file path containing candidate returns")
+    parser.add_argument("--strategy", default="", help="Strategy filename or path to audit via backtest returns")
     parser.add_argument("--trials", type=int, default=100, help="Cumulative trial count across ideation phase")
     parser.add_argument("--param-grid", default="{}", help="Parameter grid JSON string for stability testing")
     parser.add_argument("--oos-data", default="", help="Optional OOS features CSV path")
+    parser.add_argument("--strict", action="store_true", help="Exit with non-zero status code if candidate fails gates")
     args = parser.parse_args()
     
-    audit_candidate(args.returns, args.trials, args.param_grid, args.oos_data)
+    audit_candidate(args.returns, args.trials, args.param_grid, args.oos_data, strategy=args.strategy, strict=args.strict)

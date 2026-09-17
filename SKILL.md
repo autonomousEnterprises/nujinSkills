@@ -29,10 +29,10 @@ While Nujin works autonomously in the background, the human trader monitors oper
 
 | Screen / Deck | Hotkey | Component | Purpose & Visual Telemetry |
 | --- | --- | --- | --- |
-| **Chart Canvas** | **F1** | `ChartCanvas.tsx` | Interactive TradingView candlestick chart (Binance 15m/1m live feeds) overlaid with entry/exit trade markers, stop-loss lines, and take-profit target bounds. |
-| **Signal Deck** | **F2** | `SignalDeck.tsx` | Live execution telemetry: win rate, profit factor, annualized Sharpe, total net PnL % since activation, active open position with real-time unrealized PnL, and signal history log. |
-| **Backtest Deck** | **F3** | `BacktestDeck.tsx` | Full-width backtest analytics: equity growth curve, return distribution histogram, market regime survival (Bull, Bear, Range), sequential trade log, and 5-Gate Cynic Audit matrix. |
-| **Strategy Manager**| **F4** | `StrategyManagerDeck.tsx`| Command & Portfolio Lifecycle deck: Parallel active bots KPI bar, Leaderboard, Drift Trajectory (alpha decay test), and Edge/Risk distribution. |
+| **Chart Canvas** | **F1** | `ChartCanvas.vue` | Interactive TradingView candlestick chart (Binance 15m/1m live feeds) overlaid with Level 3 visual primitives (EMAs, bands, channels, S&R), FVG imbalance boxes, liquidity sweep levels, and entry/exit trade markers. |
+| **Signal Deck** | **F2** | `SignalDeck.vue` | Live execution telemetry: win rate, profit factor, annualized Sharpe, total net PnL % since activation, active open position card with real-time unrealized PnL & manual close button, and signal history log. |
+| **Backtest Deck** | **F3** | `BacktestDeck.vue` | Full-width backtest analytics: authentic calendar time windows (exact start/end dates & bar counts), equity growth curve, return distribution histogram, market regime survival (Bull, Bear, Range), sequential trade log, and 5-Gate Cynic Audit matrix. |
+| **Strategy Manager**| **F4** | `StrategyManagerDeck.vue`| Command & Portfolio Lifecycle deck: Global mode toggle (`LIVE TELEMETRY` vs `BENCHMARK BACKTEST`), Realized & Benchmark Equity Growth Trajectory curve (`StrategyEquityChart.vue`), Leaderboard with direct "View Strategy on Chart (F1)" action button, drift sparklines, and 4-pillar Cynic scorecards. |
 | **Cycle Decks** | **Ctrl + Space** | Router | Seamlessly toggle focus between screens. |
 
 Start the Cockpit:
@@ -294,7 +294,7 @@ Nujin audits and evolves its own tool suite and knowledge base:
 | **State Architecture** | [`references/state_architecture.md`](references/state_architecture.md) | Single Source of Truth (`state.json`, `strategies.json`), atomic file locks (`fcntl`), tri-state lifecycle, cron drift. |
 | **Ranking & Tiers** | [`references/strategy_ranking_tiers.md`](references/strategy_ranking_tiers.md) | 4-pillar composite scoring (Edge 35%, Robustness 30%, Risk 25%, Drift 10%), S/A/B/C tier gates, WebSocket sync. |
 | **Cockpit Telemetry** | [`references/cockpit_telemetry.md`](references/cockpit_telemetry.md) | Dual-screen Cockpit UI architecture, TradingView charts, WebSocket telemetry bus, F1–F4 hotkeys. |
-| **Extending Nujin** | [`references/extending_nujin.md`](references/extending_nujin.md) | Developer extension guide: adding REST endpoints, WS events, React screens, and tool authoring standard. |
+| **Extending Nujin** | [`references/extending_nujin.md`](references/extending_nujin.md) | Developer extension guide: adding REST endpoints, WS events, Vue 3 screens, and tool authoring standard. |
 
 ---
 
@@ -302,20 +302,20 @@ Nujin audits and evolves its own tool suite and knowledge base:
 
 | Tool Script | `[Prefix]` | Responsibilities | Key Arguments |
 | --- | --- | --- | --- |
-| `tools/nujin_miner.py` | `[NujinMiner]` | **Autonomous Alpha Loop & Tool Evolver:** hypothesis-eval-mutate cycles, binary scoring, disk state, and meta-tool auditing | `init`, `step`, `run`, `status`, `improve-tool`, `--target`, `--cycles`, `--tool` |
-| `tools/feature_miner.py` | `[FeatureMiner]` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP | `--input`, `--output`, `--window` |
-| `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast In-Sample strategy coarse filter with taker fee & slippage friction | `--data`, `--rules`, `--fee-bps`, `--output` |
-| `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit | `--returns`, `--trials`, `--param-grid`, `--oos-data` |
+| `tools/nujin_miner.py` | `[NujinMiner]` | **Autonomous Alpha Loop & Tool Evolver:** hypothesis-eval-mutate cycles, binary scoring, disk state, and meta-tool auditing | `init`, `step`, `run`, `status`, `improve-tool`, `--target`, `--scope`, `--archetype`/`--dimension`, `--cycles`/`--max-iterations`, `--features`, `--tool` |
+| `tools/feature_miner.py` | `[FeatureMiner]` | Bar geometry, VSA volume Z-score, Parkinson volatility, rolling Hurst proxy, AVWAP, SMC, EMAs, ADX, Candlestick patterns | `--input`, `--output`, `--window` |
+| `tools/vectorized_screener.py` | `[VectorizedScreener]` | Fast In-Sample strategy coarse filter with taker fee & slippage friction (supports rule strings & strategy files) | `--data`, `--rules`, `--strategy`, `--fee-bps`, `--slippage-bps`, `--output` |
+| `tools/validation_cynic.py` | `[ValidationCynic]` | DSR calculation, parameter stability surface grid, Monte Carlo, OOS audit (supports returns JSON & strategy files) | `--returns`, `--strategy`, `--strict`, `--trials`, `--param-grid`, `--oos-data` |
 | `tools/portfolio_cynic.py` | `[PortfolioCynic]` | **Portfolio Correlation & Regime Slicing:** Pairwise $\rho_{ij}$ matrix, Bull/Bear/Range attribution, diversification ratio, and redundancy filter | `--strategies`, `--data`, `--threshold`, `--json` |
 | `tools/run_backtest_audit.py` | `[BacktestAudit]` | Full backtest, equity curve, regime survival, 5-Gate Cynic matrix, saves state | `--strategy`, `--save-state`, `--json-output` |
-| `tools/strategy_manager.py` | `[StrategyManager]` | **Zero-Code Strategy Management:** Dynamic auto-discovery, safe file removal, 4-pillar rankings, drift tracking, and bot activation | `sync`, `add`, `remove`, `rank`, `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `insights`, `--json` |
+| `tools/strategy_manager.py` | `[StrategyManager]` | **Zero-Code Strategy Management:** Dynamic auto-discovery, safe file removal, 4-pillar rankings, correlation matrix, insights, drift tracking, and bot activation | `sync`, `add`, `remove`, `rank`, `insights`, `correlation`, `list`, `status`, `portfolio`, `drift`, `signals`, `backtest`, `cron`, `summary`, `--json` |
 | `tools/telegram_broadcast.py` | `[TelegramBroadcast]` | **Autonomous Telegram Dispatcher:** Broadcasts quant reports, macro/market news, system/strategy updates, and alerts to users | `broadcast`, `status`, `test`, `--message`, `--file`, `--type`, `--title`, `--chat-id`, `--silent`, `--dry-run`, `--json` |
-| `tools/state_control.py` | `[StateControl]` | Shared state CLI: read/patch state, deploy/stop strategies, manage signals | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add` |
+| `tools/state_control.py` | `[StateControl]` | Shared state CLI: read/patch state, deploy/stop strategies, manage signals & positions | `get`, `patch`, `deploy`, `stop`, `signals`, `signal-stats`, `signal-add`, `signal-close`, `schema`, `strategies` |
 | `tools/strategy_emitter.py` | `[StrategyEmitter]` | Generates Freqtrade `IStrategy` or Jesse strategy Python code | `--thesis`, `--rules`, `--framework`, `--out` |
 | `tools/ui_dispatcher.py` | `[UIDispatcher]` | Dispatches WebSocket widgets, chart markers, and Telegram alerts | `--event`, `--payload`, `--endpoint` |
-| `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--port` |
-| `tools/frontend_control.py` | `[FrontendControl]` | Build and serve the dual-screen React Cockpit | `build`, `start`, `stop`, `status`, `--port` |
-| `tools/bot_control.py` | `[BotControl]` | Launch and manage Freqtrade/Jesse paper trading bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` |
+| `tools/server_control.py` | `[ServerControl]` | Start/stop FastAPI server & Telegram gateway | `start`, `stop`, `status`, `--host`, `--port`, `--daemon` |
+| `tools/frontend_control.py` | `[FrontendControl]` | Build and serve the dual-screen Vue 3 Cockpit | `build`, `start`, `stop`, `status`, `--port`, `--daemon` |
+| `tools/bot_control.py` | `[BotControl]` | Launch and manage paper trading (dry-run) or live execution bot | `deploy`, `stop`, `status`, `--strategy`, `--mode` (`dry-run`/`paper`/`live`) |
 
 ---
 

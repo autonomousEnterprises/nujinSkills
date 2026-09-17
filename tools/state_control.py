@@ -219,7 +219,7 @@ if __name__ == "__main__":
     parser.add_argument("--id",         type=int, default=None,           help="Signal ID for signal-close")
     parser.add_argument("--exit-price", type=float, default=0.0,          help="Exit price for signal-close")
     parser.add_argument("--reason",     default="MANUAL_CLOSE",           help="Exit reason (TAKE_PROFIT, STOP_LOSS, MANUAL_CLOSE)")
-    parser.add_argument("--pnl",        type=float, default=None,         help="Realized PnL % for signal-close")
+    parser.add_argument("--pnl",        type=float, default=None,         help="Realized PnL %% for signal-close")
     parser.add_argument("--endpoint",   default="http://localhost:8000",  help="Backend API endpoint (default: http://localhost:8000)")
     args = parser.parse_args()
 
