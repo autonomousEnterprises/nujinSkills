@@ -110,14 +110,16 @@ def resolve_strategy_metadata(strategy_name: str, timeframe_override: Optional[s
     curr_state = state_manager.get()
     is_active_sys = (clean_name == curr_state.get("active_strategy"))
 
+    strat_inst = load_strategy_instance(clean_name)
+    strat_inst_symbol = getattr(strat_inst, "symbol", None) if strat_inst else None
+    strat_inst_timeframe = getattr(strat_inst, "timeframe", None) if strat_inst else None
+
     # Determine symbol and timeframe dynamically
-    symbol = (strat_record.get("symbol") if strat_record else None) or \
+    symbol = strat_inst_symbol or \
+             (strat_record.get("symbol") if strat_record else None) or \
              (curr_state.get("symbol") if is_active_sys else None) or \
              ("S&P 500 (ES)" if any(k in clean_name.upper() for k in ["SP500", "SPX", "ES", "FLUSH"]) else \
              ("XAU/USD" if any(k in clean_name.upper() for k in ["XAU", "GOLD", "GOAT"]) else "BTC/USDT"))
-
-    strat_inst = load_strategy_instance(clean_name)
-    strat_inst_timeframe = getattr(strat_inst, "timeframe", None) if strat_inst else None
 
     timeframe = timeframe_override or \
                 strat_inst_timeframe or \
@@ -284,6 +286,11 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         if max_bars == 0:
             max_bars = 12
 
+        # Trailing stop configuration
+        use_trailing = getattr(strat_inst, "trailing_stop", False)
+        trail_pos = float(getattr(strat_inst, "trailing_stop_positive", 0.0035))
+        trail_offset = float(getattr(strat_inst, "trailing_stop_positive_offset", 0.0070))
+
         # Populate strategy indicators, entry, and exit trends
         try:
             df_c = strat_inst.populate_indicators(df_c, {})
@@ -420,6 +427,19 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                             break
                 else:
                     target_tp = take_profit
+
+                # Dynamic Trailing Stop update
+                if use_trailing and bars_held >= 2:
+                    if side == "LONG":
+                        max_gain = (curr_h - entry_price) / entry_price
+                        if max_gain >= trail_offset:
+                            new_sl = round(curr_h * (1.0 - trail_pos), 2)
+                            stop_loss = max(stop_loss, new_sl)
+                    else:
+                        max_gain = (entry_price - curr_l) / entry_price
+                        if max_gain >= trail_offset:
+                            new_sl = round(curr_l * (1.0 + trail_pos), 2)
+                            stop_loss = min(stop_loss, new_sl)
 
                 if side == "LONG":
                     if curr_l <= stop_loss:
