@@ -282,9 +282,13 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         min_bars = getattr(strat_inst, "min_bars", getattr(strat_inst, "min_hold_bars", None))
         if min_bars is None:
             min_bars = 2 if "GOAT" in clean_name.upper() else 1
-        max_bars = max(roi_keys, default=getattr(strat_inst, "max_bars", 15 if is_gold else 12))
-        if max_bars == 0:
-            max_bars = 12
+        strat_max_bars = getattr(strat_inst, "max_bars", None)
+        if strat_max_bars is None:
+            max_bars = 288  # 1 full daily session on 5m: allows full trend run protected by TP/SL/Trailing SL & session flatting
+        else:
+            max_bars = max(roi_keys, default=strat_max_bars)
+            if max_bars == 0:
+                max_bars = 288
 
         # Trailing stop configuration
         use_trailing = getattr(strat_inst, "trailing_stop", False)
@@ -428,8 +432,8 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                 else:
                     target_tp = take_profit
 
-                # Dynamic Trailing Stop update
-                if use_trailing and bars_held >= 2:
+                # Dynamic Trailing Stop update (ratchets stop loss tight behind the trade)
+                if use_trailing and bars_held >= 1:
                     if side == "LONG":
                         max_gain = (curr_h - entry_price) / entry_price
                         if max_gain >= trail_offset:
@@ -444,7 +448,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                 if side == "LONG":
                     if curr_l <= stop_loss:
                         exit_price = stop_loss
-                        exit_reason = "STOP_LOSS"
+                        exit_reason = "TRAIL_STOP" if stop_loss > entry_price else "STOP_LOSS"
                         final_exit_idx = exit_idx
                         break
                     elif curr_h >= target_tp and bars_held >= min_bars:
@@ -460,7 +464,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                 else:  # SHORT
                     if curr_h >= stop_loss:
                         exit_price = stop_loss
-                        exit_reason = "STOP_LOSS"
+                        exit_reason = "TRAIL_STOP" if stop_loss < entry_price else "STOP_LOSS"
                         final_exit_idx = exit_idx
                         break
                     elif curr_l <= target_tp and bars_held >= min_bars:

@@ -248,6 +248,28 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
             if len(df) >= 100:
                 last_ts = int(df.iloc[-1][time_col])
                 if (now_ts - last_ts) <= 120:
+                    # Maintain mirror-perfect 5m resampled cache from the full 1m history
+                    try:
+                        if not os.path.exists(csv_5m_path) or (os.path.getmtime(csv_path) > os.path.getmtime(csv_5m_path)):
+                            full_records = df.to_dict(orient="records")
+                            full_bars = [
+                                {
+                                    "time": int(r.get("timestamp", r.get("time", 0))),
+                                    "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                                    "open": round(float(r["open"]), 2),
+                                    "high": round(float(r["high"]), 2),
+                                    "low": round(float(r["low"]), 2),
+                                    "close": round(float(r["close"]), 2),
+                                    "volume": round(float(r.get("volume", 10.0)), 2)
+                                }
+                                for r in full_records
+                            ]
+                            resampled_full_5m = resample_candles(full_bars, "5m")
+                            if resampled_full_5m and len(resampled_full_5m) > 50:
+                                pd.DataFrame(resampled_full_5m).to_csv(csv_5m_path, index=False)
+                    except Exception as e_full_5m:
+                        logger.warning(f"[DataManager] Could not sync 5m resampled cache: {e_full_5m}")
+
                     records = df.tail(count * 5).to_dict(orient="records") if (count and count > 0) else df.to_dict(orient="records")
                     candles_1m = [
                         {
@@ -309,7 +331,20 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
 
             # Also update 5m resampled cache file so both timeframes are always mirror-perfect
             try:
-                resampled_5m = resample_candles(all_bars, "5m")
+                full_records = df_to_return.to_dict(orient="records")
+                full_bars = [
+                    {
+                        "time": int(r.get("timestamp", r.get("time", 0))),
+                        "timestamp": int(r.get("timestamp", r.get("time", 0))),
+                        "open": round(float(r["open"]), 2),
+                        "high": round(float(r["high"]), 2),
+                        "low": round(float(r["low"]), 2),
+                        "close": round(float(r["close"]), 2),
+                        "volume": round(float(r.get("volume", 10.0)), 2)
+                    }
+                    for r in full_records
+                ]
+                resampled_5m = resample_candles(full_bars, "5m")
                 if resampled_5m:
                     df_5m = pd.DataFrame(resampled_5m)
                     df_5m.to_csv(csv_5m_path, index=False)
