@@ -164,7 +164,46 @@ class BaseMarketDataProvider(abc.ABC):
             closed_bar = dict(last_bar)
             await self._notify_bar(closed_bar)
 
-            new_open = last_bar["close"]
+            # Check if there is a multi-bar gap (e.g. overnight or feed interruption)
+            if bar_time - last_bar_t >= 2 * step:
+                # Attempt to reload fresh authentic candles to fill the gap if provider supports it
+                if hasattr(self, "_load_initial_candles"):
+                    try:
+                        self._load_initial_candles()
+                    except Exception as e:
+                        logger.warning(f"[{self.symbol}] Error reloading initial candles on gap: {e}")
+                elif hasattr(self, "_load_initial_data"):
+                    try:
+                        self._load_initial_data()
+                    except Exception as e:
+                        logger.warning(f"[{self.symbol}] Error reloading initial data on gap: {e}")
+
+                # If still gapped, fill missing bars with flat session/closure bars
+                last_bar = self._candles[-1] if self._candles else last_bar
+                last_bar_t = int(last_bar.get("timestamp") or last_bar.get("time") or 0)
+                if bar_time - last_bar_t >= 2 * step:
+                    missing_count = (bar_time - last_bar_t) // step - 1
+                    max_fill = min(missing_count, 1440)
+                    fill_start = bar_time - (max_fill * step)
+                    for fill_t in range(fill_start, bar_time, step):
+                        self._candles.append({
+                            "time": fill_t,
+                            "timestamp": fill_t,
+                            "open": last_bar["close"],
+                            "high": last_bar["close"],
+                            "low": last_bar["close"],
+                            "close": last_bar["close"],
+                            "volume": 0.0
+                        })
+                    if len(self._candles) > 20000:
+                        self._candles = self._candles[-20000:]
+                    last_bar = self._candles[-1]
+
+                # For the new bar after a gap, open starts at the new tick price, not yesterday's close!
+                new_open = price
+            else:
+                new_open = last_bar["close"]
+
             init_vol = volume_increment if volume_increment is not None else 10.0
             new_bar = {
                 "time": bar_time,

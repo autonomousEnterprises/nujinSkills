@@ -210,10 +210,18 @@ async def get_candles(
         if provider._candles and len(provider._candles) >= 50:
             last_ts = int(provider._candles[-1].get("time") or provider._candles[-1].get("timestamp") or 0)
             if (now_ts - last_ts) <= 180:
-                c_list = provider._candles
-                data = c_list[-count:] if (count and count < len(c_list)) else c_list
-                prims = _extract_primitives_for_response(strategy, data)
-                return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
+                # Ensure the candles are continuous without an unresolved multi-bar gap
+                is_continuous = True
+                if len(provider._candles) >= 2:
+                    prev_ts = int(provider._candles[-2].get("time") or provider._candles[-2].get("timestamp") or 0)
+                    step_sec = provider.bar_step_seconds
+                    if (last_ts - prev_ts) > step_sec * 5:
+                        is_continuous = False
+                if is_continuous:
+                    c_list = provider._candles
+                    data = c_list[-count:] if (count and count < len(c_list)) else c_list
+                    prims = _extract_primitives_for_response(strategy, data)
+                    return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
 
         # 2. Live Market Data Feed: Fetch fresh continuous bars directly from exchange / institutional stream
         if is_sp:

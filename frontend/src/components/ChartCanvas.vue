@@ -250,7 +250,8 @@ const emit = defineEmits<{
 
 function timeToLocal(originalTime: number): number {
   if (!originalTime) return 0;
-  return Number(originalTime);
+  const offsetSeconds = -new Date().getTimezoneOffset() * 60;
+  return Number(originalTime) + offsetSeconds;
 }
 
 // ── State Variables ──
@@ -1982,13 +1983,15 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     return;
   }
 
-  // If a significant gap is detected, trigger non-blocking debounced background reconciliation (max once per 30s)
+  // If a significant gap is detected, trigger non-blocking debounced background reconciliation
   const nowMs = Date.now();
-  if (rawTime - lastTime > barStep * 3) {
-    if (nowMs - lastGapSyncTime > 30000) {
+  if (rawTime - lastTime > barStep * 2) {
+    if (nowMs - lastGapSyncTime > 10000) {
       lastGapSyncTime = nowMs;
-      loadCandles(true);
+      loadCandles(false);
     }
+    // Prevent drawing a single deformed orphan candle spanning across an overnight gap
+    return;
   }
 
   const localTime = timeToLocal(rawTime) as Time;
@@ -2030,7 +2033,7 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
       volume: volume,
     };
     rawCandles.value.push(newBar);
-    timeIndexMap.set(rawTime, rawCandles.value.length - 1);
+    timeIndexMap.set(Number(localTime), rawCandles.value.length - 1);
 
     candleSeries.update({
       time: localTime,
@@ -2271,6 +2274,9 @@ watch(() => props.targetedSignal, (newTarget) => {
 
 watch(() => props.isActiveScreen, (active) => {
   if (active) {
+    // Immediately reload fresh continuous candles to bridge any gap from being inactive/sleeping
+    loadCandles(false);
+
     nextTick(() => {
       if (chartContainerRef.value && chart) {
         chart.applyOptions({
@@ -2294,10 +2300,18 @@ watch(() => props.isActiveScreen, (active) => {
   }
 });
 
+const handleWakeOrFocus = () => {
+  if (props.isActiveScreen !== false && document.visibilityState === 'visible') {
+    loadCandles(false);
+  }
+};
+
 onMounted(() => {
   initChart();
   startLiveFeeds();
   window.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('visibilitychange', handleWakeOrFocus);
+  window.addEventListener('focus', handleWakeOrFocus);
 });
 
 onUnmounted(() => {
@@ -2305,6 +2319,8 @@ onUnmounted(() => {
   clearPriceLines();
   clearLevelLines();
   window.removeEventListener('keydown', handleKeyDown);
+  document.removeEventListener('visibilitychange', handleWakeOrFocus);
+  window.removeEventListener('focus', handleWakeOrFocus);
   if (rafCoordId !== null) {
     cancelAnimationFrame(rafCoordId);
     rafCoordId = null;
