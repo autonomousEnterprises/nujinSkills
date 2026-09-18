@@ -1720,7 +1720,7 @@ const loadCandles = async (preserveViewport = false) => {
   }
 
   try {
-    const savedRange = (preserveViewport && chart) ? chart.timeScale().getVisibleLogicalRange() : null;
+    const savedRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
     const isSp = isSpStrategy.value || selectedSymbol.value.includes('SP') || selectedSymbol.value.includes('ES') || selectedSymbol.value.includes('S&P');
     const isGold = isGoldStrategy.value || selectedSymbol.value.toLowerCase().includes('xau');
     const apiSym = isSp ? 'S&P 500 (ES)' : (isGold ? 'XAUUSD' : selectedSymbol.value);
@@ -1775,7 +1775,11 @@ const loadCandles = async (preserveViewport = false) => {
         applyMarkers(allChartMarkers.value);
       }
 
-      if (preserveViewport && savedRange) {
+      // Always capture existing viewport if user had already zoomed/panned
+      const existingRange = chart ? chart.timeScale().getVisibleLogicalRange() : null;
+      const shouldPreserve = (preserveViewport || existingRange != null) && savedRange;
+
+      if (shouldPreserve) {
         chart.timeScale().setVisibleLogicalRange(savedRange);
         scheduleUpdateBoxCoordinates();
         return;
@@ -1795,12 +1799,14 @@ const loadCandles = async (preserveViewport = false) => {
         isInspectingTrade.value = true;
         selectedSignalIndex.value = targetIdx;
         centerOnTrade(allInspectableSignals.value[targetIdx]);
-      } else if (isInspectingTrade.value && allInspectableSignals.value.length > 0) {
+      } else if (isInspectingTrade.value && allInspectableSignals.value.length > 0 && !existingRange) {
         const idx = Math.min(selectedSignalIndex.value, allInspectableSignals.value.length - 1);
         selectedSignalIndex.value = idx;
         centerOnTrade(allInspectableSignals.value[idx]);
+      } else if (existingRange) {
+        chart.timeScale().setVisibleLogicalRange(existingRange);
       } else {
-        // Anchor to live real-time: NEVER fitContent() which turns candles into an unreadable barcode
+        // Initial load: Anchor to live real-time (80 bars window)
         const totalBars = rawCandles.value.length;
         if (totalBars > 0) {
           const windowBars = 80;
@@ -2224,10 +2230,8 @@ watch(() => props.tradesDetail, () => {
     applyTargetedSignal(props.targetedSignal);
     return;
   }
+  // Do NOT forcibly center on trades on periodic tradesDetail updates; keep current user zoom/pan
   if (isInspectingTrade.value && allInspectableSignals.value.length > 0) {
-    const idx = Math.min(selectedSignalIndex.value, allInspectableSignals.value.length - 1);
-    selectedSignalIndex.value = idx;
-    centerOnTrade(allInspectableSignals.value[idx]);
     nextTick(() => updateBoxCoordinates());
   }
 }, { deep: true });
@@ -2282,8 +2286,8 @@ watch(() => props.targetedSignal, (newTarget) => {
 
 watch(() => props.isActiveScreen, (active) => {
   if (active) {
-    // Immediately reload fresh continuous candles to bridge any gap from being inactive/sleeping
-    loadCandles(false);
+    // Preserve current viewport zoom and range during screen activations
+    loadCandles(true);
 
     nextTick(() => {
       if (chartContainerRef.value && chart) {
@@ -2292,25 +2296,20 @@ watch(() => props.isActiveScreen, (active) => {
           height: chartContainerRef.value.clientHeight,
         });
       }
-      if (isInspectingTrade.value && inspectedSignal.value) {
-        centerOnTrade(inspectedSignal.value);
-      }
       setTimeout(() => {
         updateBoxCoordinates();
       }, 50);
       setTimeout(() => {
         updateBoxCoordinates();
       }, 150);
-      setTimeout(() => {
-        updateBoxCoordinates();
-      }, 300);
     });
   }
 });
 
 const handleWakeOrFocus = () => {
   if (props.isActiveScreen !== false && document.visibilityState === 'visible') {
-    loadCandles(false);
+    // Preserve user zoom and viewport when window regains focus
+    loadCandles(true);
   }
 };
 
