@@ -394,20 +394,39 @@ class XauusdScalpEngine:
         while self.is_running:
             try:
                 loop = asyncio.get_event_loop()
-                oanda_data = await loop.run_in_executor(None, get_oanda_spot_quote)
 
-                if oanda_data and oanda_data.get("price"):
-                    c_close = oanda_data["price"]
-                    t_sec = oanda_data.get("timestamp") or int(time.time())
+                # Dynamic Broker Feed Switching:
+                # If an active broker is connected (e.g. TradeLocker), use the broker's own live quote feed.
+                broker_quote = None
+                try:
+                    from server.brokers.registry import broker_registry
+                    active_broker = broker_registry.get_broker()
+                    if active_broker and getattr(active_broker, "is_connected", False) and hasattr(active_broker, "get_latest_quote"):
+                        broker_quote = active_broker.get_latest_quote("XAU/USD")
+                except Exception as e_bq:
+                    logger.debug(f"[XauusdScalpEngine] Broker quote check note: {e_bq}")
 
-                    self.current_quote["symbol"] = "XAU/USD (OANDA Spot)"
+                if broker_quote and broker_quote.get("price"):
+                    feed_data = broker_quote
+                    source_label = broker_quote.get("source", f"{active_broker.broker_id}_broker")
+                    display_symbol = f"XAU/USD ({active_broker.name})"
+                else:
+                    feed_data = await loop.run_in_executor(None, get_oanda_spot_quote)
+                    source_label = "oanda_spot"
+                    display_symbol = "XAU/USD (OANDA Spot)"
+
+                if feed_data and feed_data.get("price"):
+                    c_close = feed_data["price"]
+                    t_sec = feed_data.get("timestamp") or int(time.time())
+
+                    self.current_quote["symbol"] = display_symbol
                     self.current_quote["price"] = c_close
-                    self.current_quote["bid"] = oanda_data.get("bid", round(c_close - 0.15, 2))
-                    self.current_quote["ask"] = oanda_data.get("ask", round(c_close + 0.15, 2))
-                    self.current_quote["high_24h"] = oanda_data.get("high", self.current_quote["high_24h"])
-                    self.current_quote["low_24h"] = oanda_data.get("low", self.current_quote["low_24h"])
+                    self.current_quote["bid"] = feed_data.get("bid", round(c_close - 0.15, 2))
+                    self.current_quote["ask"] = feed_data.get("ask", round(c_close + 0.15, 2))
+                    self.current_quote["high_24h"] = feed_data.get("high", self.current_quote["high_24h"])
+                    self.current_quote["low_24h"] = feed_data.get("low", self.current_quote["low_24h"])
                     self.current_quote["timestamp"] = t_sec
-                    self.current_quote["source"] = "oanda_spot"
+                    self.current_quote["source"] = source_label
 
                     # Update candle history with strictly minute-aligned timestamps
                     minute_bucket = (t_sec // 60) * 60

@@ -182,23 +182,56 @@ class TestMultiAccountBroker(unittest.TestCase):
 
     def test_strategy_evaluator_lots(self):
         """Tests that StrategyEvaluator parses lots and lot_size from strategy signals."""
-        import pandas as pd
         from server.strategy_executor import StrategyEvaluator
+        from unittest.mock import MagicMock, patch
 
-        try:
-            df = pd.read_csv("data/xauusd_candles_5m.csv")
-        except Exception:
-            self.skipTest("Candle data not available")
+        with patch("server.backtest_engine.load_strategy_instance") as mock_load:
+            mock_strat = MagicMock()
+            mock_strat.can_short = True
+            mock_strat.stoploss = -0.0025
+            mock_strat.minimal_roi = {"0": 0.005}
+            mock_strat.atr_sl_mult = None
+            mock_strat.atr_tp_mult = None
+            mock_strat.min_bars = 1
+            mock_strat.max_bars = 4
 
-        # Slice up to bar index 108 where an entry triggers
-        slice_candles = df.iloc[:109].to_dict(orient="records")
-        sig = StrategyEvaluator.evaluate("GoldPropSniperPro", "XAU/USD", slice_candles)
-        self.assertIsNotNone(sig)
-        self.assertIn("lots", sig)
-        self.assertIn("lot_size", sig)
-        self.assertEqual(sig["lots"], 0.50)
-        self.assertEqual(sig["lot_size"], 0.50)
-        self.assertIn("0.50 lots", sig["annotation"])
+            def mock_pop_ind(df, meta):
+                df["volume_zscore"] = 1.0
+                df["atr_14"] = 2.5
+                return df
+
+            def mock_pop_entry(df, meta):
+                df["enter_long"] = 0
+                df["enter_short"] = 0
+                df["structural_sl"] = float("nan")
+                df["structural_tp"] = float("nan")
+                df["lot_size"] = 0.50
+                df.iloc[-1, df.columns.get_loc("enter_long")] = 1
+                return df
+
+            mock_strat.populate_indicators.side_effect = mock_pop_ind
+            mock_strat.populate_entry_trend.side_effect = mock_pop_entry
+            mock_strat.calculate_lot_size.return_value = 0.50
+            mock_load.return_value = mock_strat
+
+            candles = [
+                {
+                    "time": 1700000000 + i * 300,
+                    "open": 4400.0,
+                    "high": 4405.0,
+                    "low": 4395.0,
+                    "close": 4402.0,
+                    "volume": 100.0
+                }
+                for i in range(30)
+            ]
+            sig = StrategyEvaluator.evaluate("GoldPropSniperPro", "XAU/USD", candles)
+            self.assertIsNotNone(sig)
+            self.assertIn("lots", sig)
+            self.assertIn("lot_size", sig)
+            self.assertEqual(sig["lots"], 0.50)
+            self.assertEqual(sig["lot_size"], 0.50)
+            self.assertIn("0.50 lots", sig["annotation"])
 
 
 if __name__ == "__main__":

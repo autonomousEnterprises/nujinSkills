@@ -39,6 +39,20 @@ class BaseExecutionBroker(abc.ABC):
         """
         return True, "Validation passed"
 
+    def get_market_data_provider(self, symbol: str, timeframe: str = "1m") -> Optional[Any]:
+        """
+        Optional hook for broker adapters that can stream their own live prices/candles.
+        Returns an instance of BaseMarketDataProvider or None if using default feeds.
+        """
+        return None
+
+    def get_latest_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Optional snapshot quote from broker execution book.
+        Returns {symbol, price, bid, ask, timestamp, source} or None.
+        """
+        return None
+
     @abc.abstractmethod
     def connect(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """

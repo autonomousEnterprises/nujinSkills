@@ -315,6 +315,31 @@ class ProviderRegistry:
     @classmethod
     def get_provider(cls, symbol: str, timeframe: str = "1m") -> BaseMarketDataProvider:
         canon = cls.canonical_symbol(symbol)
+        clean_sym = canon.replace("/", "").replace(":", "").upper()
+
+        # 1. Broker-First Dynamic Routing:
+        # If an active execution broker is connected (e.g. TradeLocker live/demo account),
+        # query the broker adapter for its native market data provider first.
+        try:
+            from server.brokers.registry import broker_registry
+            active_broker = broker_registry.get_broker()
+            if active_broker and getattr(active_broker, "is_connected", False):
+                broker_key = f"{active_broker.broker_id}:{clean_sym}:{timeframe}"
+                if broker_key in cls._providers:
+                    return cls._providers[broker_key]
+                if hasattr(active_broker, "get_market_data_provider"):
+                    broker_provider = active_broker.get_market_data_provider(canon, timeframe)
+                    if broker_provider:
+                        logger.info(
+                            f"[ProviderRegistry] Using connected broker '{active_broker.broker_id}' "
+                            f"market data provider for {canon} ({timeframe})"
+                        )
+                        cls._providers[broker_key] = broker_provider
+                        return broker_provider
+        except Exception as e_broker:
+            logger.debug(f"[ProviderRegistry] Broker provider inspection note: {e_broker}")
+
+        # 2. Standard Public Data Feeds (OANDA, CME, Binance)
         key = cls.get_provider_key(canon, timeframe)
         if key in cls._providers:
             return cls._providers[key]
