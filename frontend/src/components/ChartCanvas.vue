@@ -1800,7 +1800,16 @@ const loadCandles = async (preserveViewport = false) => {
         selectedSignalIndex.value = idx;
         centerOnTrade(allInspectableSignals.value[idx]);
       } else {
-        chart.timeScale().fitContent();
+        // Anchor to live real-time: NEVER fitContent() which turns candles into an unreadable barcode
+        const totalBars = rawCandles.value.length;
+        if (totalBars > 0) {
+          const windowBars = 80;
+          chart.timeScale().setVisibleLogicalRange({
+            from: Math.max(0, totalBars - windowBars),
+            to: totalBars + 8,
+          });
+          chart.timeScale().scrollToRealTime();
+        }
       }
     }
   } catch (err) {
@@ -2178,9 +2187,8 @@ watch(() => props.selectedStrategy, (newStrat) => {
       nextTick(() => {
         if (props.targetedSignal) {
           applyTargetedSignal(props.targetedSignal);
-        } else if (allInspectableSignals.value.length > 0) {
-          jumpToLatest();
         }
+        // Do NOT automatically call jumpToLatest() on strategy switch; stay in live mode
       });
     }
   }

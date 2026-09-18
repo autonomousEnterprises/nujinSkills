@@ -236,9 +236,10 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
     Resamples cleanly to 5m, 15m, 1h as needed.
     """
     csv_path = "data/xauusd_candles_1m.csv"
+    csv_5m_path = "data/xauusd_candles_5m.csv"
     now_ts = int(time.time())
 
-    # 1. Check if cached CSV exists and is fresh
+    # 1. Check if cached CSV exists and is fresh (within 120 seconds)
     if not force_refresh and os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
@@ -246,8 +247,8 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
             df = df.dropna(subset=[time_col, "close"]).reset_index(drop=True)
             if len(df) >= 100:
                 last_ts = int(df.iloc[-1][time_col])
-                if (now_ts - last_ts) <= 90:
-                    records = df.tail(count * 5).to_dict(orient="records")
+                if (now_ts - last_ts) <= 120:
+                    records = df.tail(count * 5).to_dict(orient="records") if (count and count > 0) else df.to_dict(orient="records")
                     candles_1m = [
                         {
                             "time": int(r.get("timestamp", r.get("time", 0))),
@@ -268,8 +269,12 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
         except Exception as e:
             logger.warning(f"[DataManager] Error reading cached OANDA 1m CSV: {e}")
 
-    # 2. Fetch fresh authentic bars via TradingView WebSocket
-    fresh = fetch_candles_via_tv("OANDA:XAUUSD", "1m", max(count, 5000))
+    # 2. Fetch fresh authentic bars via TradingView WebSocket or Yahoo COMEX Fallback
+    fresh = fetch_candles_via_tv("OANDA:XAUUSD", "1m", max(count or 2880, 5000))
+    if not fresh or len(fresh) < 50:
+        logger.info("[DataManager] TV WS yielded insufficient bars; attempting Yahoo COMEX Gold fallback...")
+        fresh = fetch_real_comex_gold_candles(interval="1m", count=max(count or 2880, 5000))
+
     if fresh and len(fresh) >= 50:
         try:
             df_fresh = pd.DataFrame(fresh)
@@ -277,16 +282,18 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
                 df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
             if os.path.exists(csv_path):
                 df_old = pd.read_csv(csv_path)
-                df_clean_old = df_old[df_old.get("volume", 10.0) > 1.5]
-                df_merged = pd.concat([df_clean_old, df_fresh], ignore_index=True)
+                clean_old = df_old[df_old.get("volume", 10.0) > 1.5]
+                df_merged = pd.concat([clean_old, df_fresh], ignore_index=True)
                 df_merged.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
                 df_merged.sort_values(by="timestamp", inplace=True)
                 df_merged.to_csv(csv_path, index=False)
             else:
                 os.makedirs(os.path.dirname(csv_path), exist_ok=True)
                 df_fresh.to_csv(csv_path, index=False)
+                df_merged = df_fresh
+
             df_to_return = df_merged if ('df_merged' in locals() and not df_merged.empty) else df_fresh
-            records = df_to_return.tail(count).to_dict(orient="records") if (count and count < len(df_to_return)) else df_to_return.to_dict(orient="records")
+            records = df_to_return.tail(count * 5).to_dict(orient="records") if (count and count * 5 < len(df_to_return)) else df_to_return.to_dict(orient="records")
             all_bars = [
                 {
                     "time": int(r.get("timestamp", r.get("time", 0))),
@@ -299,10 +306,21 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
                 }
                 for r in records
             ]
+
+            # Also update 5m resampled cache file so both timeframes are always mirror-perfect
+            try:
+                resampled_5m = resample_candles(all_bars, "5m")
+                if resampled_5m:
+                    df_5m = pd.DataFrame(resampled_5m)
+                    df_5m.to_csv(csv_5m_path, index=False)
+            except Exception as e_5m:
+                logger.warning(f"[DataManager] Could not save resampled 5m cache: {e_5m}")
+
             if interval == "1m":
-                return all_bars
+                return all_bars[-count:] if count else all_bars
             else:
-                return resample_candles(all_bars, interval)
+                resampled = resample_candles(all_bars, interval)
+                return resampled[-count:] if count else resampled
         except Exception as e_save:
             logger.warning(f"[DataManager] Error saving fresh OANDA 1m cache: {e_save}")
             if interval == "1m":
@@ -310,7 +328,7 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
             else:
                 return resample_candles(fresh, interval)[-count:]
 
-    # 3. Fallback to existing disk CSV without synthetic modification
+    # 3. Fallback to existing disk CSV
     if os.path.exists(csv_path):
         df = pd.read_csv(csv_path)
         time_col = "timestamp" if "timestamp" in df.columns else "time"
@@ -331,7 +349,7 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
             return candles[-count:] if count else candles
         return resample_candles(candles, interval)[-count:]
 
-    # 4. Fallback to COMEX Gold GC=F via Yahoo Finance
+    # 4. Fallback to COMEX Gold GC=F via Yahoo Finance directly
     return fetch_real_comex_gold_candles(interval=interval, count=count)
 
 
