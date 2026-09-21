@@ -72,13 +72,11 @@ def generate_report_text(target_date_str: str = None) -> str:
 
     if total_trades == 0:
         return (
-            f"📊 <b>EDGEMINER DAILY QUANT & STRATEGY REPORT</b>\n"
+            f"📊 <b>DAILY QUANT & STRATEGY REPORT</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"📅 <b>Date:</b> <code>{session_date_str}</code> | ⏰ <code>{time_now_str}</code>\n"
             f"💼 <b>Portfolio Status:</b> <b>NO TRADES RECORDED TODAY</b>\n\n"
             f"ℹ️ Quantitative scanners are active and monitoring regime triggers.\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚡ <i>NujinAIs Zillions</i>"
         )
 
     open_trades = [s for s in session_signals if s.get("status") == "OPEN"]

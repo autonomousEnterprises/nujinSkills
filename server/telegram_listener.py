@@ -45,6 +45,7 @@ class TelegramListener:
         self.bot_token = telegram_gateway.bot_token
         self.running = False
         self.offset = 0
+        self.last_reported_date = ""
 
     def is_configured(self) -> bool:
         self.bot_token = telegram_gateway.bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -58,6 +59,9 @@ class TelegramListener:
 
         self.running = True
         logger.info("[TelegramListener] 🚀 Starting Telegram Interactive Command Listener...")
+
+        # Start 9:00 PM local computer time Daily Report Scheduler task
+        asyncio.create_task(self._daily_report_scheduler())
 
         while self.running:
             try:
@@ -76,6 +80,29 @@ class TelegramListener:
             except Exception as e:
                 logger.error(f"[TelegramListener] Polling loop error: {e}")
                 await asyncio.sleep(4)
+
+    async def _daily_report_scheduler(self) -> None:
+        """Schedules automatic broadcast of daily quant report at 9:00 PM (21:00) local computer time."""
+        logger.info("[TelegramListener] ⏰ Daily Report Scheduler active (Target: 9:00 PM local computer time).")
+        while self.running:
+            try:
+                now = datetime.now().astimezone()
+                today_str = now.strftime("%Y-%m-%d")
+                # Trigger if local computer time hour is 21 (9:00 PM) and report hasn't been sent for today
+                if now.hour == 21 and self.last_reported_date != today_str:
+                    logger.info(f"[TelegramListener] 📢 9:00 PM local time reached ({now.strftime('%H:%M:%S %Z')}). Broadcasting daily report...")
+                    self.last_reported_date = today_str
+                    try:
+                        from tools.send_daily_report import broadcast_report
+                        await asyncio.to_thread(broadcast_report)
+                    except Exception as e_br:
+                        logger.error(f"[TelegramListener] Error in automated daily report broadcast: {e_br}")
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[TelegramListener] Error in daily report scheduler: {e}")
+                await asyncio.sleep(60)
 
     def _fetch_updates(self, offset: int, timeout: int = 15) -> list[dict]:
         if not self.bot_token:
@@ -143,6 +170,8 @@ class TelegramListener:
             await self._cmd_toggle(chat_id, user_id, cmd_parts[1:], is_active=True)
         elif cmd == "/disconnect":
             await self._cmd_disconnect(chat_id, user_id, cmd_parts[1:])
+        elif cmd in ("/dailyreport", "/report", "/sendreport"):
+            await self._cmd_daily_report(chat_id)
         elif cmd == "/cancel":
             _USER_SESSIONS.pop(user_id, None)
             telegram_gateway.send_message("❌ Setup cancelled.", target_chat_id=str(chat_id))
@@ -153,6 +182,7 @@ class TelegramListener:
             "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>Your Telegram User ID:</b> <code>{user_id}</code>\n\n"
             "<b>Available Commands:</b>\n"
+            "• <code>/dailyreport</code> — Generate and send dynamic daily quant & strategy report\n"
             "• <code>/brokers</code> — List installed execution brokers & pro plugins\n"
             "• <code>/connect</code> — Link a broker trading account\n"
             "• <code>/accounts</code> — View your linked trading accounts\n"
@@ -431,6 +461,15 @@ class TelegramListener:
             )
         else:
             telegram_gateway.send_message(f"❌ Account <code>{acc_id}</code> not found.", target_chat_id=str(chat_id))
+
+    async def _cmd_daily_report(self, chat_id: int | str) -> None:
+        """Generates and sends the daily quant report directly to the requesting Telegram chat."""
+        try:
+            from tools.send_daily_report import broadcast_report
+            await asyncio.to_thread(broadcast_report, specific_chat_id=str(chat_id))
+        except Exception as e:
+            logger.error(f"[TelegramListener] Error executing /dailyreport command: {e}")
+            telegram_gateway.send_message(f"❌ Failed to generate daily report: {html.escape(str(e))}", target_chat_id=str(chat_id))
 
     @staticmethod
     def _is_float(val: str) -> bool:
