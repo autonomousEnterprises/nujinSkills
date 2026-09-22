@@ -126,6 +126,33 @@ class TestTradeLockerPriceFeed(unittest.TestCase):
             self.assertEqual(quote["price"], 4425.80)
             self.assertEqual(quote["source"], "tradelocker_stream")
 
+    def test_tradelocker_provider_initial_candles_seed(self):
+        """Tests that TradeLockerMarketDataProvider loads historical candles on init so StrategyEvaluator has sufficient bars."""
+        import sys, os
+        pro_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "plugins", "pro"))
+        if pro_path not in sys.path:
+            sys.path.insert(0, pro_path)
+
+        try:
+            from brokers.tradelocker_provider import TradeLockerMarketDataProvider
+        except ImportError:
+            self.skipTest("TradeLocker provider not found in path")
+
+        mock_broker = MagicMock()
+        mock_broker.is_connected = True
+
+        provider = TradeLockerMarketDataProvider(broker_instance=mock_broker, symbol="XAU/USD", timeframe="1m")
+        candles = provider.get_candles(count=1000)
+        self.assertGreater(len(candles), 25, "TradeLockerMarketDataProvider must seed >25 candles so strategy evaluation succeeds")
+
+    def test_broker_registry_autodetect_tradelocker_account(self):
+        """Tests that BrokerRegistry.get_active_broker_id auto-detects active TradeLocker accounts in accounts_store."""
+        mock_accounts = [{"broker_id": "tradelocker", "is_active": True, "id": "tl_123"}]
+        with patch("os.environ.get", return_value=""), \
+             patch("server.accounts_store.accounts_store.get_all_active_accounts", return_value=mock_accounts):
+            active_id = broker_registry.get_active_broker_id()
+            self.assertEqual(active_id, "tradelocker", "BrokerRegistry should auto-detect 'tradelocker' when active account exists in store")
+
 
 if __name__ == "__main__":
     unittest.main()

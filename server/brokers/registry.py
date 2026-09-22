@@ -93,6 +93,19 @@ class BrokerRegistry:
         env_id = os.environ.get("NUJIN_BROKER", "").lower().strip()
         if env_id:
             return env_id
+
+        # Auto-detect active connected accounts from accounts_store
+        try:
+            from server.accounts_store import accounts_store
+            active_accounts = accounts_store.get_all_active_accounts(decrypt=False)
+            if active_accounts:
+                for acc in active_accounts:
+                    b_id = (acc.get("broker_id") or "").lower().strip()
+                    if b_id and b_id != "paper":
+                        return b_id
+        except Exception as e_acc:
+            logger.debug(f"[BrokerRegistry] Account store check note: {e_acc}")
+
         return "paper"
 
     @classmethod
