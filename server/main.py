@@ -205,41 +205,35 @@ async def get_candles(
             import asyncio
             asyncio.create_task(provider.start())
 
-        # 1. First priority: If provider already has fresh in-memory candles (latest candle within 3 min), return directly
-        now_ts = int(time.time())
-        if provider._candles and len(provider._candles) >= 50:
-            last_ts = int(provider._candles[-1].get("time") or provider._candles[-1].get("timestamp") or 0)
-            if (now_ts - last_ts) <= 180:
-                # Ensure the candles are continuous without an unresolved multi-bar gap
-                is_continuous = True
-                if len(provider._candles) >= 2:
-                    prev_ts = int(provider._candles[-2].get("time") or provider._candles[-2].get("timestamp") or 0)
-                    step_sec = provider.bar_step_seconds
-                    if (last_ts - prev_ts) > step_sec * 5:
-                        is_continuous = False
-                if is_continuous:
-                    c_list = provider._candles
-                    data = c_list[-count:] if (count and count < len(c_list)) else c_list
-                    prims = _extract_primitives_for_response(strategy, data)
-                    return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
+        # 1. First priority: In-memory warm candles from live provider
+        c_list = provider.get_candles(count=count)
+        if c_list and len(c_list) >= 20:
+            now_ts = int(time.time())
+            last_ts = int(c_list[-1].get("time") or c_list[-1].get("timestamp") or 0)
+            if (now_ts - last_ts) <= 300:
+                data = c_list[-count:] if (count and count < len(c_list)) else c_list
+                prims = _extract_primitives_for_response(strategy, data)
+                return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
 
-        # 2. Live Market Data Feed: Fetch fresh continuous bars directly from exchange / institutional stream
-        if is_sp:
-            from server.data_manager import fetch_real_sp500_candles
-            data = fetch_real_sp500_candles(interval=interval, count=count)
-            if provider and data:
-                provider._candles = data
-        elif is_xau:
-            from server.data_manager import fetch_real_oanda_candles
-            data = fetch_real_oanda_candles(interval=interval, count=count)
-            if provider and data:
-                provider._candles = data
-            if interval == "1m":
-                xauusd_engine.candles_1m = data
-        else:
-            data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
-            if provider and data:
-                provider._candles = data
+        # 2. Public Feeds (OANDA, TradingView, Binance)
+        data = None
+        if True:
+            if is_sp:
+                from server.data_manager import fetch_real_sp500_candles
+                data = fetch_real_sp500_candles(interval=interval, count=count)
+                if provider and data:
+                    provider._candles = data
+            elif is_xau:
+                from server.data_manager import fetch_real_oanda_candles
+                data = fetch_real_oanda_candles(interval=interval, count=count)
+                if provider and data:
+                    provider._candles = data
+                if interval == "1m":
+                    xauusd_engine.candles_1m = data
+            else:
+                data = fetch_real_binance_klines(symbol=symbol, interval=interval, count=count)
+                if provider and data:
+                    provider._candles = data
 
         if data:
             prims = _extract_primitives_for_response(strategy, data)

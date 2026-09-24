@@ -166,40 +166,7 @@ class BaseMarketDataProvider(abc.ABC):
 
             # Check if there is a multi-bar gap (e.g. overnight or feed interruption)
             if bar_time - last_bar_t >= 2 * step:
-                # Attempt to reload fresh authentic candles to fill the gap if provider supports it
-                if hasattr(self, "_load_initial_candles"):
-                    try:
-                        self._load_initial_candles()
-                    except Exception as e:
-                        logger.warning(f"[{self.symbol}] Error reloading initial candles on gap: {e}")
-                elif hasattr(self, "_load_initial_data"):
-                    try:
-                        self._load_initial_data()
-                    except Exception as e:
-                        logger.warning(f"[{self.symbol}] Error reloading initial data on gap: {e}")
-
-                # If still gapped, fill missing bars with flat session/closure bars
-                last_bar = self._candles[-1] if self._candles else last_bar
-                last_bar_t = int(last_bar.get("timestamp") or last_bar.get("time") or 0)
-                if bar_time - last_bar_t >= 2 * step:
-                    missing_count = (bar_time - last_bar_t) // step - 1
-                    max_fill = min(missing_count, 1440)
-                    fill_start = bar_time - (max_fill * step)
-                    for fill_t in range(fill_start, bar_time, step):
-                        self._candles.append({
-                            "time": fill_t,
-                            "timestamp": fill_t,
-                            "open": last_bar["close"],
-                            "high": last_bar["close"],
-                            "low": last_bar["close"],
-                            "close": last_bar["close"],
-                            "volume": 0.0
-                        })
-                    if len(self._candles) > 20000:
-                        self._candles = self._candles[-20000:]
-                    last_bar = self._candles[-1]
-
-                # For the new bar after a gap, open starts at the new tick price, not yesterday's close!
+                # For a new bar after a gap, open starts at the new tick price
                 new_open = price
             else:
                 new_open = last_bar["close"]
@@ -320,26 +287,7 @@ class ProviderRegistry:
         # 1. Broker-First Dynamic Routing:
         # If an active execution broker is connected (e.g. TradeLocker live/demo account),
         # query the broker adapter for its native market data provider first.
-        try:
-            from server.brokers.registry import broker_registry
-            active_broker = broker_registry.get_broker()
-            if active_broker and getattr(active_broker, "is_connected", False):
-                broker_key = f"{active_broker.broker_id}:{clean_sym}:{timeframe}"
-                if broker_key in cls._providers:
-                    return cls._providers[broker_key]
-                if hasattr(active_broker, "get_market_data_provider"):
-                    broker_provider = active_broker.get_market_data_provider(canon, timeframe)
-                    if broker_provider:
-                        logger.info(
-                            f"[ProviderRegistry] Using connected broker '{active_broker.broker_id}' "
-                            f"market data provider for {canon} ({timeframe})"
-                        )
-                        cls._providers[broker_key] = broker_provider
-                        return broker_provider
-        except Exception as e_broker:
-            logger.debug(f"[ProviderRegistry] Broker provider inspection note: {e_broker}")
-
-        # 2. Standard Public Data Feeds (OANDA, CME, Binance)
+        # Standard Public Data Feeds (OANDA, CME, Binance) for robust strategy evaluation & chart rendering
         key = cls.get_provider_key(canon, timeframe)
         if key in cls._providers:
             return cls._providers[key]

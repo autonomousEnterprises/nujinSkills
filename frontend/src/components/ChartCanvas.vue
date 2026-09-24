@@ -1991,7 +1991,7 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
   const volume = Number(candleData.volume || 10);
 
   const lastCandle = rawCandles.value[rawCandles.value.length - 1];
-  const lastTime = Number(lastCandle.time);
+  const lastTime = Math.floor(Number(lastCandle.time) / barStep) * barStep;
 
   // Ignore stale ticks older than the current bar
   if (rawTime < lastTime) {
@@ -2003,36 +2003,38 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
   if (rawTime - lastTime > barStep * 2) {
     if (nowMs - lastGapSyncTime > 10000) {
       lastGapSyncTime = nowMs;
-      loadCandles(false);
+      loadCandles(true);
     }
     // Prevent drawing a single deformed orphan candle spanning across an overnight gap
     return;
   }
 
   const localTime = timeToLocal(rawTime) as Time;
+  const updateTime = timeToLocal(Number(lastCandle.time)) as Time;
 
-  if (rawTime === lastTime) {
+  // If tick falls within current forming bar or slightly off by timezone shift, update forming bar
+  if (rawTime === lastTime || Math.abs(rawTime - lastTime) < barStep) {
     // In-place update of current forming candle
-    lastCandle.high = Math.max(lastCandle.high, high);
-    lastCandle.low = Math.min(lastCandle.low, low);
+    lastCandle.high = Math.max(Number(lastCandle.high || open), high, close);
+    lastCandle.low = Math.min(Number(lastCandle.low || open), low, close);
     lastCandle.close = close;
-    if (candleData.volume != null && volume > 0) {
-      lastCandle.volume = volume;
+    if (candleData.volume && candleData.volume > (lastCandle.volume || 0)) {
+      lastCandle.volume = candleData.volume;
     }
 
     candleSeries.update({
-      time: localTime,
-      open: lastCandle.open,
-      high: lastCandle.high,
-      low: lastCandle.low,
-      close: lastCandle.close,
+      time: updateTime,
+      open: Number(lastCandle.open),
+      high: Number(lastCandle.high),
+      low: Number(lastCandle.low),
+      close: Number(lastCandle.close),
     });
 
-    if (volumeSeries && lastCandle.volume != null) {
-      const isUp = lastCandle.close >= lastCandle.open;
+    if (volumeSeries) {
+      const isUp = Number(lastCandle.close) >= Number(lastCandle.open);
       volumeSeries.update({
-        time: localTime,
-        value: lastCandle.volume,
+        time: updateTime,
+        value: Number(lastCandle.volume || 10),
         color: isUp ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
       });
     }
@@ -2050,8 +2052,9 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     rawCandles.value.push(newBar);
     timeIndexMap.set(Number(localTime), rawCandles.value.length - 1);
 
+    const newLocalTime = timeToLocal(rawTime) as Time;
     candleSeries.update({
-      time: localTime,
+      time: newLocalTime,
       open: newBar.open,
       high: newBar.high,
       low: newBar.low,
@@ -2060,7 +2063,7 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
 
     if (volumeSeries) {
       volumeSeries.update({
-        time: localTime,
+        time: newLocalTime,
         value: newBar.volume,
         color: newBar.close >= newBar.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
       });
@@ -2113,7 +2116,9 @@ watch(
     const isBtc = !isSp && !isGold;
 
     const tickSym = (tick.symbol || '').toUpperCase();
-    const matches = (isSp && (tickSym.includes('SP') || tickSym.includes('ES') || tickSym.includes('US500'))) ||
+    const curSym = (selectedSymbol.value || '').toUpperCase();
+    const matches = curSym === tickSym ||
+                    (isSp && (tickSym.includes('SP') || tickSym.includes('ES') || tickSym.includes('US500'))) ||
                     (isGold && (tickSym.includes('XAU') || tickSym.includes('GOLD'))) ||
                     (isBtc && (tickSym.includes('BTC') || (!tickSym.includes('SP') && !tickSym.includes('XAU') && !tickSym.includes('ES'))));
 
@@ -2129,25 +2134,20 @@ watch(
       lastLivePrice.value = p;
     }
 
-    // Isolate candle updates strictly to matching timeframe (e.g. 1m vs 5m strategies)
-    const chartTf = (selectedTimeframe.value || '1m').toLowerCase().replace('m', '').trim();
-    const tickTf = (tick.timeframe || '').toLowerCase().replace('m', '').trim();
-    if (tickTf && chartTf && tickTf !== chartTf) {
-      return;
-    }
-
     if (tick.candle) {
       updateLiveCandle(tick.candle);
     } else if (tick.quote?.candle) {
       updateLiveCandle(tick.quote.candle);
     } else if (p > 0) {
+      const tickVol = Number(tick.volume || tick.quote?.volume || 5);
+      const tickTime = Number(tick.timestamp || Math.floor(Date.now() / 1000));
       updateLiveCandle({
-        time: Number(tick.timestamp || Math.floor(Date.now() / 1000)),
+        time: tickTime,
         open: p,
         high: p,
         low: p,
         close: p,
-        volume: Number(tick.volume || tick.quote?.volume || 15),
+        volume: tickVol,
       });
     }
   },

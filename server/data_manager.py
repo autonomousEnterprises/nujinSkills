@@ -302,10 +302,13 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
             df_fresh = pd.DataFrame(fresh)
             if "time" in df_fresh.columns and "timestamp" not in df_fresh.columns:
                 df_fresh.rename(columns={"time": "timestamp"}, inplace=True)
-            if os.path.exists(csv_path):
-                df_old = pd.read_csv(csv_path)
-                clean_old = df_old[df_old.get("volume", 10.0) > 1.5]
-                df_merged = pd.concat([clean_old, df_fresh], ignore_index=True)
+            if os.path.exists(csv_path) and os.path.getsize(csv_path) > 10:
+                try:
+                    df_old = pd.read_csv(csv_path)
+                    clean_old = df_old[df_old.get("volume", 10.0) > 1.5] if "volume" in df_old.columns else df_old
+                    df_merged = pd.concat([clean_old, df_fresh], ignore_index=True)
+                except Exception:
+                    df_merged = df_fresh
                 df_merged.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
                 df_merged.sort_values(by="timestamp", inplace=True)
                 df_merged.to_csv(csv_path, index=False)

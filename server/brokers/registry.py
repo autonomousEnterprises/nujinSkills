@@ -52,6 +52,8 @@ class BrokerRegistry:
             pdir = os.path.join(plugins_dir, pentry)
             if not os.path.isdir(pdir):
                 continue
+            if pdir not in sys.path:
+                sys.path.insert(0, pdir)
             bdir = os.path.join(pdir, "brokers")
             if not os.path.exists(bdir) or not os.path.isdir(bdir):
                 continue
