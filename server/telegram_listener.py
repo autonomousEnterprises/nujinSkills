@@ -168,8 +168,10 @@ class TelegramListener:
             await self._cmd_toggle(chat_id, user_id, cmd_parts[1:], is_active=False)
         elif cmd == "/resume":
             await self._cmd_toggle(chat_id, user_id, cmd_parts[1:], is_active=True)
-        elif cmd == "/disconnect":
+        elif cmd in ("/disconnect", "/remove", "/delete"):
             await self._cmd_disconnect(chat_id, user_id, cmd_parts[1:])
+        elif cmd in ("/testacc", "/checkacc"):
+            await self._cmd_test_account(chat_id, user_id, cmd_parts[1:])
         elif cmd in ("/dailyreport", "/report", "/sendreport"):
             await self._cmd_daily_report(chat_id)
         elif cmd == "/cancel":
@@ -185,11 +187,12 @@ class TelegramListener:
             "• <code>/dailyreport</code> — Generate and send dynamic daily quant & strategy report\n"
             "• <code>/brokers</code> — List installed execution brokers & pro plugins\n"
             "• <code>/connect</code> — Link a broker trading account\n"
-            "• <code>/accounts</code> — View your linked trading accounts\n"
+            "• <code>/accounts</code> — View & manage your linked trading accounts\n"
+            "• <code>/testacc</code> — Audit & verify live broker connections\n"
             "• <code>/risk</code> — View strategy-designed dynamic risk & lot sizing rules\n"
             "• <code>/pause &lt;acc_id&gt;</code> — Temporarily pause automated trades\n"
             "• <code>/resume &lt;acc_id&gt;</code> — Resume automated trades\n"
-            "• <code>/disconnect &lt;acc_id&gt;</code> — Remove a linked account\n"
+            "• <code>/remove &lt;acc_id&gt;</code> — Delete/remove a linked account\n"
             "• <code>/cancel</code> — Abort active account setup wizard\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "⚡ <i>Trades from active strategies execute automatically across your connected accounts.</i>"
@@ -237,17 +240,24 @@ class TelegramListener:
             broker_id = a.get("broker_id", "").upper()
             server = a.get("server") or "Default Server"
             login = a.get("login_masked")
-            lots = a.get("default_lots", 0.10)
+            acc_num = a.get("acc_num") or a.get("extra", {}).get("account_id") or ""
+            env = (a.get("environment") or "demo").upper()
             status = "🟢 ACTIVE" if a.get("is_active", True) else "⏸️ PAUSED"
+            acc_num_str = f" | Acc #: <code>{acc_num}</code>" if acc_num else ""
             lines.append(
                 f"{i}. <b>{broker_id}</b> (<code>{acc_id}</code>)\n"
-                f"   • Server: <code>{html.escape(server)}</code>\n"
-                f"   • Login: <code>{html.escape(login)}</code>\n"
+                f"   • Server: <code>{html.escape(server)}</code> [{env}]\n"
+                f"   • Login: <code>{html.escape(login)}</code>{acc_num_str}\n"
                 f"   • Sizing: <code>Strategy Dynamic Smart Lotsizer</code>\n"
                 f"   • Status: <b>{status}</b>"
             )
         lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        lines.append("💡 <i>Use <code>/pause &lt;id&gt;</code> or <code>/resume &lt;id&gt;</code> to manage execution.</i>")
+        lines.append(
+            "💡 <b>Account Manager Quick Actions:</b>\n"
+            "• <code>/testacc</code> — Verify connection & live balance\n"
+            "• <code>/pause &lt;id&gt;</code> / <code>/resume &lt;id&gt;</code> — Toggle trading\n"
+            "• <code>/remove &lt;id&gt;</code> — Delete/disconnect account"
+        )
         telegram_gateway.send_message("\n".join(lines), target_chat_id=str(chat_id))
 
     async def _cmd_connect(self, chat_id: int | str, user_id: str, msg_id: int, args: list[str]) -> None:
@@ -270,13 +280,14 @@ class TelegramListener:
             telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
             return
 
-        # If full arguments provided in one line: /connect <server> <email> <password> [acc_num]
+        # Fast one-line input: /connect <server> <email> <password> [acc_num] [environment]
         if len(args) >= 3:
             telegram_gateway.delete_message(chat_id, msg_id)  # Delete password immediately
             server = args[0]
             email = args[1]
             password = args[2]
             acc_num = args[3] if len(args) >= 4 else ""
+            environment = args[4].lower() if len(args) >= 5 else "demo"
 
             await self._validate_and_save_account(
                 chat_id=chat_id,
@@ -286,6 +297,7 @@ class TelegramListener:
                 email=email,
                 password=password,
                 acc_num=acc_num,
+                environment=environment,
                 lots=0.10
             )
             return
@@ -300,8 +312,8 @@ class TelegramListener:
         msg = (
             f"🚀 <b>Connecting {target_broker.upper()} Account</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "Step 1/3: What is your <b>Broker Server</b> name?\n"
-            "<i>(e.g., <code>TradeLocker Demo</code>, <code>FunderPro</code>, <code>Goat Funded Trader</code>)</i>\n\n"
+            "Step 1/5: What is your <b>Broker Server</b> name?\n"
+            "<i>(e.g., <code>GFTTL</code>, <code>FunderPro</code>, <code>TradeLocker Demo</code>)</i>\n\n"
             "<i>Type <code>/cancel</code> anytime to abort.</i>"
         )
         telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
@@ -319,8 +331,8 @@ class TelegramListener:
             data["server"] = text.strip()
             session["step"] = "AWAIT_EMAIL"
             msg = (
-                "Step 2/3: Enter your account <b>Email / Login</b>:\n"
-                "<i>(e.g., <code>trader@gmail.com</code>)</i>"
+                "Step 2/5: Enter your account <b>Email / Login</b>:\n"
+                "<i>(e.g., <code>trader@example.com</code>)</i>"
             )
             telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
 
@@ -328,15 +340,42 @@ class TelegramListener:
             data["email"] = text.strip()
             session["step"] = "AWAIT_PASSWORD"
             msg = (
-                "Step 3/3: Enter your account <b>Password</b>:\n"
+                "Step 3/5: Enter your account <b>Password</b>:\n"
                 "🔒 <i>Your password message will be auto-deleted from chat immediately for your security.</i>"
             )
             telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
 
         elif step == "AWAIT_PASSWORD":
             data["password"] = text.strip()
-            # Delete message containing password
             telegram_gateway.delete_message(chat_id, msg_id)
+
+            session["step"] = "AWAIT_ACC_NUM"
+            msg = (
+                "Step 4/5: Enter your <b>Account ID / Account Number</b>:\n"
+                "<i>(e.g., <code>2496260</code> or type <code>/skip</code> if single account)</i>"
+            )
+            telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
+
+        elif step == "AWAIT_ACC_NUM":
+            clean_val = text.strip()
+            if clean_val.lower() not in ("/skip", "skip", "none", "-"):
+                data["acc_num"] = clean_val
+            else:
+                data["acc_num"] = ""
+
+            session["step"] = "AWAIT_ENV"
+            msg = (
+                "Step 5/5: Select environment type:\n"
+                "Type <code>demo</code> (default) or <code>live</code>:"
+            )
+            telegram_gateway.send_message(msg, target_chat_id=str(chat_id))
+
+        elif step == "AWAIT_ENV":
+            env_choice = text.strip().lower()
+            if "live" in env_choice:
+                data["environment"] = "live"
+            else:
+                data["environment"] = "demo"
 
             _USER_SESSIONS.pop(user_id, None)
 
@@ -347,7 +386,8 @@ class TelegramListener:
                 server=data.get("server", ""),
                 email=data.get("email", ""),
                 password=data.get("password", ""),
-                acc_num="",
+                acc_num=data.get("acc_num", ""),
+                environment=data.get("environment", "demo"),
                 lots=0.10
             )
 
@@ -359,7 +399,8 @@ class TelegramListener:
         server: str,
         email: str,
         password: str,
-        acc_num: str,
+        acc_num: str = "",
+        environment: str = "demo",
         lots: float = 0.10
     ) -> None:
         """Validates credentials via broker adapter and writes encrypted account to disk."""
@@ -368,21 +409,22 @@ class TelegramListener:
             telegram_gateway.send_message(f"❌ Broker '{broker_id}' not found.", target_chat_id=str(chat_id))
             return
 
-        telegram_gateway.send_message("⏳ Verifying broker credentials...", target_chat_id=str(chat_id))
+        telegram_gateway.send_message("⏳ Verifying broker credentials with TradeLocker...", target_chat_id=str(chat_id))
 
+        env_clean = environment.strip().lower() or "demo"
         is_valid, message_or_err = broker.validate_credentials({
             "server": server,
             "email": email,
             "password": password,
             "acc_num": acc_num,
-            "environment": "demo" if "demo" in server.lower() else "live"
+            "environment": env_clean
         })
 
         if not is_valid:
             err_msg = (
                 f"❌ <b>Authentication Failed</b>\n\n"
                 f"<i>Reason:</i> <code>{html.escape(message_or_err)}</code>\n\n"
-                "Please check your server, login, and password, then try <code>/connect</code> again."
+                "Please check your server, login, password, and account ID, then try <code>/connect</code> again."
             )
             telegram_gateway.send_message(err_msg, target_chat_id=str(chat_id))
             return
@@ -397,20 +439,22 @@ class TelegramListener:
             server=server,
             acc_num=acc_num,
             default_lots=lots,
-            environment="demo" if "demo" in server.lower() else "live"
+            environment=env_clean,
+            extra_config={"account_id": acc_num} if acc_num else {}
         )
 
+        acc_num_disp = f"\n• <b>Account ID:</b> <code>{acc_num}</code>" if acc_num else ""
         success_msg = (
             f"✅ <b>Account Successfully Connected!</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"• <b>Account ID:</b> <code>{acc['id']}</code>\n"
+            f"• <b>Nujin Acc ID:</b> <code>{acc['id']}</code>\n"
             f"• <b>Broker:</b> <code>{broker_id.upper()}</code>\n"
-            f"• <b>Server:</b> <code>{html.escape(server)}</code>\n"
-            f"• <b>Login:</b> <code>{accounts_store.mask_login(email)}</code>\n"
-            f"• <b>Sizing Engine:</b> <code>Strategy-Designed Smart Lotsizer</code>\n"
+            f"• <b>Server:</b> <code>{html.escape(server)}</code> [{env_clean.upper()}]\n"
+            f"• <b>Login:</b> <code>{accounts_store.mask_login(email)}</code>{acc_num_disp}\n"
+            f"• <b>Sizing Engine:</b> <code>Strategy Dynamic Smart Lotsizer</code>\n"
             f"• <b>Gateway Status:</b> 🟢 {html.escape(message_or_err)}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"⚡ <i>This account will now automatically execute all strategy signals with dynamic smart sizing in real-time.</i>"
+            f"⚡ <i>This account will now automatically execute all strategy signals in real-time.</i>"
         )
         telegram_gateway.send_message(success_msg, target_chat_id=str(chat_id))
 
@@ -449,7 +493,7 @@ class TelegramListener:
 
     async def _cmd_disconnect(self, chat_id: int | str, user_id: str, args: list[str]) -> None:
         if not args:
-            telegram_gateway.send_message("Usage: <code>/disconnect &lt;account_id&gt;</code>", target_chat_id=str(chat_id))
+            telegram_gateway.send_message("Usage: <code>/remove &lt;account_id&gt;</code>", target_chat_id=str(chat_id))
             return
 
         acc_id = args[0]
@@ -461,6 +505,46 @@ class TelegramListener:
             )
         else:
             telegram_gateway.send_message(f"❌ Account <code>{acc_id}</code> not found.", target_chat_id=str(chat_id))
+
+    async def _cmd_test_account(self, chat_id: int | str, user_id: str, args: list[str]) -> None:
+        """Tests live broker connection for user's accounts."""
+        accs = accounts_store.get_accounts_by_user(user_id, mask=False)
+        if not accs:
+            telegram_gateway.send_message("ℹ️ No connected accounts to test. Use <code>/connect</code> first.", target_chat_id=str(chat_id))
+            return
+
+        target_accs = accs
+        if args:
+            target_accs = [a for a in accs if a["id"] == args[0] or args[0] in a["id"]]
+            if not target_accs:
+                telegram_gateway.send_message(f"❌ Account <code>{args[0]}</code> not found.", target_chat_id=str(chat_id))
+                return
+
+        telegram_gateway.send_message("⏳ Testing live broker gateway connections...", target_chat_id=str(chat_id))
+        lines = ["🔍 <b>Broker Connection Audit:</b>", "━━━━━━━━━━━━━━━━━━━━━━━━━━"]
+        for a in target_accs:
+            broker_id = a.get("broker_id", "tradelocker")
+            broker = broker_registry.get_broker(broker_id)
+            if not broker:
+                lines.append(f"• <code>{a['id']}</code>: ❌ Broker '{broker_id}' not found")
+                continue
+
+            decrypted_pwd = accounts_store.cipher.decrypt(a.get("password_encrypted", ""))
+            ok, msg = broker.validate_credentials({
+                "server": a.get("server", ""),
+                "email": a.get("login", ""),
+                "password": decrypted_pwd,
+                "acc_num": a.get("acc_num") or a.get("extra", {}).get("account_id") or "",
+                "environment": a.get("environment", "demo")
+            })
+            status_icon = "🟢 PASS" if ok else "❌ FAIL"
+            lines.append(
+                f"• <b>{a['id']}</b> ({html.escape(a.get('server', ''))})\n"
+                f"   Status: {status_icon}\n"
+                f"   Result: <code>{html.escape(msg)}</code>"
+            )
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        telegram_gateway.send_message("\n".join(lines), target_chat_id=str(chat_id))
 
     async def _cmd_daily_report(self, chat_id: int | str) -> None:
         """Generates and sends the daily quant report directly to the requesting Telegram chat."""
