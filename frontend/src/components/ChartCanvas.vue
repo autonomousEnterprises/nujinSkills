@@ -444,6 +444,14 @@ const resolveTradeExit = (target: InspectableSignal, entryIdx: number): {
     return { isClosed: !target.isLiveActive, exitIdx: Math.max(0, entryIdx) };
   }
 
+  // Open trades stay open until explicitly closed by server — never simulate synthetic wick exit
+  if (isTargetTradeOpen(target)) {
+    return {
+      isClosed: false,
+      exitIdx: rawCandles.value.length - 1,
+    };
+  }
+
   const rawExit = target.exit_time 
     ? (target.exit_time > 2000000000 ? target.exit_time / 1000 : target.exit_time) 
     : null;
@@ -863,11 +871,11 @@ const allChartMarkers = computed(() => {
 
 const isTargetTradeOpen = (target: InspectableSignal | null | undefined): boolean => {
   if (!target) return false;
-  if (target.source === 'BACKTEST') return false;
+  if (target.isLiveActive || target.status === 'ACTIVE_IN_POSITION' || target.exit_reason === 'ACTIVE_IN_POSITION') return true;
   if (target.status === 'CLOSED' || target.status === 'COMPLETED') return false;
   if (target.exit_price != null && target.exit_price > 0) return false;
-  if (target.exit_reason && target.exit_reason !== 'ACTIVE_IN_POSITION') return false;
   if (target.exit_time && target.exit_time > 0 && target.status !== 'ACTIVE_IN_POSITION') return false;
+  if (target.exit_reason && target.exit_reason !== 'ACTIVE_IN_POSITION' && target.exit_reason !== '') return false;
   return true;
 };
 
@@ -1162,7 +1170,7 @@ const updateBoxCoordinatesInternal = () => {
 
   if (isTradeOpen) {
     // Live open trades: extend the box to the right infinitely across the canvas into price axis
-    endX = containerW;
+    endX = containerW + 200;
   } else {
     // Closed trades: strictly from entry candle to exit candle logically wise (cached to eliminate O(N) pan/zoom lag)
     const tradeKey = `${target.id || ''}_${rawEntry}_${target.isLiveActive ? '1' : '0'}`;

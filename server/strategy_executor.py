@@ -205,6 +205,7 @@ class StrategyEvaluator:
             use_trailing = getattr(strat_inst, "trailing_stop", False)
             trail_pos = float(getattr(strat_inst, "trailing_stop_positive", 0.0002))
             trail_offset = float(getattr(strat_inst, "trailing_stop_positive_offset", 0.0003))
+            atr_trail_m = float(getattr(strat_inst, "atr_trail_mult", 1.0))
 
             return {
                 "strategy": clean_name,
@@ -216,6 +217,8 @@ class StrategyEvaluator:
                 "take_profit": tp,
                 "lots": lots,
                 "lot_size": lots,
+                "atr": float(atr_v if atr_v and atr_v > 0 else 0.0),
+                "atr_trail_mult": atr_trail_m,
                 "min_hold_seconds": min_bars * bar_sec,
                 "max_hold_seconds": max_hold_seconds,
                 "trailing_stop": use_trailing,
@@ -428,10 +431,12 @@ class NativeStrategyRunner:
         max_hold_raw = pos.get("max_hold_seconds")
         max_hold = int(max_hold_raw) if (max_hold_raw is not None and max_hold_raw != 0) else None
 
-        # Dynamic Trailing Stop Ratchet (lock profits tight to candle highs/lows)
+        # Dynamic ATR Trailing Stop Ratchet (lock profits tight behind peak price)
         use_trailing = pos.get("trailing_stop", False)
-        trail_offset = float(pos.get("trailing_offset", 0.0003))
-        trail_buffer = float(pos.get("trailing_buffer", 0.0002))
+        trail_offset = float(pos.get("trailing_offset", 0.0012))
+        trail_buffer = float(pos.get("trailing_buffer", 0.0010))
+        atr_val = float(pos.get("atr", 0.0))
+        atr_trail_m = float(pos.get("atr_trail_mult", 1.0))
 
         highest_price = float(pos.get("highest_price") or entry_price)
         lowest_price = float(pos.get("lowest_price") or entry_price)
@@ -442,7 +447,8 @@ class NativeStrategyRunner:
                 highest_price = current_price
             gain_pct = (highest_price - entry_price) / entry_price
             if use_trailing and gain_pct >= trail_offset:
-                new_sl = round(highest_price * (1.0 - trail_buffer), 2)
+                trail_dist = (atr_val * atr_trail_m) if (atr_val > 0) else (highest_price * trail_buffer)
+                new_sl = round(highest_price - trail_dist, 2)
                 if new_sl > sl:
                     pos["stop_loss"] = new_sl
                     sl = new_sl
@@ -452,7 +458,8 @@ class NativeStrategyRunner:
                 lowest_price = current_price
             gain_pct = (entry_price - lowest_price) / entry_price
             if use_trailing and gain_pct >= trail_offset:
-                new_sl = round(lowest_price * (1.0 + trail_buffer), 2)
+                trail_dist = (atr_val * atr_trail_m) if (atr_val > 0) else (lowest_price * trail_buffer)
+                new_sl = round(lowest_price + trail_dist, 2)
                 if sl == 0.0 or new_sl < sl:
                     pos["stop_loss"] = new_sl
                     sl = new_sl
