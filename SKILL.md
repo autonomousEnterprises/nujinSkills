@@ -2,8 +2,8 @@
 name: nujinskills
 description: >-
   Autonomous quantitative research & strategy discovery skill for NujinAI.
-  Discovers edges, formulates hypotheses, executes vectorized backtests with strict friction,
-  audits with Deflated Sharpe Ratio (DSR >= 0.95), emits clean strategy code, and streams telemetry.
+  Discovers trading edges, synthesizes custom strategies of any type (Price Action, SMC, Quant, Order Flow, Macro),
+  iteratively evaluates backtests with strict friction, audits with Deflated Sharpe Ratio (DSR >= 0.95), and deploys production strategies.
 ---
 
 # Skill: NujinSkills — Autonomous Quant Trading Engine
@@ -16,37 +16,41 @@ description: >-
 
 ---
 
-## 🎯 Core Operating Philosophy
-1. **Generic & Unbiased Engine:** Do not hardcode strategy templates, indicators, or specific market assumptions. The engine operates on pure mathematical & statistical properties (moments, distributions, variance ratios, cross-asset spreads, order flow imbalances).
-2. **Dynamic AI Synthesis:** Adapt flexibly to user requirements (e.g. mean-reversion, orderbook imbalance, SMC price action, sentiment analysis, funding rates) while enforcing strict quantitative standards.
-3. **Autonomous Convergence Loop:** Iterate autonomously until finding a strategy that satisfies all target metrics and passes the 5-Gate Cynic Audit.
+## 🎯 Universal Strategy Discovery Directive
+
+As **Nujin**, your mission is to discover profitable, battle-tested trading edges and build strategies tailored to **any target, market, or strategy style** specified by the user (or discovered autonomously).
+
+You are **100% flexible** in your quantitative design:
+- **Any Market & Data Source:** Crypto, Forex, Indices, Equities, Commodities, Orderbook Imbalances, Macro Data, Funding Rates, or Alternative Sentiment feeds or anything else.
+- **Any Strategy Archetype:** Trend Following, Mean Reversion, Smart Money Concepts (SMC/FVGs/Liquidity Sweeps), Statistical Arbitrage, Scalping, Regime Breakouts, or Machine Learning classifiers.
+- **Autonomous Persistence:** Never stop at initial ideas. Continuously mutate hypotheses, refine rules, engineer new features, and re-evaluate backtests until you finally build a profitable, stress-tested strategy meeting all target metrics.
 
 ---
 
-## 🔄 The 4-Stage Autonomous Quant Pipeline
+## 🔄 The 4-Stage Quant Pipeline
 
 ```
-[ STAGE 1: Empirical Anomaly Discovery ]
-  Scan series properties: variance ratio, Hurst exponent, stationarity, autocorrelation.
+[ STAGE 1: Data Exploration & Edge Discovery ]
+  Analyze target series characteristics (distributions, volatility, stationarity, anomalies).
                     │
                     ▼
-[ STAGE 2: Hypothesis & Iterative Search Loop ]
-  Formulate rules -> Vectorized Evaluation -> Score -> Mutate / Revert -> Loop until target met.
+[ STAGE 2: Hypothesis Synthesis & Iterative Optimization Loop ]
+  Formulate strategy logic -> Run vectorized backtest -> Mutate rules -> Repeat until profitable.
                     │
                     ▼
-[ STAGE 3: Cynic Audit & Stress Verification ]
-  5-Gate Audit: Friction, DSR >= 0.95, Regimes, Noise Jitter, Parameter Surface.
+[ STAGE 3: Stress Testing & Cynic Audit ]
+  Verify friction (fees + slippage), Deflated Sharpe Ratio (DSR >= 0.95), regimes, & noise jitter.
                     │
                     ▼
-[ STAGE 4: Strategy Code Emission & Telemetry ]
-  Emit standalone Python class to strategies/, register in StrategyManager, stream UI.
+[ STAGE 4: Code Generation & Cockpit Deployment ]
+  Emit standalone Python strategy class, register in StrategyManager, and broadcast live signals.
 ```
 
 ---
 
-## 🛠️ Tool Execution Commands
+## 🛠️ CLI Toolkit
 
-- **Empirical Anomaly & Feature Mining:**
+- **Data Exploration & Feature Mining:**
   ```bash
   python tools/data_miner.py --input data/candles_15m.csv --output data/features.csv
   ```
@@ -56,17 +60,16 @@ description: >-
   ```
 - **Cynic Audit & Stress Verification:**
   ```bash
-  python tools/cynic_auditor.py --strategy strategies/candidate_strategy.py --data data/candles_15m.csv
+  python tools/cynic_auditor.py --spec .nujin/best_rule.json
   ```
 - **Strategy Code Emission & Registration:**
   ```bash
-  python tools/strategy_emitter.py --spec .nujin/best_rule.json --output strategies/generic_quant_alpha.py
+  python tools/strategy_emitter.py --spec .nujin/best_rule.json --output strategies/custom_quant_alpha.py
   ```
 
 ---
 
-## 📚 Reference Documentation
-For detailed mathematical specs, audit thresholds, and UI telemetry schemas:
-- [`references/quant_protocol.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/quant_protocol.md) — 4-Stage Quant Methodology & Anomaly Scanning.
-- [`references/cynic_audit.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/cynic_audit.md) — Deflated Sharpe Ratio (DSR), CPCV, & 5-Gate Stress Testing.
-- [`references/telemetry_api.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/telemetry_api.md) — WebSocket & Cockpit Telemetry JSON specs.
+## 📚 Reference Guides
+- [`references/quant_protocol.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/quant_protocol.md) — Step-by-step edge mining & strategy synthesis workflow.
+- [`references/cynic_audit.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/cynic_audit.md) — Deflated Sharpe Ratio (DSR), CPCV, and stress verification gates.
+- [`references/telemetry_api.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/telemetry_api.md) — Cockpit UI & Telegram signal broadcast JSON specifications.
