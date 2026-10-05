@@ -1,10 +1,9 @@
 # ⚡ NujinAI / nujinSkills — Autonomous Quant Trading Agent Skill
 
 [![System: NujinAI](https://img.shields.io/badge/System-NujinAI-blue.svg)](SKILL.md)
-[![Year: 2026 Standard](https://img.shields.io/badge/Standard-2026%20Quant%20Agent-emerald.svg)](references/quant_strategies.md)
-[![Cockpit: Dual--Screen Vue 3](https://img.shields.io/badge/Cockpit-Dual--Screen%20Vue%203-indigo.svg)](references/cockpit_telemetry.md)
-[![Engine: VectorBT & DSR](https://img.shields.io/badge/Audit-DSR%20%E2%89%A5%200.95-amber.svg)](references/statistical_validation.md)
-[![Signals: 24/7 Telegram](https://img.shields.io/badge/Signals-24%2F7%20Telegram-sky.svg)](references/execution_and_signals.md)
+[![Quant Protocol](https://img.shields.io/badge/Methodology-4--Stage%20Quant-emerald.svg)](references/quant_protocol.md)
+[![Audit: DSR >= 0.95](https://img.shields.io/badge/Audit-DSR%20%E2%89%A5%200.95-amber.svg)](references/cynic_audit.md)
+[![Telemetry API](https://img.shields.io/badge/Telemetry-JSON%20API-sky.svg)](references/telemetry_api.md)
 
 > **Unlock the trading world effortlessly.** You bring the creative vision and define your financial goals; your AI agent handles the heavy algorithmic grinding, statistical falsification, 24/7 live signaling, and tool self-evolution.
 
