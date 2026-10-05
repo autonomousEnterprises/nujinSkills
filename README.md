@@ -1,112 +1,181 @@
 # ⚡ NujinAI / nujinSkills — Autonomous Quant Trading Agent Skill
 
 [![System: NujinAI](https://img.shields.io/badge/System-NujinAI-blue.svg)](SKILL.md)
-[![Quant Protocol](https://img.shields.io/badge/Methodology-4--Stage%20Quant-emerald.svg)](references/quant_protocol.md)
-[![Audit: DSR >= 0.95](https://img.shields.io/badge/Audit-DSR%20%E2%89%A5%200.95-amber.svg)](references/cynic_audit.md)
+[![Quant Protocol](https://img.shields.io/badge/Methodology-Universal%20Quant-emerald.svg)](references/quant_protocol.md)
+[![Audit: 5--Gate Cynic](https://img.shields.io/badge/Audit-DSR%20%E2%89%A5%200.95%20%7C%20MC%20MDD99-amber.svg)](references/cynic_audit.md)
+[![Tools Reference](https://img.shields.io/badge/Tools-CLI%20Reference-purple.svg)](references/tools_reference.md)
+[![Bot Operations](https://img.shields.io/badge/Bot-Live%20Supervision-cyan.svg)](references/bot_operations.md)
 [![Telemetry API](https://img.shields.io/badge/Telemetry-JSON%20API-sky.svg)](references/telemetry_api.md)
 
-> **Unlock the trading world effortlessly.** You bring the creative vision and define your financial goals; your AI agent handles the heavy algorithmic grinding, statistical falsification, 24/7 live signaling, and tool self-evolution.
+> **Unlock quantitative trading with full autonomy.** You bring the creative hypothesis and define your targets; your AI agent handles the mathematical modeling, multi-timeframe feature extraction, adversarial statistical falsification (5-Gate Cynic Audit), 24/7 live signaling, and safe bot hot-deployment.
 
 ---
 
 ## 🎯 What is NujinAI?
 
-**NujinAI (nujinSkills)** is a self-evolving quantitative trading assistant and execution engine packaged as an open, agent-agnostic **AI Skill**. 
+**NujinAI (nujinSkills)** is an autonomous quantitative research engine and systematic trading bot packaged as an open-source, agent-agnostic **AI Skill**.
 
-Instead of getting bogged down in boilerplate code, slippage modeling, or curve-fitted indicators:
-1. **You stay creative:** State your market intuition, target asset, risk tolerance, and profit milestones in natural language.
-2. **The Agent grinds:** Researches market microstructure, writes vectorized backtests, stress-tests against historical regimes, audits returns via the **Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$)**, and verifies parameter stability.
-3. **Deploys & Broadcasts:** Streams visual telemetry to a dual-screen Vue 3 Cockpit and broadcasts actionable 24/7 signals directly to your Telegram.
-4. **Continuously Self-Improves:** Retains empirical memory on disk of what works and what fails, mutates trading hypotheses, refines its own Python tools, and records your personal financial objectives.
+Instead of getting bogged down in boilerplate code, manual data joining, or curve-fitted indicator traps:
+1. **Universal Hypothesis Modeling:** Formulate strategies for any concept or market (Price Action, Market Structure, Order Flow, Statistical Arbitrage, Volatility Breakouts, Macro/Funding Spreads, or Machine Learning classifiers).
+2. **Institutional Multi-Timeframe (MTF) Confluence:** Seamlessly link Higher-Timeframe (HTF) market regime and context, Mid-Timeframe (MTF) structural zones, and Lower-Timeframe (LTF) precision execution triggers with **strict zero lookahead bias**.
+3. **5-Gate Adversarial Falsification:** Stress-test candidates against real friction, Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$), multi-regime temporal slices, synthetic noise jitter ($\ge 80\%$ Sharpe retention), and 1,000-run Monte Carlo trade order permutations ($\text{MDD}_{99}$).
+4. **Unified Single-Folder Data Isolation (`.nujin/`):** All research features, briefings, returns, and states live strictly inside `.nujin/`, namespaced via `--id <experiment_name>` so new strategies never contaminate or overwrite prior research.
+5. **Live Bot Hot-Deployment:** Emits production Python strategies and hot-deploys them into the live running trading engine without dropping active WebSocket connections or restarting server processes.
 
 ---
 
-## ⚡ Quick Start: Zero to Alpha in Minutes
+## ⚡ Quick Start
 
-### Option 1: Direct Agent Execution (Easiest)
-Simply clone or open this directory in **any AI agent or IDE** (Google Antigravity, Claude Code, Cursor, Windsurf, OpenClaw, Hermes):
+### 1. Installation & Environment Setup
+Clone the repository and initialize the Python virtual environment:
 
 ```bash
 git clone https://github.com/autonomousEnterprises/nujinSkills.git
 cd nujinSkills
-```
 
-Initialize your virtual environment & dependencies:
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Start the system engines:
+### 2. Start the System Engines
 ```bash
-# 1. Start FastAPI Telemetry & Signal Server (Port 8000)
+# 1. Start FastAPI Telemetry & Execution Server (Port 8000)
 python tools/server_control.py start --port 8000 --daemon
 
 # 2. Start Dual-Screen Visual Cockpit (Port 3000)
 python tools/frontend_control.py start --port 3000 --daemon
 ```
 
-Now, **simply prompt your AI agent**:
-> *"I want a prop-firm ready gold (XAU/USD) 1m scalping strategy targeting max 4% drawdown, minimum 1.8 Sharpe, with tight ATR trailing stops. Explore the market and build it."*
+### 3. Prompt Your AI Agent
+Open this workspace in your agentic coding environment (**Google Antigravity**, **Claude Code**, **Cursor**, **Windsurf**, or **Hermes**) and issue a request:
 
-The agent reads [`SKILL.md`](SKILL.md), conducts feature extraction, runs adversarial backtests, and deploys it.
+> *"Research a gold (XAU/USD) 1m scalping strategy targeting max 3% drawdown and Sharpe >= 1.8 with 5m MTF trend confluence. Mine the features, run the 5-Gate Cynic audit, and deploy it to paper mode."*
 
----
-
-### Option 2: Install as a Reusable Agent Skill
-
-Install NujinSkills globally across your favorite agentic frameworks:
-
-```bash
-# Google Antigravity (Workspace or Global Skill)
-mkdir -p ~/.gemini/config/skills/nujinskills
-cp -r ./* ~/.gemini/config/skills/nujinskills/
-
-# OpenClaw / Hermes CLI Agents
-openclaw skill add ./
-# Or symlink directly
-ln -s $(pwd) ~/.openclaw/skills/nujinskills
-
-# Claude Code
-claude skill add ./
-```
+The agent reads [`SKILL.md`](SKILL.md), invokes the specialized CLI tools, and executes the entire institutional pipeline.
 
 ---
 
-## 🔁 The Autonomous Alpha Loop
+## 🔄 The 4-Stage Quant Methodology
 
 ```
-  User Financial Goal & Thesis
-              │
-              ▼
-┌────────────────────────────────────────────────────────┐
-│               PHASE 1–4: DISCOVERY & BENCHMARK         │
-│  • Empirical math primitives (Variance Ratios, Hurst)  │
-│  • Anomaly & Alpha Half-Life Scan (p < 0.05, |t| >= 2) │
-│  • Strict Binary Criteria (Sharpe ≥ 1.8, MaxDD ≤ 4.5%) │
-│  • Apples-to-apples baseline on historical regimes     │
-└─────────────────────────────┬──────────────────────────┘
-                              │
-                              ▼
-┌────────────────────────────────────────────────────────┐
-│          PHASE 5: PERSISTENT ALPHA MINING LOOP         │
-│  • Continuous trial mutations via structured operators │
-│  • Keep/discard decisions backed by disk persistence   │
-│  • Plateau breakers triggered on stalled alpha         │
-└─────────────────────────────┬──────────────────────────┘
-                              │
-              ┌───────────────┴───────────────┐
-              ▼                               ▼
-┌───────────────────────────────┐ ┌───────────────────────────────┐
-│ 5-GATE CYNIC AUDIT (DSR≥0.95) │ │ TELEMETRY & LIVE EXECUTION    │
-│  1. Deflated Sharpe Ratio     │ │  • Dual-Screen Cockpit (Vue 3)│
-│  2. Parameter Plateau Surface │ │  • 24/7 Telegram Gateway      │
-│  3. Monte Carlo Tail MDD99    │ │  • Freqtrade / Jesse Bots     │
-│  4. Out-of-Sample Retention   │ │  • Dynamic Risk Sizing        │
-│  5. Market Regime Breakdown   │ │  • Signal Conflict Guard      │
-└───────────────────────────────┘ └───────────────────────────────┘
+[ STAGE 1: Empirical Anomaly & Statistical Discovery ]
+  Calculate Variance Ratios, Hurst Exponent, and Alpha Half-Life Decay without indicator bias.
+                    │
+                    ▼
+[ STAGE 2: Multi-Timeframe Feature Mining & Iterative Search ]
+  Join HTF context -> Extract scale-invariant features -> Vectorized screen -> Mutate rules.
+                    │
+                    ▼
+[ STAGE 3: 5-Gate Adversarial Cynic Audit (Falsification) ]
+  Friction Gate + DSR (>= 0.95) + Regime Survival + Noise Jitter + Monte Carlo MDD99.
+                    │
+                    ▼
+[ STAGE 4: Code Emission, Portfolio Orthogonality & Live Hot-Deployment ]
+  Emit native Python strategy class, verify correlation (< 0.50), & hot-deploy to running bot.
 ```
+
+---
+
+## 📁 Unified `.nujin/` Data Architecture
+
+All agent-generated data is strictly consolidated inside `.nujin/`, keeping root directories completely clean:
+
+```
+nujin/
+├── data/                               <- RAW MARKET FEEDS ONLY (Untouched historical CSVs)
+│   ├── candles_15m.csv
+│   └── xauusd_candles_1m.csv
+│
+├── .nujin/                             <- ALL GENERATED RESEARCH DATA & STATE ONLY
+│   ├── features.csv                    (Latest mined features)
+│   ├── empirical_briefing.json         (Latest empirical anomaly briefing)
+│   ├── candidate_returns.json          (Latest backtest return series)
+│   ├── best_rule.json                  (Latest promoted rule specification)
+│   │
+│   └── experiments/                    <- ISOLATED EXPERIMENT SCOPES (--id <name>)
+│       ├── btc_momentum_15m/           (Completely isolated research files)
+│       │   ├── features.csv
+│       │   ├── briefing.json
+│       │   ├── state.json
+│       │   ├── rules.json
+│       │   ├── best_rules.json
+│       │   ├── candidate_returns.json
+│       │   └── results.jsonl
+│       │
+│       └── xauusd_scalp_1m/            (Zero collision with other strategies)
+│
+└── strategies/                         <- STANDALONE PYTHON STRATEGY CODE ONLY
+    ├── XauLiquidityWallsDisplacementScalper.py
+    └── MyNewAlphaStrategy.py
+```
+
+---
+
+## 🛠️ Complete CLI Tool Matrix
+
+Invoke all tools using the project virtualenv (`.venv/bin/python3 tools/<tool>.py`):
+
+### 1. Empirical Discovery & Feature Extraction
+* **Market Anomaly & Statistical Profiling:**
+  ```bash
+  python tools/anomaly_scanner.py --data data/candles_15m.csv --id my_alpha
+  ```
+* **Multi-Feature Extraction with Multi-Timeframe (MTF) Confluence:**
+  ```bash
+  python tools/feature_miner.py --input data/xauusd_candles_1m.csv --id my_alpha --htf-data data/xauusd_candles_5m.csv --window 20
+  ```
+
+### 2. Search & Iterative Optimization Loop
+* **Autonomous Research Engine (Full loop or single steps):**
+  ```bash
+  python tools/autoresearch_miner.py init --id my_alpha --target "XAUUSD Scalper"
+  python tools/autoresearch_miner.py run --id my_alpha --cycles 5
+  python tools/autoresearch_miner.py status
+  ```
+* **Fast Vectorized Screener (Condition Filter with Friction):**
+  ```bash
+  python tools/vectorized_screener.py --id my_alpha --rules '{"entry_long": "ret_zscore < -2.0", "exit": "bars >= 6"}'
+  ```
+
+### 3. Adversarial Cynic Audit (Falsification)
+* **5-Gate Adversarial Cynic Auditor:**
+  ```bash
+  python tools/cynic_auditor.py --id my_alpha --trials 50 --strict
+  ```
+* **Portfolio Correlation & Regime Orthogonality:**
+  ```bash
+  python tools/portfolio_cynic.py --data data/candles_15m.csv --threshold 0.50
+  ```
+
+### 4. Code Generation & Strategy Registry
+* **Emit Native Standalone Python Strategy Class:**
+  ```bash
+  python tools/strategy_emitter.py --thesis "XAUUSD Session Volatility Absorption" --rules .nujin/experiments/my_alpha/best_rule.json --out strategies/XauusdVolAbsorber.py
+  ```
+* **Strategy Registry & Dynamic Plugins Inspection:**
+  ```bash
+  python tools/strategy_manager.py list
+  python tools/strategy_manager.py plugins
+  python tools/strategy_manager.py rank
+  ```
+
+### 5. Live Bot Supervision & Telemetry (Non-Disruptive)
+* **Query Live Bot Status & Hot-Deploy Strategy:**
+  ```bash
+  python tools/bot_control.py status
+  python tools/bot_control.py deploy --strategy XauusdVolAbsorber --mode paper
+  ```
+* **Inspect Live Performance & Signals:**
+  ```bash
+  python tools/state_control.py signal-stats
+  python tools/state_control.py signals
+  ```
+* **Cockpit UI & Telegram Dispatches:**
+  ```bash
+  python tools/ui_dispatcher.py --event UPSERT_WIDGET --payload '{"widget_id": "alpha_card", "payload": {}}'
+  python tools/telegram_broadcast.py broadcast --type update -m "New alpha strategy hot-deployed to paper mode."
+  ```
 
 ---
 
@@ -116,74 +185,32 @@ Access the interactive trading cockpit at **`http://localhost:3000`**:
 
 | Screen / Deck | Hotkey | Purpose & Telemetry |
 |---|---|---|
-| **Chart Canvas** | **`F1`** | High-performance TradingView candlestick chart overlaid with Level 3 visual primitives (multi-scale EMAs, Bollinger/Keltner bands), Fair Value Gap (FVG) imbalance boxes, liquidity sweeps, and execution markers. |
-| **Signal Deck** | **`F2`** | Live execution telemetry: win rate, profit factor, annualized Sharpe, active open position card with real-time unrealized PnL, and manual position override button. |
-| **Backtest Deck** | **`F3`** | Comprehensive backtest audit: authentic calendar time windows, equity growth curve, return distribution, regime breakdown (Bull, Bear, Range), and 5-Gate Cynic matrix. |
-| **Strategy Manager** | **`F4`** | Institutional 4-pillar strategy leaderboard, global Live vs. Backtest toggle, equity trajectory curves, correlation matrices, and direct *View on Chart (F1)* action navigation. |
+| **Chart Canvas** | **`F1`** | High-performance candlestick chart overlaid with visual primitives (multi-scale EMAs, Bollinger Bands, Fair Value Gaps, liquidity sweeps, and execution markers). |
+| **Signal Deck** | **`F2`** | Live execution telemetry: win rate, profit factor, annualized Sharpe, active open position card with real-time unrealized PnL, and manual override controls. |
+| **Backtest Deck** | **`F3`** | Backtest audit: equity trajectory curves, return distribution, regime breakdown (Bull, Bear, Range), and 5-Gate Cynic matrix. |
+| **Strategy Manager** | **`F4`** | Strategy leaderboard, global Live vs. Paper toggle, equity trajectory curves, correlation matrices, and direct action navigation. |
 | **Cycle Screens** | **`Ctrl + Space`** | Seamlessly toggle focus between open decks. |
 
 ---
 
-## 🛠️ CLI Toolkit Overview
+## 🧩 Dynamic Plugin Architecture
 
-All tools conform to the 2026 Nujin Agent Standard and execute directly in your terminal:
-
-```bash
-# Scan market data for empirical variance ratios, Hurst exponent, and alpha half-life
-python tools/anomaly_scanner.py --data data/candles_15m.csv
-
-# Ingest empirical briefing & start continuous quant alpha mining
-python tools/nujin_miner.py scan --data data/candles_15m.csv
-python tools/nujin_miner.py run --archetype mean_reversion --cycles 10
-
-# Screen strategies using fast vectorized VectorBT filter
-python tools/vectorized_screener.py --data data/candles_15m.csv --strategy candidate.py
-
-# Adversarial 5-Gate Cynic Audit (DSR >= 0.95)
-python tools/validation_cynic.py --strategy candidate.py --strict
-
-# Institutional 4-Pillar Ranking Leaderboard
-python tools/strategy_manager.py rank
-
-# Deep strategy quantitative breakdown & tier rationale
-python tools/strategy_manager.py insights <strategy_name>
-
-# Portfolio correlation matrix & regime orthogonality
-python tools/portfolio_cynic.py --threshold 0.50
-
-# Broadcast market updates or daily performance reports to Telegram
-python tools/telegram_broadcast.py broadcast --type report --title "Daily Alpha" --message "PnL: +3.2%, Sharpe: 2.1"
-
-# Supervise paper (dry-run) or live bot execution
-python tools/bot_control.py deploy --strategy candidate --mode dry-run
-```
+Nujin supports external modular extensions via the `plugins/` directory. Any installed plugin containing a `plugin.json` or `strategies/` directory is automatically discovered by `server/plugin_loader.py` and `tools/strategy_manager.py plugins` without modifying the core codebase.
 
 ---
 
-## 🧠 Self-Improvement & Long-Term Adaptation
+## 📚 Deep Reference Manuals
 
-NujinAI does not stop at strategy generation:
-- **Disk-Grounded Learning (`.nujin/`):** Preserves run counters, empirical failure patterns, and candidate rules across sessions. It never repeats discredited parameter combinations.
-- **Goal-Aware Alignment:** Incorporates user-defined financial scope, drawdown constraints, and risk tolerances into its core binary acceptance matrix.
-- **Meta-Tool Evolution:** Audits its own internal CLI scripts (`python tools/nujin_miner.py improve-tool --tool <name.py>`), updates documentation, vectorizes bottlenecks, and refines feature miners.
-
----
-
-## 📚 Reference Knowledge Base
-
-For in-depth mathematical derivations and architecture specifications:
+For in-depth mathematical derivations and operational specifications:
 - [`SKILL.md`](SKILL.md) — Master Autonomous Quant Engine Protocol & Instructions
-- [`references/alpha_ideation.md`](references/alpha_ideation.md) — Non-Consensus Alpha Ideation & Empirical Discovery Protocol
-- [`references/cockpit_telemetry.md`](references/cockpit_telemetry.md) — Dual-Screen Cockpit, WebSocket Bus & UI Controls
-- [`references/quant_strategies.md`](references/quant_strategies.md) — 2026 Quant Landscape, Universal Strategy Spec & Lifecycle
-- [`references/strategy_ranking_tiers.md`](references/strategy_ranking_tiers.md) — 4-Pillar Scoring Model & Tier Hurdles
-- [`references/statistical_validation.md`](references/statistical_validation.md) — Deflated Sharpe Ratio, CPCV & Adversarial Falsification
-- [`references/feature_engineering.md`](references/feature_engineering.md) — 4 Open Information Domains, Orthogonality Law & Alpha Decay
-- [`references/execution_and_signals.md`](references/execution_and_signals.md) — Bot Supervisors & Telegram Signal Gateway
-- [`references/extending_nujin.md`](references/extending_nujin.md) — Developer Guide: Adding REST endpoints, WS feeds & Vue 3 decks
+- [`references/quant_protocol.md`](references/quant_protocol.md) — Universal quant research methodology, MTF architecture & risk-reward math
+- [`references/cynic_audit.md`](references/cynic_audit.md) — 5-Gate Adversarial Falsification formulas (DSR, Monte Carlo MDD, noise jitter, parameter plateau)
+- [`references/tools_reference.md`](references/tools_reference.md) — Complete CLI manual with all tool flags, parameters, and invocation examples
+- [`references/bot_operations.md`](references/bot_operations.md) — Non-disruptive live bot supervision, state inspection, and hot-deployment guide
+- [`references/telemetry_api.md`](references/telemetry_api.md) — Cockpit UI WebSocket/IPC payload specifications and Telegram alert schemas
 
 ---
 
 ## 📄 License
 
-MIT License — Autonomous Enterprises. Built for systematic quantitative traders and autonomous agent swarms.
+MIT License — Autonomous Enterprises. Built for systematic quantitative researchers and autonomous trading agents.
