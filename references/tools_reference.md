@@ -4,6 +4,8 @@ This document details every tool available in `nujinSkills/tools/`.
 Always invoke tools using the project virtualenv Python:
 `nujinSkills/.venv/bin/python3 tools/<tool_name>.py [args]` (or `./.venv/bin/python3` if inside `nujinSkills/`).
 
+> **Unified Data Architecture:** All agent-generated features, briefings, returns, rules, and research states live strictly inside `.nujin/`. Use `--id <experiment_name>` across any tool to isolate a strategy's research files in `.nujin/experiments/<experiment_name>/`. Raw market candles stay in `data/`, and strategies stay in `strategies/`.
+
 ---
 
 ## 1. Empirical Discovery & Feature Extraction

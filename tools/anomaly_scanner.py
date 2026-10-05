@@ -461,12 +461,31 @@ def print_ascii_briefing(briefing: Dict[str, Any]):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NujinSkills Empirical Anomaly Scanner")
     parser.add_argument("--data", type=str, default="data/candles_15m.csv", help="Path to OHLCV candle CSV")
-    parser.add_argument("--output", type=str, default=".nujin/empirical_briefing.json", help="Path to output JSON briefing")
+    parser.add_argument("--id", "--experiment", type=str, default="", help="Experiment ID to isolate briefing in .nujin/experiments/<id>/")
+    parser.add_argument("--output", type=str, default=None, help="Path to output JSON briefing (defaults to .nujin/empirical_briefing.json or .nujin/experiments/<id>/briefing.json)")
     parser.add_argument("--json", action="store_true", help="Output raw JSON to stdout")
 
     args = parser.parse_args()
 
-    briefing = generate_empirical_briefing(data_path=args.data, output_path=args.output)
+    if args.output:
+        out_path = args.output
+    elif args.id:
+        out_dir = os.path.join(".nujin", "experiments", args.id)
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, "briefing.json")
+    else:
+        os.makedirs(".nujin", exist_ok=True)
+        out_path = os.path.join(".nujin", "empirical_briefing.json")
+
+    briefing = generate_empirical_briefing(data_path=args.data, output_path=out_path)
+
+    # Mirror to .nujin/empirical_briefing.json for global backward compatibility
+    if args.id and out_path != os.path.join(".nujin", "empirical_briefing.json"):
+        try:
+            with open(os.path.join(".nujin", "empirical_briefing.json"), "w", encoding="utf-8") as f:
+                json.dump(briefing, f, indent=2)
+        except Exception:
+            pass
 
     if args.json:
         print(json.dumps(briefing, indent=2))

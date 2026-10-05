@@ -137,6 +137,7 @@ def verify_monte_carlo(returns: np.ndarray, num_simulations: int = 1000) -> dict
 
 def main():
     parser = argparse.ArgumentParser(description="Generic 5-Gate Adversarial Cynic Auditor")
+    parser.add_argument("--id", "--experiment", type=str, default="", help="Experiment ID to audit in .nujin/experiments/<id>/")
     parser.add_argument("--spec", type=str, default="", help="Path to strategy specification JSON")
     parser.add_argument("--returns", type=str, default="", help="Path to trade returns JSON")
     parser.add_argument("--strategy", type=str, default="", help="Strategy name to run real backtest audit on")
@@ -145,9 +146,26 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output machine-readable JSON only")
     args = parser.parse_args()
 
+    # Resolve paths based on experiment ID
+    exp_dir = os.path.join(".nujin", "experiments", args.id) if args.id else ""
+    spec_path = args.spec
+    if not spec_path and exp_dir:
+        candidate_spec = os.path.join(exp_dir, "best_rule.json")
+        if os.path.exists(candidate_spec):
+            spec_path = candidate_spec
+    if not spec_path and os.path.exists(".nujin/best_rule.json"):
+        spec_path = ".nujin/best_rule.json"
+
+    returns_path = args.returns
+    if not returns_path and exp_dir:
+        candidate_ret = os.path.join(exp_dir, "candidate_returns.json")
+        if os.path.exists(candidate_ret):
+            returns_path = candidate_ret
+    if not returns_path and os.path.exists(".nujin/candidate_returns.json"):
+        returns_path = ".nujin/candidate_returns.json"
+
     # Resolve returns
     returns = np.array([])
-    spec_path = args.spec or (".nujin/best_rule.json" if os.path.exists(".nujin/best_rule.json") else "")
     
     if args.strategy:
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -164,9 +182,9 @@ def main():
                 sys.exit(1)
             return
             
-    elif args.returns and os.path.exists(args.returns):
+    elif returns_path and os.path.exists(returns_path):
         try:
-            with open(args.returns, "r") as f:
+            with open(returns_path, "r") as f:
                 returns = np.array(json.load(f))
         except Exception as e:
             print(f"❌ Error loading returns file: {e}")

@@ -54,29 +54,30 @@ Your responsibility is to take any trading concept or quantitative hypothesis th
 ## 🛠️ Essential CLI Tool Matrix
 
 Run tools using the project virtualenv Python: `nujinSkills/.venv/bin/python3 tools/<tool>.py`
+All research data, features, briefings, returns, and state are organized strictly in `.nujin/` (use `--id <name>` to isolate strategies).
 
 ### 1. Empirical Discovery & Feature Mining
 - **Market Anomaly & Statistical Profiling:**
-  `tools/anomaly_scanner.py --data data/candles_15m.csv --output .nujin/empirical_briefing.json`
-- **Multi-Feature Extraction:**
-  `tools/feature_miner.py --input data/candles_15m.csv --output data/features.csv --window 20`
+  `tools/anomaly_scanner.py --data data/candles_15m.csv --id my_alpha`
+- **Multi-Feature Extraction (with Multi-Timeframe HTF Confluence):**
+  `tools/feature_miner.py --input data/candles_15m.csv --id my_alpha --htf-data data/candles_1h.csv`
 
 ### 2. Search & Iterative Optimization Loop
 - **Autonomous Research Engine (Run full cycles or single steps):**
-  `tools/autoresearch_miner.py init --target "User Strategy Objective"`
-  `tools/autoresearch_miner.py run --cycles 5 --features data/features.csv`
+  `tools/autoresearch_miner.py init --id my_alpha --target "User Strategy Objective"`
+  `tools/autoresearch_miner.py run --id my_alpha --cycles 5`
 - **Fast Vectorized Screener (Condition Filter with Friction):**
-  `tools/vectorized_screener.py --data data/features.csv --rules '{"entry_long": "condition"}'`
+  `tools/vectorized_screener.py --id my_alpha --rules '{"entry_long": "condition"}'`
 
 ### 3. Adversarial Cynic Audit (Falsification)
-- **Statistical Falsification (DSR + Monte Carlo Drawdown + Parameter Stability):**
-  `tools/validation_cynic.py --returns data/candidate_returns.json --trials 50 --strict`
+- **5-Gate Adversarial Falsification Audit (DSR + Monte Carlo + Regimes):**
+  `tools/cynic_auditor.py --id my_alpha --trials 50 --strict`
 - **Portfolio Correlation & Regime Orthogonality:**
   `tools/portfolio_cynic.py --data data/candles_15m.csv --threshold 0.50`
 
 ### 4. Code Emission & Strategy Registration
 - **Generate Standalone Strategy Class:**
-  `tools/strategy_emitter.py --thesis "Strategy Thesis Description" --rules .nujin/best_rule.json --out strategies/MyStrategy.py`
+  `tools/strategy_emitter.py --thesis "Strategy Thesis Description" --rules .nujin/experiments/my_alpha/best_rule.json --out strategies/MyStrategy.py`
 - **Strategy Registry & Plugins Management:**
   `tools/strategy_manager.py list`
   `tools/strategy_manager.py plugins`

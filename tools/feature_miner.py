@@ -260,16 +260,34 @@ def process_features(input_path: str, output_path: str, window: int = 20, htf_pa
         else:
             print(f"[FeatureMiner] Warning: No matching 'timestamp' or 'time' key found for HTF join.")
 
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     df.write_csv(output_path)
     print(f"[FeatureMiner] Success! Features written to {output_path} ({len(df)} rows, {len(df.columns)} columns)")
+
+    # Mirror to .nujin/features.csv if in an experiment subfolder for backward compatibility
+    global_features = os.path.join(".nujin", "features.csv")
+    if os.path.abspath(output_path) != os.path.abspath(global_features):
+        try:
+            os.makedirs(".nujin", exist_ok=True)
+            df.write_csv(global_features)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Feature Extraction CLI Tool")
     parser.add_argument("--input", required=True, help="Input CSV file path with OHLCV data")
-    parser.add_argument("--output", required=True, help="Output CSV file path for extracted features")
+    parser.add_argument("--id", "--experiment", type=str, default="", help="Experiment ID to isolate features in .nujin/experiments/<id>/")
+    parser.add_argument("--output", default=None, help="Output CSV path (defaults to .nujin/experiments/<id>/features.csv or .nujin/features.csv)")
     parser.add_argument("--window", type=int, default=20, help="Rolling window size (default: 20)")
     parser.add_argument("--htf-data", default=None, help="Optional Higher Timeframe (HTF) CSV for multi-timeframe confluence")
     parser.add_argument("--htf-prefix", default="htf_", help="Column prefix for Higher Timeframe features (default: htf_)")
     args = parser.parse_args()
     
-    process_features(args.input, args.output, args.window, htf_path=args.htf_data, htf_prefix=args.htf_prefix)
+    if args.output:
+        out_path = args.output
+    elif args.id:
+        out_path = os.path.join(".nujin", "experiments", args.id, "features.csv")
+    else:
+        out_path = os.path.join(".nujin", "features.csv")
+
+    process_features(args.input, out_path, args.window, htf_path=args.htf_data, htf_prefix=args.htf_prefix)

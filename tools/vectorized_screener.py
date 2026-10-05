@@ -204,22 +204,41 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
     
     print(json.dumps(summary, indent=2))
     
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     with open(output_path, 'w') as f:
         json.dump(trade_returns.tolist(), f)
     print(f"[VectorizedScreener] Candidate trade returns written to {output_path}")
+
+    # Mirror to .nujin/candidate_returns.json for backward compatibility
+    global_returns = os.path.join(".nujin", "candidate_returns.json")
+    if os.path.abspath(output_path) != os.path.abspath(global_returns):
+        try:
+            os.makedirs(".nujin", exist_ok=True)
+            with open(global_returns, 'w') as f:
+                json.dump(trade_returns.tolist(), f)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vectorized In-Sample Strategy Coarse Filter via VectorBT")
     parser.add_argument("--data", default="data/candles_15m.csv", help="Input dataset or features CSV file path (default: data/candles_15m.csv)")
     parser.add_argument("--rules", default="", help="Rule dict or JSON string specifying strategy entry/exit")
     parser.add_argument("--strategy", default="", help="Strategy filename or path to screen directly")
+    parser.add_argument("--id", "--experiment", type=str, default="", help="Experiment ID to isolate returns in .nujin/experiments/<id>/")
     parser.add_argument("--fee-bps", type=float, default=5.0, help="Taker fee in bps (default: 5.0)")
     parser.add_argument("--slippage-bps", type=float, default=2.0, help="Slippage in bps (default: 2.0)")
-    parser.add_argument("--output", default="data/screener_returns.json", help="Output JSON path for trade return series")
+    parser.add_argument("--output", default=None, help="Output JSON path (defaults to .nujin/experiments/<id>/candidate_returns.json or .nujin/candidate_returns.json)")
     args = parser.parse_args()
     
     if not args.rules and not args.strategy:
         print("[VectorizedScreener] ERROR: Must provide either --rules or --strategy.")
         sys.exit(1)
 
-    run_screener(args.data, args.rules, args.fee_bps, args.slippage_bps, args.output, strategy=args.strategy)
+    if args.output:
+        out_path = args.output
+    elif args.id:
+        out_path = os.path.join(".nujin", "experiments", args.id, "candidate_returns.json")
+    else:
+        out_path = os.path.join(".nujin", "candidate_returns.json")
+
+    run_screener(args.data, args.rules, args.fee_bps, args.slippage_bps, out_path, strategy=args.strategy)

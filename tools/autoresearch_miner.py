@@ -18,6 +18,35 @@ TOOL_NAME = "[NujinMiner]"
 NUJIN_DIR = ".nujin" if os.path.exists(".nujin") or not os.path.exists(".autoresearch") else ".autoresearch"
 AUTORESEARCH_DIR = NUJIN_DIR
 
+def resolve_research_dir(exp_id: str = "") -> str:
+    global AUTORESEARCH_DIR
+    if exp_id:
+        target_dir = os.path.join(NUJIN_DIR, "experiments", exp_id)
+        os.makedirs(target_dir, exist_ok=True)
+        try:
+            with open(os.path.join(NUJIN_DIR, "active_experiment.txt"), "w") as f:
+                f.write(exp_id)
+        except Exception:
+            pass
+        AUTORESEARCH_DIR = target_dir
+        return target_dir
+
+    active_file = os.path.join(NUJIN_DIR, "active_experiment.txt")
+    if os.path.exists(active_file):
+        try:
+            with open(active_file, "r") as f:
+                active_id = f.read().strip()
+            if active_id:
+                target_dir = os.path.join(NUJIN_DIR, "experiments", active_id)
+                if os.path.exists(target_dir):
+                    AUTORESEARCH_DIR = target_dir
+                    return target_dir
+        except Exception:
+            pass
+
+    AUTORESEARCH_DIR = NUJIN_DIR
+    return NUJIN_DIR
+
 def get_python_exec() -> str:
     venv_py = os.path.abspath(".venv/bin/python")
     if os.path.exists(venv_py):
@@ -531,6 +560,14 @@ def action_step(features_path: str = "data/features.csv", rules_override: str = 
         best_rules = dict(current_rules)
         with open(best_rules_path, "w", encoding="utf-8") as f:
             json.dump(best_rules, f, indent=2)
+        if AUTORESEARCH_DIR != NUJIN_DIR:
+            try:
+                with open(os.path.join(NUJIN_DIR, "best_rule.json"), "w", encoding="utf-8") as f:
+                    json.dump(best_rules, f, indent=2)
+                with open(os.path.join(NUJIN_DIR, "best_rules.json"), "w", encoding="utf-8") as f:
+                    json.dump(best_rules, f, indent=2)
+            except Exception:
+                pass
         print(f"{TOOL_NAME} Result: [KEEP] New Best Validation Score: {validation_score}/{max_score}!")
     else:
         status = "DISCARD"
@@ -717,26 +754,45 @@ def action_improve_tool(tool_name: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Autonomous Quant Research Engine & Tool Evolver")
     parser.add_argument("action", choices=["init", "scan", "step", "run", "status", "improve-tool"], help="Autoresearch action")
+    parser.add_argument("--id", "--experiment", default="", help="Experiment ID to isolate research in .nujin/experiments/<id>/")
     parser.add_argument("--target", default="", help="Optimization target description")
     parser.add_argument("--scope", default="", help="Target scope (symbol/timeframe)")
     parser.add_argument("--context", default="", help="Target constraints/context")
     parser.add_argument("--archetype", "--dimension", default="mean_reversion", choices=["mean_reversion", "trend_following", "momentum_breakout", "price_action", "smc_liquidity", "custom"], help="Strategy archetype template")
     parser.add_argument("--initial-rules", default="", help="JSON string or file path containing initial candidate rules")
     parser.add_argument("--rules-file", default="", help="Candidate rules JSON file or string to evaluate in this step")
-    parser.add_argument("--features", default="data/features.csv", help="Feature data CSV path")
+    parser.add_argument("--features", default=None, help="Feature data CSV path (defaults to .nujin/experiments/<id>/features.csv or .nujin/features.csv)")
     parser.add_argument("--data", default="data/candles_15m.csv", help="Candle dataset path for scan")
     parser.add_argument("--cycles", "--max-iterations", type=int, default=5, help="Number of continuous cycles for 'run'")
     parser.add_argument("--tool", default="feature_miner.py", help="Tool filename for 'improve-tool'")
     args = parser.parse_args()
+
+    # Resolve active research directory
+    active_dir = resolve_research_dir(args.id)
+
+    # Auto-resolve features path inside .nujin/
+    feat_path = args.features
+    if not feat_path:
+        exp_feat = os.path.join(active_dir, "features.csv")
+        global_feat = os.path.join(NUJIN_DIR, "features.csv")
+        data_feat = "data/features.csv"
+        if os.path.exists(exp_feat):
+            feat_path = exp_feat
+        elif os.path.exists(global_feat):
+            feat_path = global_feat
+        elif os.path.exists(data_feat):
+            feat_path = data_feat
+        else:
+            feat_path = exp_feat  # Will be generated if missing
 
     if args.action == "init":
         action_init(args.target, args.scope, args.context, archetype=args.archetype, initial_rules_input=args.initial_rules)
     elif args.action == "scan":
         action_scan(data_path=args.data)
     elif args.action == "step":
-        action_step(args.features, rules_override=args.rules_file)
+        action_step(feat_path, rules_override=args.rules_file)
     elif args.action == "run":
-        action_run(args.cycles, args.features, archetype=args.archetype)
+        action_run(args.cycles, feat_path, archetype=args.archetype)
     elif args.action == "status":
         action_status()
     elif args.action == "improve-tool":
