@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import sys
 import numpy as np
 import polars as pl
 
-def process_features(input_path: str, output_path: str, window: int = 20):
-    print(f"[FeatureMiner] Reading OHLCV data from {input_path}...")
-    df = pl.read_csv(input_path)
-    
+def extract_ohlcv_features(df: pl.DataFrame, window: int = 20) -> pl.DataFrame:
     # Standardize column names to lowercase
     rename_dict = {col: col.lower() for col in df.columns}
     df = df.rename(rename_dict)
@@ -224,6 +222,44 @@ def process_features(input_path: str, output_path: str, window: int = 20):
         except Exception as e:
             print(f"[FeatureMiner] Note on timestamp session extraction: {e}")
 
+    return df
+
+def process_features(input_path: str, output_path: str, window: int = 20, htf_path: str = None, htf_prefix: str = "htf_"):
+    print(f"[FeatureMiner] Reading OHLCV data from {input_path}...")
+    df = pl.read_csv(input_path)
+    df = extract_ohlcv_features(df, window=window)
+
+    # Multi-Timeframe (MTF) Higher-Timeframe Confluence Join
+    if htf_path and os.path.exists(htf_path):
+        print(f"[FeatureMiner] Merging Higher-Timeframe (HTF) context from {htf_path}...")
+        htf_raw = pl.read_csv(htf_path)
+        htf_feat = extract_ohlcv_features(htf_raw, window=window)
+
+        join_col = "timestamp" if "timestamp" in df.columns and "timestamp" in htf_feat.columns else (
+            "time" if "time" in df.columns and "time" in htf_feat.columns else None
+        )
+
+        if join_col:
+            # Cast join column to same type and sort for join_asof
+            df = df.with_columns(pl.col(join_col).cast(pl.Int64)).sort(join_col)
+            htf_feat = htf_feat.with_columns(pl.col(join_col).cast(pl.Int64)).sort(join_col)
+
+            # Prefix all HTF columns except join key
+            rename_map = {c: f"{htf_prefix}{c}" for c in htf_feat.columns if c != join_col}
+            htf_feat = htf_feat.rename(rename_map)
+
+            # As-of join backward: each LTF bar joins the latest completed HTF bar (no lookahead bias)
+            df = df.join_asof(htf_feat, on=join_col, strategy="backward")
+
+            # Forward fill any initial nulls
+            fill_cols = [pl.col(c).forward_fill().backward_fill() for c in rename_map.values()]
+            if fill_cols:
+                df = df.with_columns(fill_cols)
+
+            print(f"[FeatureMiner] Successfully joined {len(rename_map)} HTF features with zero lookahead bias.")
+        else:
+            print(f"[FeatureMiner] Warning: No matching 'timestamp' or 'time' key found for HTF join.")
+
     df.write_csv(output_path)
     print(f"[FeatureMiner] Success! Features written to {output_path} ({len(df)} rows, {len(df.columns)} columns)")
 
@@ -232,6 +268,8 @@ if __name__ == "__main__":
     parser.add_argument("--input", required=True, help="Input CSV file path with OHLCV data")
     parser.add_argument("--output", required=True, help="Output CSV file path for extracted features")
     parser.add_argument("--window", type=int, default=20, help="Rolling window size (default: 20)")
+    parser.add_argument("--htf-data", default=None, help="Optional Higher Timeframe (HTF) CSV for multi-timeframe confluence")
+    parser.add_argument("--htf-prefix", default="htf_", help="Column prefix for Higher Timeframe features (default: htf_)")
     args = parser.parse_args()
     
-    process_features(args.input, args.output, args.window)
+    process_features(args.input, args.output, args.window, htf_path=args.htf_data, htf_prefix=args.htf_prefix)

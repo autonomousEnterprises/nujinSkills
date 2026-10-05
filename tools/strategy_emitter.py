@@ -297,6 +297,38 @@ class {class_name}(IStrategy):
 {exit_long_code}
 {exit_short_code}
         return dataframe
+
+    def run_backtest(self, dataframe: DataFrame) -> dict:
+        """Standalone backtest execution for rapid verification."""
+        metadata = {{"pair": getattr(self, "symbol", "BTC/USDT")}}
+        df = self.populate_indicators(dataframe.copy(), metadata)
+        df = self.populate_entry_trend(df, metadata)
+        df = self.populate_exit_trend(df, metadata)
+        
+        returns = df["close"].pct_change().fillna(0.0)
+        long_pos = (df.get("enter_long", 0) == 1).astype(int)
+        short_pos = (df.get("enter_short", 0) == 1).astype(int) if self.can_short else 0
+        pos = (long_pos - short_pos).clip(-1, 1)
+        
+        strat_returns = pos.shift(1).fillna(0.0) * returns
+        friction_per_trade = 0.0007 # 5 bps fee + 2 bps slippage
+        trades_mask = pos.diff().abs() > 0
+        strat_returns[trades_mask] -= friction_per_trade
+        
+        cum = (1.0 + strat_returns).cumprod()
+        peak = cum.cummax()
+        dd = (cum - peak) / peak
+        
+        mean_r = strat_returns.mean()
+        std_r = strat_returns.std()
+        sharpe = (mean_r / (std_r + 1e-8)) * np.sqrt(252 * 24 * 4) if std_r > 0 else 0.0
+        
+        return {{
+            "total_return_pct": round(float((cum.iloc[-1] - 1.0) * 100.0), 2) if len(cum) > 0 else 0.0,
+            "max_drawdown_pct": round(abs(float(dd.min())) * 100.0, 2) if len(dd) > 0 else 0.0,
+            "sharpe": round(float(sharpe), 2),
+            "total_trades": int(trades_mask.sum())
+        }}
 '''
     return code
 
@@ -347,6 +379,7 @@ def emit_strategy(thesis: str, rules_path_or_json: str, framework: str, out_path
     if framework.lower() == "jesse":
         code = generate_jesse_code(thesis, class_name, rules)
     else:
+        # Default nujin / freqtrade compatible strategy class
         code = generate_freqtrade_code(thesis, class_name, rules)
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
@@ -373,7 +406,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Multi-Archetype Strategy Code Emitter CLI")
     parser.add_argument("--thesis", required=True, help="Economic thesis description")
     parser.add_argument("--rules", default="{}", help="Rules JSON string or path")
-    parser.add_argument("--framework", choices=["freqtrade", "jesse"], default="freqtrade", help="Target strategy framework")
+    parser.add_argument("--framework", choices=["nujin", "freqtrade", "jesse"], default="nujin", help="Target strategy framework (default: nujin)")
     parser.add_argument("--out", default="", help="Output python strategy file path (defaults to strategies/<StrategyName>.py)")
     args = parser.parse_args()
 
