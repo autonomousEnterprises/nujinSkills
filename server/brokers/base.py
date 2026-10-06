@@ -104,7 +104,13 @@ class BaseExecutionBroker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def close_position(self, position_id: str, reason: str = "MANUAL", current_price: Optional[float] = None) -> Dict[str, Any]:
+    def close_position(
+        self,
+        position_id: str,
+        reason: str = "MANUAL",
+        current_price: Optional[float] = None,
+        symbol: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Closes an open position on the broker.
         Returns confirmation dict:

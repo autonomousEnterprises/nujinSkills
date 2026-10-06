@@ -355,15 +355,43 @@ async def delete_signal_endpoint(req: DeleteSignalRequest):
 @app.post("/api/signals/close")
 @app.post("/api/strategy/close-position")
 async def close_signal_position(req: CloseSignalRequest):
+    # 1. Retrieve the signal being closed (if any)
+    active_sig = None
+    if req.id:
+        for s in signal_store.get_active_signals():
+            if str(s.get("id")) == str(req.id):
+                active_sig = s
+                break
+    if not active_sig and req.strategy:
+        active_sig = signal_store.get_active(req.strategy)
+
     exit_p = req.exit_price
     if not exit_p or exit_p <= 0:
-        active_strat = req.strategy or ""
+        active_strat = req.strategy or (active_sig.get("strategy") if active_sig else "")
         if any(k in active_strat.lower() for k in ["xau", "gold", "goat"]):
             exit_p = float(xauusd_engine.current_quote.get("price") or 0.0)
-        if not exit_p or exit_p <= 0:
-            active_sig = signal_store.get_active(req.strategy) if req.strategy else None
-            exit_p = float(active_sig.get("price") or 0.0) if active_sig else 0.0
+        if not exit_p or exit_p <= 0 and active_sig:
+            exit_p = float(active_sig.get("price") or 0.0)
 
+    # 2. Invoke Active Execution Broker to close live positions across all TradeLocker accounts
+    try:
+        broker = broker_registry.get_broker()
+        if broker:
+            symbol_to_close = (active_sig.get("pair") or active_sig.get("symbol")) if active_sig else ""
+            pos_id = (active_sig.get("broker_order", {}).get("order_id")) if active_sig else None
+            pos_id_to_close = str(pos_id or req.id or req.strategy or "ALL")
+
+            logger.info(f"[Main] 🚀 Triggering broker position close on {broker.name} for symbol '{symbol_to_close}' (pos_id: {pos_id_to_close})...")
+            broker.close_position(
+                position_id=pos_id_to_close,
+                reason=req.exit_reason or "MANUAL_CLOSE",
+                current_price=exit_p,
+                symbol=symbol_to_close
+            )
+    except Exception as e_broker_close:
+        logger.error(f"[Main] Error triggering broker position close: {e_broker_close}")
+
+    # 3. Close in SignalStore
     closed = signal_store.close_position(
         signal_id=req.id,
         strategy=req.strategy,
@@ -374,7 +402,7 @@ async def close_signal_position(req: CloseSignalRequest):
     if not closed:
         raise HTTPException(status_code=404, detail="No active position found matching criteria")
 
-    # Dispatch Telegram notification for trade exit
+    # 4. Dispatch Telegram notification for trade exit
     try:
         telegram_gateway.format_and_send_trade_close(closed)
     except Exception as e_tg:

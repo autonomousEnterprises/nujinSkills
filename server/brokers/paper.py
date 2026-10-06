@@ -68,8 +68,14 @@ class PaperExecutionBroker(BaseExecutionBroker):
             "error": None,
         }
 
-    def close_position(self, position_id: str, reason: str = "MANUAL", current_price: Optional[float] = None) -> Dict[str, Any]:
-        logger.info(f"[PaperBroker] 🏁 Position {position_id} closed locally: reason={reason}")
+    def close_position(
+        self,
+        position_id: str,
+        reason: str = "MANUAL",
+        current_price: Optional[float] = None,
+        symbol: Optional[str] = None
+    ) -> Dict[str, Any]:
+        logger.info(f"[PaperBroker] 🏁 Position {position_id} ({symbol or 'ALL'}) closed locally: reason={reason}")
         return {
             "status": "CLOSED",
             "position_id": position_id,
