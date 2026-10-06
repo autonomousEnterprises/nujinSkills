@@ -103,7 +103,7 @@
           :selectedStrategy="selectedStrategy"
           :summary="summary"
           :managedStrategy="matchedManagedStrategy"
-          @runBacktest="emit('runBacktest', $event)"
+          @runBacktest="(strat, days) => emit('runBacktest', strat, days)"
           @activateStrategy="emit('activateStrategy', $event)"
         />
 
@@ -149,7 +149,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'selectStrategy', stratName: string): void;
   (e: 'activateStrategy', stratName: string): void;
-  (e: 'runBacktest', stratName: string): void;
+  (e: 'runBacktest', stratName: string, days?: number): void;
 }>();
 
 const selectedRegimeFilter = ref<'ALL' | 'bull_market' | 'bear_market' | 'ranging_market'>('ALL');

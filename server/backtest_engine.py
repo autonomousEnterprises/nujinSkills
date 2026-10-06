@@ -21,6 +21,7 @@ except ImportError:
     plugin_manager = None
 
 logger = logging.getLogger("BacktestEngine")
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def _ensure_freqtrade_shim():
     """Ensures freqtrade.strategy mocks are available in sys.modules so strategy files can be imported cleanly."""
@@ -56,8 +57,7 @@ def load_strategy_instance(strategy_name: str) -> Optional[Any]:
     """
     _ensure_freqtrade_shim()
     clean_name = strategy_name.replace(".py", "")
-    cwd = os.getcwd()
-    strat_path = os.path.join(cwd, "strategies", f"{clean_name}.py")
+    strat_path = os.path.join(_ROOT, "strategies", f"{clean_name}.py")
 
     # If not in core, check plugin paths
     if not os.path.exists(strat_path) and plugin_manager:
@@ -153,7 +153,7 @@ def resolve_strategy_metadata(strategy_name: str, timeframe_override: Optional[s
         "strat_record": strat_record or {}
     }
 
-def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, timeframe_override: Optional[str] = None) -> dict:
+def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, timeframe_override: Optional[str] = None, days: Optional[int] = 30) -> dict:
     """
     Executes real quantitative dual-directional (LONG & SHORT) backtest and DSR cynic audit.
     Zero hardcoded strategy logic: dynamically evaluates strategy definitions and rules
@@ -172,10 +172,11 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
     thesis_props = meta["thesis_props"]
     strat_record = meta["strat_record"]
 
-    cwd = os.getcwd()
-    data_dir = os.path.join(cwd, "data")
+    cwd = _ROOT
+    data_dir = os.path.join(_ROOT, "data")
     features_file = os.path.join(data_dir, "features.csv")
     returns_file = os.path.join(data_dir, "candidate_returns.json")
+    feat_miner_script = os.path.join(_ROOT, "tools", "feature_miner.py")
 
     # 1. Resolve Candle Dataset and Sync if Needed
     is_gold = ("XAU" in symbol.upper()) or ("GOLD" in symbol.upper())
@@ -210,7 +211,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                         combined.to_csv(candles_file, index=False)
                     except Exception:
                         pass
-            cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_5m.csv", "--output", "data/features.csv"]
+            cmd_feat = [sys.executable, feat_miner_script, "--input", candles_file, "--output", features_file]
         else:
             candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")
             if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
@@ -218,10 +219,10 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                     sync_xauusd_scalp_candles(output_path=candles_file)
                 except Exception as e_sync:
                     logger.warning(f"[BacktestEngine] Sync XAUUSD candles warning: {e_sync}")
-            cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_1m.csv", "--output", "data/features.csv"]
+            cmd_feat = [sys.executable, feat_miner_script, "--input", candles_file, "--output", features_file]
     elif is_sp500:
         candles_file = os.path.join(data_dir, "sp500_candles_1m.csv")
-        cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/sp500_candles_1m.csv", "--output", "data/features.csv"]
+        cmd_feat = [sys.executable, feat_miner_script, "--input", candles_file, "--output", features_file]
     else:
         if timeframe == "5m" and os.path.exists(os.path.join(data_dir, "btc_candles_5m.csv")):
             candles_file = os.path.join(data_dir, "btc_candles_5m.csv")
@@ -234,12 +235,12 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                 sync_30d_candles(symbol=symbol, output_path=candles_file)
             except Exception as e_sync:
                 logger.warning(f"[BacktestEngine] Sync 30d candles warning: {e_sync}")
-        cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", os.path.relpath(candles_file, cwd), "--output", "data/features.csv"]
+        cmd_feat = [sys.executable, feat_miner_script, "--input", candles_file, "--output", features_file]
 
     # Always generate fresh features.csv
     logger.info(f"[BacktestEngine] Generating fresh feature set from {candles_file}...")
     try:
-        subprocess.run(cmd_feat, cwd=cwd, check=True)
+        subprocess.run(cmd_feat, cwd=_ROOT, check=True)
     except Exception as e_feat:
         logger.warning(f"[BacktestEngine] Feature miner warning: {e_feat}")
 
@@ -360,6 +361,8 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
     trade_markers = []
     trades_detail = []
 
+    cutoff_time = (int(df_c['timestamp'].iloc[-1]) - int(days * 86400)) if (days and days > 0 and len(df_c) > 0 and 'timestamp' in df_c.columns) else 0
+
     i = 100
     while i < n - 16:
         c = df_c.iloc[i]
@@ -376,7 +379,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         if is_long and is_short:
             is_short = False
 
-        if is_long or is_short:
+        if (is_long or is_short) and (bar_time >= cutoff_time):
             side = "LONG" if is_long else "SHORT"
             entry_time = bar_time
 
@@ -623,15 +626,21 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
 
     # Derive accurate dataset time period
     valid_ts = df_c[df_c['timestamp'] > 1000000000]['timestamp'] if 'timestamp' in df_c.columns else pd.Series([])
-    ds_start_ts = int(valid_ts.iloc[0]) if len(valid_ts) > 0 else (int(trades_detail[0]["entry_time"]) if trades_detail else int(time.time()))
     ds_end_ts = int(valid_ts.iloc[-1]) if len(valid_ts) > 0 else (int(trades_detail[-1]["exit_time"]) if trades_detail else int(time.time()))
+    if days and days > 0 and len(valid_ts) > 0:
+        raw_start = ds_end_ts - int(days * 86400)
+        ds_start_ts = max(raw_start, int(valid_ts.iloc[0]))
+        duration_days = round((ds_end_ts - ds_start_ts) / 86400, 1)
+        candles_count = int((df_c['timestamp'] >= ds_start_ts).sum())
+    else:
+        ds_start_ts = int(valid_ts.iloc[0]) if len(valid_ts) > 0 else (int(trades_detail[0]["entry_time"]) if trades_detail else int(time.time()))
+        duration_days = round((ds_end_ts - ds_start_ts) / 86400, 1)
+        candles_count = len(df_c)
     dt_start = datetime.fromtimestamp(ds_start_ts, tz=timezone.utc)
     dt_end = datetime.fromtimestamp(ds_end_ts, tz=timezone.utc)
-    duration_days = round((ds_end_ts - ds_start_ts) / 86400, 1)
     start_date_str = dt_start.strftime("%Y-%m-%d %H:%M UTC")
     end_date_str = dt_end.strftime("%Y-%m-%d %H:%M UTC")
     period_label = f"{dt_start.strftime('%Y-%m-%d')} → {dt_end.strftime('%Y-%m-%d')} ({duration_days:.1f}d)"
-    candles_count = len(df_c)
 
     time_period_info = {
         "start_time": ds_start_ts,

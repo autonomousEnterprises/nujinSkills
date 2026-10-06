@@ -45,7 +45,14 @@ class TelegramListener:
         self.bot_token = telegram_gateway.bot_token
         self.running = False
         self.offset = 0
+        self._report_state_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", ".last_daily_report.json")
         self.last_reported_date = ""
+        if os.path.exists(self._report_state_file):
+            try:
+                with open(self._report_state_file, "r") as f:
+                    self.last_reported_date = json.load(f).get("date", "")
+            except Exception:
+                pass
 
     def is_configured(self) -> bool:
         self.bot_token = telegram_gateway.bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -88,10 +95,26 @@ class TelegramListener:
             try:
                 now = datetime.now().astimezone()
                 today_str = now.strftime("%Y-%m-%d")
-                # Trigger if local computer time hour is 21 (9:00 PM) and report hasn't been sent for today
-                if now.hour == 21 and self.last_reported_date != today_str:
+
+                # Reload persistent date from disk if unset
+                if not self.last_reported_date and os.path.exists(self._report_state_file):
+                    try:
+                        with open(self._report_state_file, "r") as f:
+                            self.last_reported_date = json.load(f).get("date", "")
+                    except Exception:
+                        pass
+
+                # Trigger if local computer time is 21:00 (hour 21, minute 0) and report hasn't been sent for today
+                if now.hour == 21 and now.minute == 0 and self.last_reported_date != today_str:
                     logger.info(f"[TelegramListener] 📢 9:00 PM local time reached ({now.strftime('%H:%M:%S %Z')}). Broadcasting daily report...")
                     self.last_reported_date = today_str
+                    try:
+                        os.makedirs(os.path.dirname(self._report_state_file), exist_ok=True)
+                        with open(self._report_state_file, "w") as f:
+                            json.dump({"date": today_str, "timestamp": int(time.time())}, f)
+                    except Exception as e_w:
+                        logger.warning(f"[TelegramListener] Could not save daily report date: {e_w}")
+
                     try:
                         from tools.send_daily_report import broadcast_report
                         await asyncio.to_thread(broadcast_report)

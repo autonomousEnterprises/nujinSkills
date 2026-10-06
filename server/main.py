@@ -53,6 +53,7 @@ class DeployBotRequest(BaseModel):
 
 class SelectStrategyRequest(BaseModel):
     strategy: str
+    days: Optional[int] = None
 
 class UpdateStrategyStatusRequest(BaseModel):
     strategy: str
@@ -61,6 +62,7 @@ class UpdateStrategyStatusRequest(BaseModel):
 
 class RunStrategyBacktestRequest(BaseModel):
     strategy: str
+    days: Optional[int] = 30
 
 class RemoveStrategyRequest(BaseModel):
     strategy: str
@@ -186,9 +188,9 @@ async def get_candles(
                 df_1m['dt'] = pd.to_datetime(df_1m['timestamp'], unit='s', utc=True)
                 df_1m = df_1m.set_index('dt').sort_index()
                 resampled = df_1m.resample('5min', label='left', closed='left').agg({
-                    'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
-                }).dropna()
-                resampled = resampled[['timestamp', 'open', 'high', 'low', 'close', 'volume']].reset_index(drop=True)
+                    'timestamp': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                }).dropna().reset_index(drop=True)
+                resampled['timestamp'] = resampled['timestamp'].astype(int)
                 if os.path.exists(csv_path):
                     try:
                         df_old = pd.read_csv(csv_path)
@@ -542,10 +544,14 @@ async def deploy_bot(req: DeployBotRequest):
             detail="No strategy available to deploy. Please mine or register a strategy in strategies/ first."
         )
     strat_path = os.path.join(os.getcwd(), "strategies", f"{clean_strat}.py")
+    if not os.path.exists(strat_path) and plugin_manager:
+        resolved = plugin_manager.resolve_strategy_path(clean_strat) or plugin_manager.resolve_strategy_path(f"{clean_strat}.py")
+        if resolved:
+            strat_path = resolved
     if not os.path.exists(strat_path):
         raise HTTPException(
             status_code=404,
-            detail=f"Strategy file '{clean_strat}.py' not found in strategies/. Please mine or register this strategy first."
+            detail=f"Strategy file '{clean_strat}.py' not found in strategies/ or plugins/. Please mine or register this strategy first."
         )
     strat = clean_strat
     logger.info(f"Activating & deploying strategy for system: {strat}")
@@ -627,9 +633,11 @@ async def select_and_run_strategy(req: SelectStrategyRequest):
     trade_markers = strat_record.get("trade_markers") or (curr_sys_state.get("trade_markers", []) if is_active_sys else [])
     trades_detail = strat_record.get("trades_detail") or (curr_sys_state.get("trades_detail", []) if is_active_sys else [])
     
-    # Return existing audited backtest if present and populated with trade markers
-    if strat_record and strat_record.get("latest_backtest") and len(trade_markers) > 0 and len(trades_detail) > 0:
-        logger.info(f"[SelectStrategy] Returning cached audited backtest with {len(trade_markers)} markers for {clean_name}")
+    # Return existing audited backtest if present, populated with trade markers, and matching requested period
+    cached_days = strat_record.get("latest_backtest", {}).get("duration_days") if strat_record else None
+    days_match = (req.days is None) or (cached_days is not None and abs(float(cached_days) - float(req.days)) <= 2.5)
+    if strat_record and strat_record.get("latest_backtest") and len(trade_markers) > 0 and len(trades_detail) > 0 and days_match:
+        logger.info(f"[SelectStrategy] Returning cached audited backtest ({cached_days}d) with {len(trade_markers)} markers for {clean_name}")
         summary = strat_record.get("latest_backtest", {})
         gates = strat_record.get("falsification_gates", {})
         eq = strat_record.get("backtest_equity_curve", [])
@@ -670,7 +678,7 @@ async def select_and_run_strategy(req: SelectStrategyRequest):
         await manager.broadcast({"event_type": "BACKTEST_UPDATED", "payload": result})
         return result
 
-    result = run_real_backtest(req.strategy, save_as_active=False)
+    result = run_real_backtest(req.strategy, save_as_active=False, days=req.days or 30)
     await manager.broadcast({"event_type": "BACKTEST_UPDATED", "payload": result})
     return result
 
@@ -925,7 +933,7 @@ async def run_managed_strategy_backtest(req: RunStrategyBacktestRequest):
     clean_name = req.strategy.replace(".py", "")
     curr_active = state_manager.get().get("active_strategy", "").replace(".py", "")
     is_active = (clean_name == curr_active)
-    result = run_real_backtest(req.strategy, save_as_active=is_active)
+    result = run_real_backtest(req.strategy, save_as_active=is_active, days=req.days or 30)
     strategy_registry.record_backtest(req.strategy, result, is_cron=False)
     all_strats = strategy_registry.get_all(sync=False)
     portfolio = strategy_registry.get_portfolio_summary()
@@ -1222,14 +1230,18 @@ async def startup_event():
         except Exception as e_p:
             logger.warning(f"[NujinSkillsServer] Error warming provider for {sym}: {e_p}")
 
-    # Automatically resume existing managed active strategies without running backtests
+    # Automatically resume existing managed active strategies only if system status is RUNNING
     try:
-        active_strats = [s["name"] for s in strategy_registry.get_all(sync=False) if s.get("status") == "ACTIVE_LIVE"]
-        for s_name in active_strats:
-            bot_supervisor.deploy_strategy(s_name, mode="dry-run")
-            logger.info(f"[NujinSkillsServer] Resumed managed active strategy: {s_name}")
+        curr_sys_status = state_manager.get().get("status", "STOPPED")
+        if curr_sys_status != "STOPPED":
+            active_strats = [s["name"] for s in strategy_registry.get_all(sync=False) if s.get("status") == "ACTIVE_LIVE"]
+            for s_name in active_strats:
+                bot_supervisor.deploy_strategy(s_name, mode="dry-run")
+                logger.info(f"[NujinSkillsServer] Resumed managed active strategy: {s_name}")
+        else:
+            logger.info("[NujinSkillsServer] System status is STOPPED. Skipping automatic strategy deployment on startup.")
     except Exception as e:
-        logger.warning(f"[NujinSkillsServer] Error resuming active strategies on startup: {e}")
+        logger.warning(f"[NujinSkillsServer] Error checking/resuming active strategies on startup: {e}")
 
 
 

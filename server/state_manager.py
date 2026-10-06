@@ -970,9 +970,15 @@ class StrategyRegistry:
                 if candidate.get("plugin_id"):
                     item["plugin_id"] = candidate["plugin_id"]
 
-                # If system active strategy matches, sync status
-                if is_active_sys and item.get("status") != "ACTIVE_LIVE":
-                    item["status"] = "ACTIVE_LIVE"
+                # Sync ACTIVE_LIVE status ONLY if bot_supervisor is actually running this strategy
+                try:
+                    from server.bot_runner import bot_supervisor
+                    if clean_name in bot_supervisor.runners:
+                        item["status"] = "ACTIVE_LIVE"
+                    elif item.get("status") == "ACTIVE_LIVE":
+                        item["status"] = "DEACTIVATED"
+                except Exception:
+                    pass
                 # Update display_name, thesis if available from file
                 if meta.get("thesis") and meta["thesis"] != "AI Discovered Strategy":
                     item["thesis"] = meta["thesis"]
@@ -1030,8 +1036,7 @@ class StrategyRegistry:
 
                 updated_list.append(item)
             else:
-                # Initialize new strategy record
-                default_status = "ACTIVE_LIVE" if is_active_sys else "CRON_BACKTEST"
+                default_status = "CRON_BACKTEST"
                 record = {
                     "id": py_file,
                     "name": clean_name,

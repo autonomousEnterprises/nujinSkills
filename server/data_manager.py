@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 
 logger = logging.getLogger("DataManager")
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Institutional TradingView WebSocket Client
 try:
@@ -76,7 +77,7 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"[DataManager] Error fetching live OANDA quote: {e}")
         fallback_p = 4335.00
-        csv_path = "data/xauusd_candles_1m.csv"
+        csv_path = os.path.join(_ROOT, "data", "xauusd_candles_1m.csv")
         if os.path.exists(csv_path):
             try:
                 with open(csv_path, "r", encoding="utf-8") as f:
@@ -235,8 +236,8 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
     Reads persistent clean CSV cache from disk, or refreshes from TradingView WebSocket.
     Resamples cleanly to 5m, 15m, 1h as needed.
     """
-    csv_path = "data/xauusd_candles_1m.csv"
-    csv_5m_path = "data/xauusd_candles_5m.csv"
+    csv_path = os.path.join(_ROOT, "data", "xauusd_candles_1m.csv")
+    csv_5m_path = os.path.join(_ROOT, "data", "xauusd_candles_5m.csv")
     now_ts = int(time.time())
 
     # 1. Check if cached CSV exists and is fresh (within 120 seconds)
@@ -266,7 +267,23 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
                             ]
                             resampled_full_5m = resample_candles(full_bars, "5m")
                             if resampled_full_5m and len(resampled_full_5m) > 50:
-                                pd.DataFrame(resampled_full_5m).to_csv(csv_5m_path, index=False)
+                                df_new_5m = pd.DataFrame(resampled_full_5m)
+                                if os.path.exists(csv_5m_path):
+                                    try:
+                                        df_old_5m = pd.read_csv(csv_5m_path)
+                                        if "timestamp" not in df_old_5m.columns and "time" in df_old_5m.columns:
+                                            df_old_5m["timestamp"] = df_old_5m["time"]
+                                        cols = ["timestamp", "open", "high", "low", "close", "volume"]
+                                        for c in cols:
+                                            if c not in df_old_5m.columns and c in df_new_5m.columns:
+                                                df_old_5m[c] = df_new_5m[c]
+                                        df_combined = pd.concat([df_old_5m[cols], df_new_5m[cols]], ignore_index=True)
+                                        df_combined.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                                        df_combined.sort_values(by="timestamp", inplace=True)
+                                        df_new_5m = df_combined
+                                    except Exception:
+                                        pass
+                                df_new_5m.to_csv(csv_5m_path, index=False)
                     except Exception as e_full_5m:
                         logger.warning(f"[DataManager] Could not sync 5m resampled cache: {e_full_5m}")
 
@@ -353,9 +370,16 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
                     if os.path.exists(csv_5m_path):
                         try:
                             df_old_5m = pd.read_csv(csv_5m_path)
-                            df_5m = pd.concat([df_old_5m, df_5m], ignore_index=True)
-                            df_5m.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
-                            df_5m.sort_values(by="timestamp", inplace=True)
+                            if "timestamp" not in df_old_5m.columns and "time" in df_old_5m.columns:
+                                df_old_5m["timestamp"] = df_old_5m["time"]
+                            cols = ["timestamp", "open", "high", "low", "close", "volume"]
+                            for c in cols:
+                                if c not in df_old_5m.columns and c in df_5m.columns:
+                                    df_old_5m[c] = df_5m[c]
+                            df_combined = pd.concat([df_old_5m[cols], df_5m[cols]], ignore_index=True)
+                            df_combined.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                            df_combined.sort_values(by="timestamp", inplace=True)
+                            df_5m = df_combined
                         except Exception:
                             pass
                     df_5m.to_csv(csv_5m_path, index=False)
@@ -438,7 +462,7 @@ def fetch_real_sp500_candles(interval: str = "1m", count: int = 2880) -> List[Di
     Fetches genuine S&P 500 E-mini futures (ES) candles.
     Reads clean CSV cache or pulls from TradingView WS (CME_MINI:ES1!).
     """
-    csv_path = "data/sp500_candles_1m.csv"
+    csv_path = os.path.join(_ROOT, "data", "sp500_candles_1m.csv")
     now_ts = int(time.time())
 
     if os.path.exists(csv_path):
@@ -529,7 +553,7 @@ def fetch_real_binance_klines(symbol: str = "BTC/USDT", interval: str = "15m", c
         return fetch_real_sp500_candles(interval=interval, count=count)
 
     # 1. Check local disk CSV if available
-    csv_path = "data/candles_15m.csv" if interval == "15m" else f"data/btc_candles_{interval}.csv"
+    csv_path = os.path.join(_ROOT, "data", "candles_15m.csv") if interval == "15m" else os.path.join(_ROOT, "data", f"btc_candles_{interval}.csv")
     if os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
@@ -614,8 +638,10 @@ def fetch_real_binance_klines(symbol: str = "BTC/USDT", interval: str = "15m", c
     return []
 
 
-def sync_30d_candles(symbol: str = "BTC/USDT", output_path: str = "data/candles_15m.csv") -> str:
+def sync_30d_candles(symbol: str = "BTC/USDT", output_path: str = "") -> str:
     """Synchronizes real market data (10,000+ candles) and updates output_path CSV."""
+    if not output_path:
+        output_path = os.path.join(_ROOT, "data", "candles_15m.csv")
     candles = fetch_candles_via_tv(resolve_market_symbol(symbol), "15m", 10000)
     if not candles:
         candles = fetch_real_binance_klines(symbol=symbol, interval="15m", count=5000)
@@ -635,8 +661,10 @@ def sync_30d_candles(symbol: str = "BTC/USDT", output_path: str = "data/candles_
     return output_path
 
 
-def sync_xauusd_scalp_candles(output_path: str = "data/xauusd_candles_1m.csv") -> str:
+def sync_xauusd_scalp_candles(output_path: str = "") -> str:
     """Synchronizes real institutional OANDA Cash Spot Gold (XAUUSD) 1m scalping dataset."""
+    if not output_path:
+        output_path = os.path.join(_ROOT, "data", "xauusd_candles_1m.csv")
     candles = fetch_candles_via_tv("OANDA:XAUUSD", "1m", 10000)
     if candles:
         df = pd.DataFrame(candles)

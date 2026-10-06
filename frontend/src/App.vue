@@ -440,13 +440,13 @@ const handleUpdateManagedStatus = async (stratName: string, newStatus: string) =
   }
 };
 
-const handleRunManageBacktest = async (stratName: string) => {
+const handleRunManageBacktest = async (stratName: string, days: number = 30) => {
   loadingBacktest.value = true;
   try {
     const res = await fetch('/api/strategies/manage/run-backtest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategy: stratName }),
+      body: JSON.stringify({ strategy: stratName, days: days || 30 }),
     });
     const data = await res.json();
     if (data.strategies) {

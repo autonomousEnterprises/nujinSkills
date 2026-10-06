@@ -31,13 +31,24 @@
         <span class="badge badge-sm badge-neutral font-bold font-mono">
           {{ driftSnapshots.length }} Runs Logged
         </span>
+        <div class="join border border-base-content/15 bg-base-300/60 rounded-lg p-0.5">
+          <button
+            v-for="d in [15, 30, 60]"
+            :key="d"
+            @click="selectedDays = d"
+            class="btn btn-xs join-item font-mono text-[10px]"
+            :class="selectedDays === d ? 'btn-primary font-bold' : 'btn-ghost text-base-content/60'"
+          >
+            {{ d }}d
+          </button>
+        </div>
         <button 
-          @click="emit('runBacktest', selectedStrategy)"
+          @click="emit('runBacktest', selectedStrategy, selectedDays)"
           class="btn btn-xs btn-primary font-bold gap-1"
-          title="Run new quantitative backtest evaluation"
+          :title="`Run ${selectedDays}d quantitative evaluation`"
         >
           <Play class="w-3 h-3 fill-current" />
-          <span>Run Evaluation</span>
+          <span>Run {{ selectedDays }}d Evaluation</span>
         </button>
       </div>
     </div>
@@ -300,7 +311,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import {
   History, TrendingUp, TrendingDown, Activity, Play, BarChart3,
   CheckCircle2, ShieldCheck, ListFilter, Sparkles
@@ -316,8 +327,10 @@ const props = defineProps<{
   managedStrategy?: any;
 }>();
 
+const selectedDays = ref<number>(30);
+
 const emit = defineEmits<{
-  (e: 'runBacktest', stratName: string): void;
+  (e: 'runBacktest', stratName: string, days?: number): void;
   (e: 'activateStrategy', stratName: string): void;
 }>();
 
