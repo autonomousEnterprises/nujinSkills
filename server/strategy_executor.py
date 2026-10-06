@@ -287,7 +287,7 @@ class NativeStrategyRunner:
             if active_pos:
                 current_price = float(quote.get("price") or 0.0)
                 if current_price > 0:
-                    await self._evaluate_position_exit(active_pos, current_price)
+                    await self._evaluate_position_exit(active_pos, current_price, quote=quote)
             else:
                 await self.stop()
             return
@@ -296,10 +296,10 @@ class NativeStrategyRunner:
         if current_price <= 0:
             return
 
-        # 1. Check open position exit triggers
+        # 1. Check open position exit triggers (spread-aware with live Bid/Ask)
         active_pos = signal_store.get_active(self.strategy_name)
         if active_pos:
-            await self._evaluate_position_exit(active_pos, current_price)
+            await self._evaluate_position_exit(active_pos, current_price, quote=quote)
 
     async def _on_market_bar(self, bar: Dict[str, Any]) -> None:
         """Called when a candle bar finalizes. Checks for new strategy entry signals."""
@@ -434,8 +434,8 @@ class NativeStrategyRunner:
                 }
             })
 
-    async def _evaluate_position_exit(self, pos: Dict[str, Any], current_price: float) -> None:
-        """Monitors active trade against Take Profit, Stop Loss, and Holding Rules."""
+    async def _evaluate_position_exit(self, pos: Dict[str, Any], current_price: float, quote: Optional[Dict[str, Any]] = None) -> None:
+        """Monitors active trade against Take Profit, Stop Loss, and Holding Rules with bid/ask spread awareness."""
         now_ts = int(time.time())
         entry_time = int(pos.get("time") or now_ts)
         elapsed_sec = max(0, now_ts - entry_time)
@@ -445,6 +445,16 @@ class NativeStrategyRunner:
         entry_price = float(pos.get("price") or pos.get("entry_price") or current_price)
         tp = float(pos.get("take_profit") or 0.0)
         sl = float(pos.get("stop_loss") or 0.0)
+
+        # Spread-Aware Market Price:
+        # A LONG closes at the BID price (selling into the bid).
+        # A SHORT closes at the ASK price (buying back at the ask).
+        bid_price = float(quote.get("bid") or 0.0) if quote else 0.0
+        ask_price = float(quote.get("ask") or 0.0) if quote else 0.0
+        if bid_price <= 0: bid_price = current_price
+        if ask_price <= 0: ask_price = current_price
+
+        eval_exit_price = bid_price if is_long else ask_price
 
         # Holding constraints (from signal payload or defaults)
         min_hold = int(pos.get("min_hold_seconds") or (120 if "XAU" in self.symbol else 30))
@@ -462,9 +472,9 @@ class NativeStrategyRunner:
         lowest_price = float(pos.get("lowest_price") or entry_price)
 
         if is_long:
-            if current_price > highest_price:
-                pos["highest_price"] = current_price
-                highest_price = current_price
+            if bid_price > highest_price:
+                pos["highest_price"] = bid_price
+                highest_price = bid_price
             gain_pct = (highest_price - entry_price) / entry_price
             if use_trailing and gain_pct >= trail_offset:
                 trail_dist = (atr_val * atr_trail_m) if (atr_val > 0) else (highest_price * trail_buffer)
@@ -473,9 +483,9 @@ class NativeStrategyRunner:
                     pos["stop_loss"] = new_sl
                     sl = new_sl
         else:
-            if current_price < lowest_price:
-                pos["lowest_price"] = current_price
-                lowest_price = current_price
+            if ask_price < lowest_price:
+                pos["lowest_price"] = ask_price
+                lowest_price = ask_price
             gain_pct = (entry_price - lowest_price) / entry_price
             if use_trailing and gain_pct >= trail_offset:
                 trail_dist = (atr_val * atr_trail_m) if (atr_val > 0) else (lowest_price * trail_buffer)
@@ -486,16 +496,16 @@ class NativeStrategyRunner:
 
         exit_reason: Optional[str] = None
 
-        # 1. Stop Loss / Trailing Stop hit
-        if is_long and current_price <= sl:
+        # 1. Stop Loss / Trailing Stop hit (evaluated against exact fill price: Bid for Long, Ask for Short)
+        if is_long and eval_exit_price <= sl:
             exit_reason = "TRAIL_STOP" if sl > entry_price else "STOP_LOSS"
-        elif not is_long and current_price >= sl:
+        elif not is_long and eval_exit_price >= sl:
             exit_reason = "TRAIL_STOP" if (sl > 0 and sl < entry_price) else "STOP_LOSS"
 
         # 2. Take Profit reached (allowed once min_hold anti-arbitrage lock has passed)
-        elif is_long and current_price >= tp and elapsed_sec >= min_hold:
+        elif is_long and eval_exit_price >= tp and elapsed_sec >= min_hold:
             exit_reason = "TAKE_PROFIT"
-        elif not is_long and current_price <= tp and elapsed_sec >= min_hold:
+        elif not is_long and eval_exit_price <= tp and elapsed_sec >= min_hold:
             exit_reason = "TAKE_PROFIT"
 
         # 3. Maximum holding duration exceeded (scalp cutoff, only if explicitly configured)
