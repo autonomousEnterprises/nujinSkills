@@ -188,8 +188,15 @@ async def get_candles(
                 resampled = df_1m.resample('5min', label='left', closed='left').agg({
                     'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
                 }).dropna()
-                resampled['timestamp'] = (resampled.index.astype('int64') // 10**9).astype(int)
                 resampled = resampled[['timestamp', 'open', 'high', 'low', 'close', 'volume']].reset_index(drop=True)
+                if os.path.exists(csv_path):
+                    try:
+                        df_old = pd.read_csv(csv_path)
+                        resampled = pd.concat([df_old, resampled], ignore_index=True)
+                        resampled.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                        resampled.sort_values(by="timestamp", inplace=True)
+                    except Exception:
+                        pass
                 resampled.to_csv(csv_path, index=False)
         else:
             csv_path = "data/xauusd_candles_1m.csv"
@@ -915,7 +922,11 @@ async def update_managed_strategy_status(req: UpdateStrategyStatusRequest):
 @app.post("/api/strategies/manage/run-backtest")
 async def run_managed_strategy_backtest(req: RunStrategyBacktestRequest):
     """Execute on-demand quantitative backtest for a strategy and update registry."""
-    result = run_real_backtest(req.strategy, save_as_active=False)
+    clean_name = req.strategy.replace(".py", "")
+    curr_active = state_manager.get().get("active_strategy", "").replace(".py", "")
+    is_active = (clean_name == curr_active)
+    result = run_real_backtest(req.strategy, save_as_active=is_active)
+    strategy_registry.record_backtest(req.strategy, result, is_cron=False)
     all_strats = strategy_registry.get_all(sync=False)
     portfolio = strategy_registry.get_portfolio_summary()
     distribution = strategy_registry.get_distribution_analytics()

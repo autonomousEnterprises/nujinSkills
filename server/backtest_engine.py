@@ -183,7 +183,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
     if is_gold:
         if timeframe == "5m":
             candles_file = os.path.join(data_dir, "xauusd_candles_5m.csv")
-            if not os.path.exists(candles_file) or (time.time() - os.path.getmtime(candles_file) > 3600):
+            if not os.path.exists(candles_file):
                 if os.path.exists(os.path.join(data_dir, "xauusd_candles_1m.csv")):
                     df_1m = pd.read_csv(os.path.join(data_dir, "xauusd_candles_1m.csv"))
                     df_1m['dt'] = pd.to_datetime(df_1m['timestamp'], unit='s', utc=True)
@@ -193,6 +193,23 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                     }).dropna().reset_index(drop=True)
                     resampled['timestamp'] = resampled['timestamp'].astype(int)
                     resampled.to_csv(candles_file, index=False)
+            elif (time.time() - os.path.getmtime(candles_file) > 3600):
+                if os.path.exists(os.path.join(data_dir, "xauusd_candles_1m.csv")):
+                    try:
+                        df_1m = pd.read_csv(os.path.join(data_dir, "xauusd_candles_1m.csv"))
+                        df_1m['dt'] = pd.to_datetime(df_1m['timestamp'], unit='s', utc=True)
+                        df_1m = df_1m.set_index('dt').sort_index()
+                        resampled = df_1m.resample('5min', label='left', closed='left').agg({
+                            'timestamp': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                        }).dropna().reset_index(drop=True)
+                        resampled['timestamp'] = resampled['timestamp'].astype(int)
+                        df_old = pd.read_csv(candles_file)
+                        combined = pd.concat([df_old, resampled], ignore_index=True)
+                        combined.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                        combined.sort_values(by="timestamp", inplace=True)
+                        combined.to_csv(candles_file, index=False)
+                    except Exception:
+                        pass
             cmd_feat = [sys.executable, "tools/feature_miner.py", "--input", "data/xauusd_candles_5m.csv", "--output", "data/features.csv"]
         else:
             candles_file = os.path.join(data_dir, "xauusd_candles_1m.csv")

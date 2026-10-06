@@ -67,7 +67,7 @@
         :loading="loadingBacktest"
         @selectStrategy="handleSelectStrategy"
         @activateStrategy="handleActivateStrategy"
-        @runBacktest="handleSelectStrategy"
+        @runBacktest="handleRunManageBacktest"
       />
     </main>
 
@@ -441,6 +441,7 @@ const handleUpdateManagedStatus = async (stratName: string, newStatus: string) =
 };
 
 const handleRunManageBacktest = async (stratName: string) => {
+  loadingBacktest.value = true;
   try {
     const res = await fetch('/api/strategies/manage/run-backtest', {
       method: 'POST',
@@ -456,6 +457,8 @@ const handleRunManageBacktest = async (stratName: string) => {
     }
   } catch (e) {
     console.error('[App] Failed to run managed backtest:', e);
+  } finally {
+    loadingBacktest.value = false;
   }
 };
 

@@ -350,6 +350,14 @@ def fetch_real_oanda_candles(interval: str = "1m", count: int = 2880, force_refr
                 resampled_5m = resample_candles(full_bars, "5m")
                 if resampled_5m:
                     df_5m = pd.DataFrame(resampled_5m)
+                    if os.path.exists(csv_5m_path):
+                        try:
+                            df_old_5m = pd.read_csv(csv_5m_path)
+                            df_5m = pd.concat([df_old_5m, df_5m], ignore_index=True)
+                            df_5m.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
+                            df_5m.sort_values(by="timestamp", inplace=True)
+                        except Exception:
+                            pass
                     df_5m.to_csv(csv_5m_path, index=False)
             except Exception as e_5m:
                 logger.warning(f"[DataManager] Could not save resampled 5m cache: {e_5m}")
