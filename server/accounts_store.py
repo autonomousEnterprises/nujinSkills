@@ -233,12 +233,15 @@ class AccountsStore:
             # Check if this exact login on this server already exists for this user
             clean_login = login.strip()
             clean_server = server.strip()
+            clean_acc_num = str(acc_num).strip() or str((extra_config or {}).get("account_id", "")).strip()
             for acc in accounts:
+                existing_acc_num = str(acc.get("acc_num", "")).strip() or str(acc.get("extra", {}).get("account_id", "")).strip()
                 if (
                     str(acc.get("telegram_user_id")) == str(telegram_user_id)
                     and acc.get("broker_id") == broker_id
                     and acc.get("login", "").lower() == clean_login.lower()
                     and acc.get("server", "").lower() == clean_server.lower()
+                    and (not clean_acc_num or not existing_acc_num or clean_acc_num == existing_acc_num)
                 ):
                     # Update existing account credentials and return
                     acc["password_encrypted"] = self.cipher.encrypt(password)
@@ -246,6 +249,8 @@ class AccountsStore:
                     acc["default_lots"] = max(0.01, float(default_lots))
                     acc["is_active"] = True
                     acc["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    if extra_config:
+                        acc["extra"] = {**acc.get("extra", {}), **extra_config}
                     self._write_raw(data)
                     logger.info(f"[AccountsStore] Updated existing account {acc['id']} for user {telegram_user_id}")
                     return acc
