@@ -405,6 +405,9 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                 i += 1
                 continue
 
+            initial_sl = stop_loss
+            initial_tp = take_profit
+
             # Sequential exit resolution
             exit_idx = i + 1
             exit_price = entry_price
@@ -501,8 +504,9 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                 "shape": "arrowUp" if side == "LONG" else "arrowDown",
                 "text": f"[BT] {side} {price_fmt}",
                 "entry_price": entry_price,
-                "stop_loss": actual_sl,
-                "take_profit": actual_tp,
+                "stop_loss": initial_sl,
+                "take_profit": initial_tp,
+                "trailing_stop_exit": stop_loss if exit_reason == "TRAIL_STOP" else None,
                 "side": side
             })
 
