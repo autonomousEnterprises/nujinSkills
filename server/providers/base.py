@@ -284,13 +284,23 @@ class ProviderRegistry:
         canon = cls.canonical_symbol(symbol)
         clean_sym = canon.replace("/", "").replace(":", "").upper()
 
-        # 1. Broker-First Dynamic Routing:
-        # If an active execution broker is connected (e.g. TradeLocker live/demo account),
-        # query the broker adapter for its native market data provider first.
-        # Standard Public Data Feeds (OANDA, CME, Binance) for robust strategy evaluation & chart rendering
         key = cls.get_provider_key(canon, timeframe)
         if key in cls._providers:
             return cls._providers[key]
+
+        # 1. Broker-First Dynamic Routing:
+        # If an active execution broker is connected (e.g. TradeLocker live/demo account),
+        # query the broker adapter for its native market data provider first.
+        try:
+            from server.brokers.registry import broker_registry
+            broker = broker_registry.get_broker()
+            if broker and getattr(broker, "is_connected", False) and hasattr(broker, "get_market_data_provider"):
+                bp = broker.get_market_data_provider(canon, timeframe)
+                if bp:
+                    cls._providers[key] = bp
+                    return bp
+        except Exception as e_bp:
+            logger.debug(f"[ProviderRegistry] Broker provider query note: {e_bp}")
 
         if canon == "XAU/USD":
             from server.providers.oanda_gold_provider import OandaGoldProvider

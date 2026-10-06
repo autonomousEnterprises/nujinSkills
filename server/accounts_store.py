@@ -364,5 +364,29 @@ class AccountsStore:
                 return True
             return False
 
+    def mark_account_blown(self, account_id: str, is_blown: bool = True) -> bool:
+        """Marks an account as blown (insufficient funds/margin call) without removing it."""
+        with self._lock:
+            data = self._read_raw()
+            updated = False
+            for a in data.get("accounts", []):
+                if a.get("id") == account_id:
+                    a["is_blown"] = bool(is_blown)
+                    a["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    updated = True
+                    break
+            if updated:
+                self._write_raw(data)
+            return updated
+
+    def is_account_blown(self, account_id: str) -> bool:
+        """Checks if an account has been marked as blown."""
+        with self._lock:
+            data = self._read_raw()
+            for a in data.get("accounts", []):
+                if a.get("id") == account_id:
+                    return bool(a.get("is_blown", False))
+            return False
+
 
 accounts_store = AccountsStore()

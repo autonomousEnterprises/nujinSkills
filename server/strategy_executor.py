@@ -181,7 +181,9 @@ class StrategyEvaluator:
                 try:
                     broker = broker_registry.get_broker()
                     acc_info = broker.get_account_info() if broker else {}
-                    acc_bal = float(acc_info.get("equity") or acc_info.get("balance") or 100000.0)
+                    acc_bal = float(acc_info.get("equity") or acc_info.get("balance") or 5000.0)
+                    if acc_bal <= 0:
+                        acc_bal = 5000.0
                     lots = float(strat_inst.calculate_lot_size(
                         account_balance=acc_bal,
                         entry_price=curr_p,
@@ -194,7 +196,7 @@ class StrategyEvaluator:
                     logger.warning(f"[StrategyEvaluator] Error calculating lot size via strategy lotsizer: {e_lots}")
 
             if lots is None or lots <= 0:
-                lots = 0.10 if (is_xau or "USD" in symbol) else 1.0
+                lots = 0.02 if (is_xau or "USD" in symbol) else 0.10
 
             lots = round(lots, 2)
 
@@ -374,12 +376,30 @@ class NativeStrategyRunner:
             broker = broker_registry.get_broker()
             order_res = broker.execute_order(sig)
             sig["broker_order"] = order_res
-            if order_res.get("status") == "REJECTED":
-                logger.warning(f"[NativeStrategyRunner] Broker rejected order for {self.strategy_name}: {order_res.get('error')}")
-                sig["status"] = "REJECTED_BY_BROKER"
-                sig["exit_reason"] = f"BROKER_ERROR: {order_res.get('error')}"
+            if order_res.get("status") in ("REJECTED", "FAILED", "ERROR"):
+                logger.warning(
+                    f"[NativeStrategyRunner] Broker rejected/failed order for {self.strategy_name}: {order_res.get('error')}. "
+                    "Falling back to paper simulated execution so signals appear uninterrupted."
+                )
+                sig["status"] = "ACTIVE_IN_POSITION"
+                sig["execution_mode"] = "PAPER_SIMULATED"
+                sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
+            elif order_res.get("status") == "SIMULATED_PREVIEW":
+                sig["status"] = "ACTIVE_IN_POSITION"
+                sig["execution_mode"] = "PAPER_SIMULATED"
+                sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
+            else:
+                sig["status"] = "ACTIVE_IN_POSITION"
+                sig["execution_mode"] = "LIVE_BROKER"
         except Exception as e_broker:
-            logger.error(f"[NativeStrategyRunner] Error executing order with broker: {e_broker}")
+            logger.error(
+                f"[NativeStrategyRunner] Error executing order with broker: {e_broker}. "
+                "Falling back to paper execution so signal appears."
+            )
+            sig["broker_order"] = {"status": "SIMULATED_PREVIEW", "error": str(e_broker)}
+            sig["status"] = "ACTIVE_IN_POSITION"
+            sig["execution_mode"] = "PAPER_SIMULATED"
+            sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
 
         # 2. Add to SignalStore (writes to data/signals.json & state.json)
         updated_signals = signal_store.add(sig)
