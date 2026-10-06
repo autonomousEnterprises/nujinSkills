@@ -466,15 +466,28 @@ class NativeStrategyRunner:
         max_hold_raw = pos.get("max_hold_seconds")
         max_hold = int(max_hold_raw) if (max_hold_raw is not None and max_hold_raw != 0) else None
 
-        # Dynamic ATR Trailing Stop Ratchet (lock profits tight behind peak price)
-        use_trailing = pos.get("trailing_stop", False)
-        trail_offset = float(pos.get("trailing_offset", 0.0012))
-        trail_buffer = float(pos.get("trailing_buffer", 0.0010))
-        atr_val = float(pos.get("atr", 0.0))
-        atr_trail_m = float(pos.get("atr_trail_mult", 1.0))
+        # Ensure strategy parameters are available
+        strat_inst = None
+        try:
+            from server.backtest_engine import load_strategy_instance
+            strat_inst = load_strategy_instance(self.strategy_name)
+        except Exception:
+            pass
+
+        # Trailing stop configuration: prioritize signal pos, fallback to strategy definition, fallback to True
+        use_trailing = pos.get("trailing_stop")
+        if use_trailing is None and strat_inst:
+            use_trailing = getattr(strat_inst, "trailing_stop", True)
+        if use_trailing is None:
+            use_trailing = True
+
+        trail_offset = float(pos.get("trailing_offset") or (getattr(strat_inst, "trailing_stop_positive_offset", 0.0004) if strat_inst else 0.0004))
+        trail_buffer = float(pos.get("trailing_buffer") or (getattr(strat_inst, "trailing_stop_positive", 0.0002) if strat_inst else 0.0002))
 
         highest_price = float(pos.get("highest_price") or entry_price)
         lowest_price = float(pos.get("lowest_price") or entry_price)
+
+        new_sl = None
 
         if is_long:
             if bid_price > highest_price:
@@ -482,24 +495,56 @@ class NativeStrategyRunner:
                 highest_price = bid_price
             gain_pct = (highest_price - entry_price) / entry_price
             if use_trailing and gain_pct >= trail_offset:
-                trail_dist = (atr_val * atr_trail_m) if (atr_val > 0) else (highest_price * trail_buffer)
-                new_sl = round(highest_price - trail_dist, 2)
-                if new_sl > sl:
-                    pos["stop_loss"] = new_sl
-                    sl = new_sl
-                    asyncio.create_task(self._sync_broker_sl(pos, new_sl))
+                candidate_sl = round(highest_price * (1.0 - trail_buffer), 2)
+                if candidate_sl > sl:
+                    new_sl = candidate_sl
         else:
             if ask_price < lowest_price:
                 pos["lowest_price"] = ask_price
                 lowest_price = ask_price
             gain_pct = (entry_price - lowest_price) / entry_price
             if use_trailing and gain_pct >= trail_offset:
-                trail_dist = (atr_val * atr_trail_m) if (atr_val > 0) else (lowest_price * trail_buffer)
-                new_sl = round(lowest_price + trail_dist, 2)
-                if sl == 0.0 or new_sl < sl:
-                    pos["stop_loss"] = new_sl
-                    sl = new_sl
-                    asyncio.create_task(self._sync_broker_sl(pos, new_sl))
+                candidate_sl = round(lowest_price * (1.0 + trail_buffer), 2)
+                if sl == 0.0 or candidate_sl < sl:
+                    new_sl = candidate_sl
+
+        # Dynamic Structural SL Ratchet: also ratchet SL with strategy structural indicator line
+        if strat_inst and hasattr(self, "provider") and self.provider:
+            try:
+                calc_fn = getattr(strat_inst, "compute_indicators", getattr(strat_inst, "populate_indicators", None))
+                if calc_fn and callable(calc_fn):
+                    candles = self.provider.get_candles(count=50)
+                    if candles:
+                        import pandas as pd
+                        df_c = pd.DataFrame(candles)
+                        df_c = calc_fn(df_c)
+                        last_c = df_c.iloc[-1]
+                        if is_long:
+                            struct_sl = float(last_c.get("structural_sl_long", 0.0))
+                            if struct_sl > 0 and struct_sl > sl and struct_sl < bid_price:
+                                new_sl = max(new_sl or sl, round(struct_sl, 2))
+                        else:
+                            struct_sl = float(last_c.get("structural_sl_short", 0.0))
+                            if struct_sl > 0 and (sl == 0.0 or struct_sl < sl) and struct_sl > ask_price:
+                                new_sl = min(new_sl or sl, round(struct_sl, 2))
+            except Exception as e_struct:
+                logger.debug(f"[NativeStrategyRunner] Structural SL ratchet error: {e_struct}")
+
+        if new_sl and new_sl != sl:
+            pos["stop_loss"] = new_sl
+            sl = new_sl
+            signal_store.update_signal(pos["id"], {
+                "stop_loss": new_sl,
+                "highest_price": highest_price,
+                "lowest_price": lowest_price
+            })
+            if self.broadcast_callback:
+                await self.broadcast_callback({
+                    "event_type": "SIGNAL_UPDATED",
+                    "payload": pos
+                })
+            asyncio.create_task(self._sync_broker_sl(pos, new_sl))
+
 
         exit_reason: Optional[str] = None
 

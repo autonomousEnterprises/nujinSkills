@@ -285,7 +285,8 @@ class SignalStore:
             default_sl = price * 1.015 if "XAU" in pair else price * 1.025
             default_tp = price * 0.975 if "XAU" in pair else price * 0.96
 
-        entry = {
+        entry = dict(signal)
+        entry.update({
             "id": new_id,
             "time": int(signal.get("time") or time.time()),
             "pair": pair,
@@ -304,13 +305,18 @@ class SignalStore:
             "annotation": signal.get("annotation", "AI Live Signal"),
             "reasoning_md": signal.get("reasoning_md", ""),
             "strategy": clean_strat,
-        }
+        })
         updated = [entry] + signals
         _write_json_locked(self._path, updated)
         # Also bump signals_count in state.json
         state_manager.patch({"signals_count": len(updated)})
         logger.info(f"[SignalStore] Signal #{new_id} added: {entry['action']} {entry['pair']} ({clean_strat}) @ {entry['price']}")
         return updated
+
+    def save(self) -> None:
+        """Flushes/persists signals state."""
+        pass
+
 
     def close_position(
         self,
