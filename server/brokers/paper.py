@@ -84,5 +84,25 @@ class PaperExecutionBroker(BaseExecutionBroker):
             "error": None,
         }
 
-    def get_open_positions(self) -> List[Dict[str, Any]]:
-        return signal_store.get_active_signals()
+    def modify_position(
+        self,
+        position_id: str,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        symbol: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        logger.info(f"[PaperBroker] 🛡️ Modified position {position_id} SL={stop_loss}, TP={take_profit}")
+        return {
+            "status": "MODIFIED",
+            "position_id": position_id,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "error": None
+        }
+
+    def get_open_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        active = signal_store.get_active_signals()
+        if symbol:
+            return [s for s in active if s.get("symbol") == symbol or s.get("pair") == symbol]
+        return active

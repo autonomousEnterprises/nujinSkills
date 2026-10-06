@@ -124,7 +124,29 @@ class BaseExecutionBroker(abc.ABC):
         """
         pass
 
+    def modify_position(
+        self,
+        position_id: str,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        symbol: Optional[str] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Modifies Stop Loss or Take Profit of an open position on the broker.
+        Returns confirmation dict:
+        {
+            "status": "MODIFIED" | "FAILED" | "NOT_SUPPORTED",
+            "position_id": str,
+            "stop_loss": Optional[float],
+            "take_profit": Optional[float],
+            "error": Optional[str]
+        }
+        """
+        return {"status": "NOT_SUPPORTED", "position_id": position_id, "error": "Not implemented"}
+
     @abc.abstractmethod
-    def get_open_positions(self) -> List[Dict[str, Any]]:
+    def get_open_positions(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """Returns list of currently open positions from the broker."""
         pass
+

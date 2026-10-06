@@ -254,6 +254,7 @@ class NativeStrategyRunner:
 
         self.provider: BaseMarketDataProvider = ProviderRegistry.get_provider(self.symbol, self.timeframe)
         self._last_evaluated_bar_time: int = 0
+        self._reconcile_task: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
         if self.is_running:
@@ -267,10 +268,14 @@ class NativeStrategyRunner:
         # Subscribe callbacks
         self.provider.subscribe_tick(self._on_market_tick)
         self.provider.subscribe_bar(self._on_market_bar)
+        self._reconcile_task = asyncio.create_task(self._reconciliation_loop())
         logger.info(f"[NativeStrategyRunner] Active for '{self.strategy_name}' on {self.symbol} ({self.timeframe})")
 
     async def stop(self) -> None:
         self.is_running = False
+        if self._reconcile_task:
+            self._reconcile_task.cancel()
+            self._reconcile_task = None
         self.provider.unsubscribe_tick(self._on_market_tick)
         self.provider.unsubscribe_bar(self._on_market_bar)
         logger.info(f"[NativeStrategyRunner] Stopped for '{self.strategy_name}'")
@@ -482,6 +487,7 @@ class NativeStrategyRunner:
                 if new_sl > sl:
                     pos["stop_loss"] = new_sl
                     sl = new_sl
+                    asyncio.create_task(self._sync_broker_sl(pos, new_sl))
         else:
             if ask_price < lowest_price:
                 pos["lowest_price"] = ask_price
@@ -493,6 +499,7 @@ class NativeStrategyRunner:
                 if sl == 0.0 or new_sl < sl:
                     pos["stop_loss"] = new_sl
                     sl = new_sl
+                    asyncio.create_task(self._sync_broker_sl(pos, new_sl))
 
         exit_reason: Optional[str] = None
 
@@ -546,3 +553,109 @@ class NativeStrategyRunner:
                             "distribution_analytics": dist
                         }
                     })
+
+    async def _sync_broker_sl(self, pos: Dict[str, Any], new_sl: float) -> None:
+        """Propagates updated Trailing Stop Loss to the live execution broker server."""
+        try:
+            broker = broker_registry.get_broker()
+            if broker and hasattr(broker, "modify_position"):
+                broker_order_id = pos.get("broker_order", {}).get("order_id") or str(pos.get("id"))
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None,
+                    lambda: broker.modify_position(
+                        position_id=broker_order_id,
+                        stop_loss=new_sl,
+                        symbol=self.symbol
+                    )
+                )
+            signal_store.save()
+            logger.info(f"[NativeStrategyRunner] 🛡️ Trailing Stop ratcheted to {new_sl} for #{pos['id']} ({self.symbol}). Broker synced.")
+        except Exception as e_mod:
+            logger.warning(f"[NativeStrategyRunner] Failed to sync trailed SL {new_sl} to broker: {e_mod}")
+
+    async def _reconciliation_loop(self) -> None:
+        """Periodically queries broker to ensure active signal positions are still open on broker."""
+        while self.is_running:
+            try:
+                await asyncio.sleep(4.0)
+                if not self.is_running:
+                    break
+                active_pos = signal_store.get_active(self.strategy_name)
+                if active_pos and active_pos.get("execution_mode") == "LIVE_BROKER":
+                    await self._reconcile_broker_position(active_pos)
+            except asyncio.CancelledError:
+                break
+            except Exception as e_rec:
+                logger.debug(f"[NativeStrategyRunner] Reconcile loop error: {e_rec}")
+
+    async def _reconcile_broker_position(self, pos: Dict[str, Any]) -> None:
+        """Reconciles position state with broker. If closed on broker, automatically closes signal in Nujin."""
+        now_ts = int(time.time())
+        entry_time = int(pos.get("time") or now_ts)
+        # 6 seconds grace period so order placement finishes cleanly
+        if (now_ts - entry_time) < 6:
+            return
+
+        broker = broker_registry.get_broker()
+        if not broker or not getattr(broker, "is_connected", False):
+            return
+
+        loop = asyncio.get_running_loop()
+        try:
+            open_positions = await loop.run_in_executor(
+                None,
+                lambda: broker.get_open_positions(symbol=self.symbol)
+            )
+        except Exception as e_fetch:
+            logger.debug(f"[NativeStrategyRunner] Broker reconciliation query failed: {e_fetch}")
+            return
+
+        # If broker confirmed zero open positions for this symbol, broker closed it
+        if not open_positions:
+            quote = self.provider.get_latest_quote() if hasattr(self.provider, "get_latest_quote") else None
+            curr_p = float(quote.get("price") or 0.0) if quote else float(pos.get("price") or 0.0)
+            sl = float(pos.get("stop_loss") or 0.0)
+            tp = float(pos.get("take_profit") or 0.0)
+            entry_p = float(pos.get("price") or pos.get("entry_price") or curr_p)
+            is_long = pos.get("action", "BUY").upper() in ("BUY", "LONG")
+
+            exit_reason = "BROKER_CLOSED"
+            if is_long:
+                if sl > 0 and curr_p <= sl:
+                    exit_reason = "BROKER_TRAIL_STOP" if sl > entry_p else "BROKER_STOP_LOSS"
+                elif tp > 0 and curr_p >= tp:
+                    exit_reason = "BROKER_TAKE_PROFIT"
+            else:
+                if sl > 0 and curr_p >= sl:
+                    exit_reason = "BROKER_TRAIL_STOP" if (sl > 0 and sl < entry_p) else "BROKER_STOP_LOSS"
+                elif tp > 0 and curr_p <= tp:
+                    exit_reason = "BROKER_TAKE_PROFIT"
+
+            logger.info(
+                f"[NativeStrategyRunner] 🔄 Broker Reconciliation: Position #{pos['id']} ({self.symbol}) "
+                f"was closed on TradeLocker ({exit_reason} @ {curr_p}). Auto-closing signal 1:1."
+            )
+
+            closed = signal_store.close_position(
+                signal_id=pos["id"],
+                strategy=self.strategy_name,
+                exit_price=curr_p,
+                exit_reason=exit_reason
+            )
+            if closed:
+                telegram_gateway.format_and_send_trade_close(closed)
+                if self.broadcast_callback:
+                    await self.broadcast_callback({"event_type": "SIGNAL_CLOSED", "payload": closed})
+                    all_strats = strategy_registry.get_all(sync=False)
+                    portfolio = strategy_registry.get_portfolio_summary()
+                    dist = strategy_registry.get_distribution_analytics()
+                    await self.broadcast_callback({
+                        "event_type": "STRATEGIES_UPDATED",
+                        "payload": {
+                            "strategies": all_strats,
+                            "portfolio_summary": portfolio,
+                            "distribution_analytics": dist
+                        }
+                    })
+
