@@ -28,6 +28,19 @@ $$E = (P_{\text{win}} \times \overline{\text{Win Size}}) - (P_{\text{loss}} \tim
 - **Structural Invalidation:** Invalidation points (stop losses) must be defined by objective market structure (swing extremes, structural boundaries, volatility thresholds), never arbitrary percentage or fixed-dollar stops.
 - **Avoid Negative Skew:** High win-rate systems with small gains and fat-tailed, catastrophic losses are strictly rejected.
 
+### 1.3 Microstructure Noise Floor & Physical Execution Realism
+A systematic strategy must never attempt to trade inside an asset's microstructure noise band. Any stop loss, trailing stop, or profit target must strictly respect the physical execution floor:
+
+1. **Minimum Stop / Trailing Distance:**
+   $$\text{Stop Distance} \ge \max\left(3.0 \times \text{Typical Spread}, \; 1.5 \times \text{ATR}(14)\right)$$
+   - Across all asset classes (Crypto, Forex, Indices, Commodities), an invalidation buffer tighter than $3\times$ the bid-ask spread or $1.5\times$ ATR is within random Brownian noise. Live bid-ask bounce and standard spread widening will liquidate the position before any market trend can unfold.
+2. **Minimum Holding Horizon:**
+   - $\text{min\_bars\_held} \ge 3$ bars on the execution timeframe. Micro-scalping targeting sub-candle tick fluctuations is disqualified to prevent overfitting to historical bar geometry.
+3. **Full Round-Trip Friction Accounting:**
+   - Long entries fill at Ask ($\text{Price} + \frac{1}{2}\text{Spread}$); Long exits fill at Bid ($\text{Price} - \frac{1}{2}\text{Spread}$).
+   - Short entries fill at Bid ($\text{Price} - \frac{1}{2}\text{Spread}$); Short exits fill at Ask ($\text{Price} + \frac{1}{2}\text{Spread}$).
+   - Expected edge per trade must exceed $2.5\times$ total round-trip friction ($\text{Spread} + \text{Taker Fee} + \text{Slippage}$).
+
 ---
 
 ## 🔭 2. Institutional Multi-Timeframe (MTF) Architecture

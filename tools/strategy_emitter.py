@@ -34,9 +34,12 @@ def generate_freqtrade_code(thesis: str, class_name: str, rules: Dict[str, Any])
     }
 
     use_trailing = archetype in ["trend_following", "momentum_breakout"]
+    # Enforce Microstructure Noise Floor: trailing stops must never fall below 15 bps (0.0015)
+    trail_pos = max(0.0015, round(takeprofit_pct * 0.25, 4))
+    trail_offset = max(round(trail_pos * 1.5, 4), round(takeprofit_pct * 0.40, 4))
     trailing_block = f"""    trailing_stop = {use_trailing}
-    trailing_stop_positive = {round(takeprofit_pct * 0.25, 4)}
-    trailing_stop_positive_offset = {round(takeprofit_pct * 0.40, 4)}""" if use_trailing else "    trailing_stop = False"
+    trailing_stop_positive = {trail_pos}
+    trailing_stop_positive_offset = {trail_offset}""" if use_trailing else "    trailing_stop = False"
 
     # Indicators builder
     indicators = []

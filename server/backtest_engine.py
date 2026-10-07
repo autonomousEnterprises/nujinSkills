@@ -153,6 +153,38 @@ def resolve_strategy_metadata(strategy_name: str, timeframe_override: Optional[s
         "strat_record": strat_record or {}
     }
 
+def resolve_asset_friction(symbol: str, price: float) -> Tuple[float, float, float]:
+    """
+    Returns (spread_pts, taker_fee_pct, slippage_pts) for realistic backtest friction.
+    Asset-agnostic execution reality model:
+    - Gold / Commodities (XAUUSD): typical spread $0.40, slippage $0.10.
+    - Crypto (BTC/ETH): typical spread ~3 bps, taker fee 5 bps, slippage 1 bps.
+    - Indices (SP500/NAS100): typical spread 0.50 pts, slippage 0.25 pts.
+    - Forex (EURUSD/GBPUSD): typical spread ~1.5 pips, slippage 0.5 pips.
+    """
+    sym = (symbol or "").upper()
+    if "XAU" in sym or "GOLD" in sym:
+        spread_pts = 0.40
+        fee_pct = 0.00005
+        slippage_pts = 0.10
+    elif any(k in sym for k in ["BTC", "ETH", "SOL", "USDT", "PERP"]):
+        spread_pts = max(price * 0.0003, 0.5)
+        fee_pct = 0.0005  # 5 bps
+        slippage_pts = price * 0.0001
+    elif any(k in sym for k in ["SP", "ES", "US500", "S&P", "NAS", "NQ", "US100"]):
+        spread_pts = 0.50
+        fee_pct = 0.00005
+        slippage_pts = 0.25
+    elif any(k in sym for k in ["EUR", "GBP", "USD", "JPY", "AUD", "CAD"]):
+        spread_pts = price * 0.00015
+        fee_pct = 0.00005
+        slippage_pts = price * 0.00005
+    else:
+        spread_pts = price * 0.0004
+        fee_pct = 0.0005
+        slippage_pts = price * 0.0001
+    return spread_pts, fee_pct, slippage_pts
+
 def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, timeframe_override: Optional[str] = None, days: Optional[int] = 30) -> dict:
     """
     Executes real quantitative dual-directional (LONG & SHORT) backtest and DSR cynic audit.
@@ -330,6 +362,9 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         atr_sl_mult = None
         min_bars = 1
         max_bars = 15 if is_gold else 12
+        use_trailing = False
+        trail_pos = 0.0035
+        trail_offset = 0.0070
 
         # Check data/final_rules.json
         final_rules_path = os.path.join(data_dir, "final_rules.json")
@@ -395,6 +430,8 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
             # The earliest physical fill is strictly the Close of bar i (or Open of bar i+1).
             # Intrabar fills on the signal candle are strictly prohibited to prevent lookahead bias.
             entry_price = round(curr_close, 2)
+            spread_pts, fee_pct, slippage_pts = resolve_asset_friction(symbol, entry_price)
+            entry_fill = round(entry_price + (spread_pts / 2.0) + slippage_pts if side == "LONG" else entry_price - (spread_pts / 2.0) - slippage_pts, 2)
 
             atr_val = float(c['atr_14']) if ('atr_14' in c and not np.isnan(c['atr_14'])) else entry_price * 0.005
 
@@ -508,22 +545,29 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
             exit_bar = df_c.iloc[final_exit_idx]
             exit_time = int(exit_bar['timestamp']) if 'timestamp' in exit_bar else int(exit_bar.get('time', 0))
 
+            # Physical fill accounting (spread + slippage + taker fees)
             if side == "LONG":
-                pnl_pct = round(((exit_price - entry_price) / entry_price) * 100.0, 4)
+                actual_exit_fill = round(exit_price - (spread_pts / 2.0) - slippage_pts, 2)
+                gross_pnl_pct = ((actual_exit_fill - entry_fill) / entry_fill) * 100.0
             else:
-                pnl_pct = round(((entry_price - exit_price) / entry_price) * 100.0, 4)
+                actual_exit_fill = round(exit_price + (spread_pts / 2.0) + slippage_pts, 2)
+                gross_pnl_pct = ((entry_fill - actual_exit_fill) / entry_fill) * 100.0
+
+            total_fee_pct = (fee_pct * 2.0) * 100.0
+            pnl_pct = round(gross_pnl_pct - total_fee_pct, 4)
 
             actual_tp = exit_price if exit_reason == "TAKE_PROFIT" else target_tp
             actual_sl = exit_price if exit_reason == "STOP_LOSS" else stop_loss
 
-            price_fmt = f"${entry_price:.2f}" if (is_gold or is_sp500) else f"${entry_price:,.1f}"
+            price_fmt = f"${entry_fill:.2f}" if (is_gold or is_sp500) else f"${entry_fill:,.1f}"
             trade_markers.append({
                 "time": entry_time,
                 "position": "belowBar" if side == "LONG" else "aboveBar",
                 "color": "#26a69a" if side == "LONG" else "#ef5350",
                 "shape": "arrowUp" if side == "LONG" else "arrowDown",
                 "text": f"[BT] {side} {price_fmt}",
-                "entry_price": entry_price,
+                "entry_price": entry_fill,
+                "raw_signal_price": entry_price,
                 "stop_loss": initial_sl,
                 "take_profit": initial_tp,
                 "trailing_stop_exit": stop_loss if exit_reason == "TRAIL_STOP" else None,
@@ -538,16 +582,21 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
                 "text": f"[BT] EXIT {pnl_pct:+.2f}%"
             })
 
+            friction_bps = round(((spread_pts * 2.0 / entry_price) + (fee_pct * 2.0) + (slippage_pts * 2.0 / entry_price)) * 10000.0, 1)
+
             trades_detail.append({
                 "id": len(trades_detail) + 1,
                 "side": side,
                 "entry_time": entry_time,
-                "entry_price": entry_price,
+                "entry_price": entry_fill,
+                "raw_signal_price": entry_price,
                 "stop_loss": actual_sl,
                 "take_profit": actual_tp,
                 "exit_time": exit_time,
-                "exit_price": exit_price,
+                "exit_price": actual_exit_fill,
+                "raw_exit_price": exit_price,
                 "exit_reason": exit_reason,
+                "friction_bps": friction_bps,
                 "pnl_pct": pnl_pct
             })
 

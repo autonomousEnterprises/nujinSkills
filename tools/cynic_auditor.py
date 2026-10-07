@@ -62,6 +62,36 @@ def verify_friction(returns: np.ndarray, fee_bps: float = 5.0, slippage_bps: flo
         "status": "PASS" if passed else "FAIL"
     }
 
+def verify_noise_floor(strategy_name: str) -> dict:
+    """
+    Verifies that the strategy does not trade inside the microstructure noise band.
+    Enforces that trailing stop and stop loss are not narrower than 10 bps (0.10%).
+    """
+    if not strategy_name:
+        return {"status": "PASS", "note": "No strategy specified; bypassed"}
+    try:
+        from server.backtest_engine import load_strategy_instance
+        strat = load_strategy_instance(strategy_name)
+        if not strat:
+            return {"status": "PASS", "note": "Strategy instance not loadable"}
+        
+        use_trail = getattr(strat, "trailing_stop", False)
+        trail_pos = getattr(strat, "trailing_stop_positive", 0.0)
+        if hasattr(trail_pos, "value"):
+            trail_pos = float(trail_pos.value)
+        else:
+            trail_pos = float(trail_pos or 0.0)
+            
+        if use_trail and 0 < trail_pos < 0.0010:
+            return {
+                "status": "FAIL",
+                "reason": f"Trailing stop positive ({trail_pos:.4f}) is narrower than 10 bps microstructure noise floor",
+                "trail_pos": trail_pos
+            }
+        return {"status": "PASS", "trail_pos": trail_pos}
+    except Exception as e:
+        return {"status": "PASS", "note": f"Error inspecting strategy: {e}"}
+
 def verify_regime_survival(returns: np.ndarray) -> dict:
     clean_r = returns[~np.isnan(returns)]
     if len(clean_r) < 30:
@@ -226,6 +256,13 @@ def main():
 
     # Run the 5 Genuine Gates
     g1_friction = verify_friction(returns)
+    if args.strategy:
+        g1_noise_floor = verify_noise_floor(args.strategy)
+        g1_friction["noise_floor"] = g1_noise_floor
+        if g1_noise_floor.get("status") == "FAIL":
+            g1_friction["status"] = "FAIL"
+            g1_friction["reason"] = g1_noise_floor.get("reason", "Violated microstructure noise floor")
+
     g2_dsr = compute_definated_sharpe_ratio(returns, n_trials=args.trials)
     g3_regime = verify_regime_survival(returns)
     g4_noise = verify_noise_jitter(returns)

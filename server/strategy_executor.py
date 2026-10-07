@@ -291,22 +291,32 @@ class NativeStrategyRunner:
         except Exception as e_st:
             logger.debug(f"[DrawdownGuard] Could not load strategy instance for {self.strategy_name}: {e_st}")
 
-        max_daily_dd_pct = float(getattr(strat_inst, "max_daily_drawdown_pct", 0.03))
-        max_total_dd_pct = float(getattr(strat_inst, "max_total_drawdown_pct", 0.05))
-        trade_risk_pct = float(getattr(strat_inst, "max_risk_pct", getattr(strat_inst, "risk_per_trade_pct", 0.0060)))
-
-        # 1. Determine benchmark / initial balance
+        # 1. Resolve Account & Pluggable Risk Profile
+        primary_acc = None
         initial_balance = 5000.0
         try:
             if accounts_store:
                 active_accs = accounts_store.get_all_active_accounts(broker_id="tradelocker", decrypt=False)
+                if not active_accs:
+                    active_accs = accounts_store.get_all_active_accounts(decrypt=False)
                 if active_accs:
-                    primary = active_accs[0]
-                    initial_balance = float(primary.get("initial_balance") or primary.get("balance") or 5000.0)
+                    primary_acc = active_accs[0]
+                    initial_balance = float(primary_acc.get("initial_balance") or primary_acc.get("balance") or 5000.0)
         except Exception:
             pass
         if initial_balance <= 0:
             initial_balance = 5000.0
+
+        risk_profile = (primary_acc.get("risk_profile") if primary_acc else None) or {}
+
+        # If user explicitly disabled drawdown guard on this account
+        if risk_profile.get("disable_daily_guard") is True:
+            return True, "Drawdown guard disabled by account risk profile", {"status": "BYPASSED"}
+
+        # Respect account-level risk profile, falling back to strategy configuration, then generic defaults
+        max_daily_dd_pct = float(risk_profile.get("max_daily_drawdown_pct") or getattr(strat_inst, "max_daily_drawdown_pct", 0.03))
+        max_total_dd_pct = float(risk_profile.get("max_total_drawdown_pct") or getattr(strat_inst, "max_total_drawdown_pct", 0.05))
+        trade_risk_pct = float(risk_profile.get("risk_per_trade_pct") or getattr(strat_inst, "max_risk_pct", getattr(strat_inst, "risk_per_trade_pct", 0.0060)))
 
         # 2. Check live broker equity/balance
         broker_equity = None

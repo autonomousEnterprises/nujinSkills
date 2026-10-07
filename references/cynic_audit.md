@@ -33,6 +33,16 @@ The **Cynic Audit** is NujinAI's adversarial falsification suite designed to rej
 
 ## 📐 Mathematical Formulations
 
+### 0. Gate 1: Execution Friction & Microstructure Noise Floor
+Every trade return must account for physical broker/exchange friction before performance metrics are evaluated:
+1. **Physical Fill Offsets (Bid-Ask Spread & Slippage):**
+   $$\text{Fill}_{\text{Buy}} = P + \frac{1}{2} S + \text{Slippage}, \quad \text{Fill}_{\text{Sell}} = P - \frac{1}{2} S - \text{Slippage}$$
+   Where $S$ is typical asset bid-ask spread (e.g. \$0.40 on Gold, 5 bps on Crypto, 1 pip on Forex).
+2. **Microstructure Floor Rule:**
+   Any strategy with an invalidation stop or trailing stop tighter than $\max(3.0 \times S, \; 1.5 \times \text{ATR})$ fails Gate 1 immediately (`FAIL_NOISE_FLOOR`), as it is mathematically trading inside bid-ask noise.
+3. **Net Friction Hurdle:**
+   Net expectancy per trade after all round-trip frictions must remain positive ($E > 0$) with an expectancy-to-friction ratio $\ge 2.0$.
+
 ### 1. Deflated Sharpe Ratio (DSR)
 Following Bailey & López de Prado (2014), DSR calculates the probability that an estimated Sharpe ratio ($\widehat{SR}$) exceeds zero after discounting for selection bias from multiple testing ($N$ trials) and non-normal return distributions:
 
