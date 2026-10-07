@@ -827,14 +827,14 @@ const allChartMarkers = computed(() => {
     const exitTime = Number(s.exit_time || (s as any).closed_at || 0);
     const exitPrice = s.exit_price != null ? Number(s.exit_price) : undefined;
     if (isClosed && exitTime > 0) {
-      const pnl = s.pnl_pct != null ? Number(s.pnl_pct) : 0;
-      const pnlStr = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
-      const exitColor = pnl >= 0 ? '#10b981' : '#f59e0b';
+      const isWin = pnl >= 0;
+      const exitColor = isWin ? '#10b981' : '#f43f5e';
+      const exitPos = isBuy ? (isWin ? 'aboveBar' : 'belowBar') : (isWin ? 'belowBar' : 'aboveBar');
       result.push({
         id: s.id != null ? `live-exit-${s.id}` : undefined,
         time: exitTime,
         price: exitPrice,
-        position: isBuy ? 'aboveBar' : 'belowBar',
+        position: exitPos,
         color: exitColor,
         shape: 'circle',
         text: `🎯 EXIT ${pnlStr}`,
