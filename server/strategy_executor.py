@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from server.state_manager import state_manager, signal_store, strategy_registry
+from server.accounts_store import accounts_store
 from server.telegram_bot import telegram_gateway
 from server.providers.base import BaseMarketDataProvider, ProviderRegistry
 from server.brokers.registry import broker_registry
@@ -275,6 +276,140 @@ class NativeStrategyRunner:
         self.provider.unsubscribe_bar(self._on_market_bar)
         logger.info(f"[NativeStrategyRunner] Stopped for '{self.strategy_name}'")
 
+    def check_drawdown_safety(self) -> Tuple[bool, str, Dict[str, Any]]:
+        """
+        Active Live Risk & Drawdown Circuit Breaker.
+        Strictly enforces strategy-configured max_daily_drawdown_pct and max_total_drawdown_pct
+        across connected broker accounts (e.g. Goat Funded Trader Prop Firm limits).
+        Prevents funded account breaches by halting new entries when daily or total loss limits
+        are reached, or when the remaining daily budget is less than 2.5x single trade risk ($75 safety buffer).
+        """
+        strat_inst = None
+        try:
+            from server.backtest_engine import load_strategy_instance
+            strat_inst = load_strategy_instance(self.strategy_name)
+        except Exception as e_st:
+            logger.debug(f"[DrawdownGuard] Could not load strategy instance for {self.strategy_name}: {e_st}")
+
+        max_daily_dd_pct = float(getattr(strat_inst, "max_daily_drawdown_pct", 0.03))
+        max_total_dd_pct = float(getattr(strat_inst, "max_total_drawdown_pct", 0.05))
+        trade_risk_pct = float(getattr(strat_inst, "max_risk_pct", getattr(strat_inst, "risk_per_trade_pct", 0.0060)))
+
+        # 1. Determine benchmark / initial balance
+        initial_balance = 5000.0
+        try:
+            if accounts_store:
+                active_accs = accounts_store.get_all_active_accounts(broker_id="tradelocker", decrypt=False)
+                if active_accs:
+                    primary = active_accs[0]
+                    initial_balance = float(primary.get("initial_balance") or primary.get("balance") or 5000.0)
+        except Exception:
+            pass
+        if initial_balance <= 0:
+            initial_balance = 5000.0
+
+        # 2. Check live broker equity/balance
+        broker_equity = None
+        broker_balance = None
+        try:
+            broker = broker_registry.get_broker()
+            if broker and getattr(broker, "is_connected", False):
+                info = broker.get_account_info()
+                eq = float(info.get("equity") or 0.0)
+                bal = float(info.get("balance") or 0.0)
+                if eq > 0:
+                    broker_equity = eq
+                    broker_balance = bal
+        except Exception as e_b:
+            logger.debug(f"[DrawdownGuard] Broker info error: {e_b}")
+
+        # 3. Calculate today's PnL from closed signals
+        now_utc = datetime.now(timezone.utc)
+        today_utc_str = now_utc.strftime("%Y-%m-%d")
+        signals = signal_store.get_all()
+        today_realized_usd = 0.0
+
+        for s in signals:
+            t = s.get("time") or s.get("entry_time") or 0
+            dt = datetime.fromtimestamp(t, tz=timezone.utc)
+            if dt.strftime("%Y-%m-%d") == today_utc_str:
+                if s.get("status") == "CLOSED" or s.get("exit_price"):
+                    if s.get("pnl_usd") is not None:
+                        today_realized_usd += float(s["pnl_usd"])
+                    else:
+                        entry_p = float(s.get("price") or s.get("entry_price") or 0.0)
+                        exit_p = float(s.get("exit_price") or 0.0)
+                        lots = float(s.get("lots") or s.get("lot_size") or 0.01)
+                        pair = s.get("pair") or s.get("symbol") or "XAU/USD"
+                        c_mult = 100.0 if ("XAU" in pair.upper() or "GOLD" in pair.upper()) else 1.0
+                        action = (s.get("action") or "BUY").upper()
+                        if entry_p > 0 and exit_p > 0:
+                            diff = (exit_p - entry_p) if action in ("BUY", "LONG") else (entry_p - exit_p)
+                            today_realized_usd += (diff * lots * c_mult)
+
+        # 4. Losses and budget calculation
+        max_daily_loss_usd = round(initial_balance * max_daily_dd_pct, 2)
+        max_total_loss_usd = round(initial_balance * max_total_dd_pct, 2)
+        single_trade_risk_usd = round(initial_balance * trade_risk_pct, 2)
+
+        broker_loss = (initial_balance - broker_equity) if (broker_equity and broker_equity < initial_balance) else 0.0
+        signals_loss = abs(today_realized_usd) if today_realized_usd < 0 else 0.0
+        today_loss_usd = round(max(broker_loss, signals_loss), 2)
+        remaining_budget_usd = round(max(0.0, max_daily_loss_usd - today_loss_usd), 2)
+        buffer_required_usd = round(single_trade_risk_usd * 2.5, 2)
+
+        details = {
+            "strategy": self.strategy_name,
+            "day_key": today_utc_str,
+            "initial_balance": initial_balance,
+            "current_equity": broker_equity or (initial_balance - today_loss_usd),
+            "today_loss_usd": today_loss_usd,
+            "today_realized_pnl_usd": round(today_realized_usd, 2),
+            "max_daily_loss_usd": max_daily_loss_usd,
+            "max_daily_dd_pct": max_daily_dd_pct,
+            "remaining_budget_usd": remaining_budget_usd,
+            "single_trade_risk_usd": single_trade_risk_usd,
+            "buffer_required_usd": buffer_required_usd,
+            "message": ""
+        }
+
+        # Checks:
+        if broker_loss >= max_total_loss_usd:
+            details["message"] = f"Total drawdown limit reached: -${broker_loss:.2f} >= -${max_total_loss_usd:.2f} (5.0%)"
+            return False, "TOTAL_DRAWDOWN_LIMIT_EXCEEDED", details
+
+        if today_loss_usd >= max_daily_loss_usd:
+            details["message"] = f"Daily drawdown limit reached: -${today_loss_usd:.2f} >= -${max_daily_loss_usd:.2f} (3.0%)"
+            return False, "DAILY_DRAWDOWN_LIMIT_EXCEEDED", details
+
+        if remaining_budget_usd < buffer_required_usd:
+            details["message"] = f"Daily drawdown safety buffer exhausted: remaining ${remaining_budget_usd:.2f} < required safety buffer ${buffer_required_usd:.2f}"
+            return False, "DAILY_DRAWDOWN_BUFFER_EXHAUSTED", details
+
+        details["message"] = f"Safe: Remaining daily budget ${remaining_budget_usd:.2f}"
+        return True, "OK", details
+
+    def _send_drawdown_alert(self, reason: str, details: Dict[str, Any]) -> None:
+        """Dispatches an urgent Telegram alert and broadcasts circuit breaker trigger."""
+        today_key = details.get("day_key", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+        if getattr(self, "_last_alerted_dd_day", "") == today_key:
+            return
+        self._last_alerted_dd_day = today_key
+
+        reason_title = "DAILY DRAWDOWN PROTECTION ACTIVE" if "DAILY" in reason else "TOTAL DRAWDOWN LIMIT REACHED"
+        msg = (
+            f"🛡️ <b>[CIRCUIT BREAKER] {reason_title}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ <b>Time:</b> <code>{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}</code>\n"
+            f"📊 <b>Strategy:</b> <code>{self.strategy_name}</code>\n"
+            f"📉 <b>Today's Net Loss:</b> <b>-${details.get('today_loss_usd', 0.0):.2f}</b>\n"
+            f"🛑 <b>Max Daily Loss Limit:</b> <code>-${details.get('max_daily_loss_usd', 150.0):.2f}</code> (3.0% Max DD)\n"
+            f"💼 <b>Remaining Buffer:</b> <code>${details.get('remaining_budget_usd', 0.0):.2f}</code>\n\n"
+            f"🔒 <b>Protection Status:</b> <b>AUTOMATED TRADING LOCKED FOR TODAY</b>\n"
+            f"<i>Your funded account is strictly protected. New signal entries are halted until daily rollover at 00:00 UTC.</i>"
+        )
+        telegram_gateway.send_message(msg, parse_mode="HTML")
+
     async def _on_market_tick(self, quote: Dict[str, Any]) -> None:
         """Called on every real-time price tick. Checks open position exits."""
         if not self.is_running:
@@ -324,6 +459,20 @@ class NativeStrategyRunner:
             # Already in position — enforce 1 concurrent trade per strategy
             return
 
+        # Prop Firm Risk Guard: Daily Drawdown Circuit Breaker
+        safe, reason, dd_details = self.check_drawdown_safety()
+        if not safe:
+            today_key = dd_details.get("day_key", "today")
+            if not getattr(self, f"_halted_{today_key}", False):
+                setattr(self, f"_halted_{today_key}", True)
+                logger.warning(
+                    f"[NativeStrategyRunner] 🛡️ CIRCUIT BREAKER ACTIVE: Halting new entries for '{self.strategy_name}' on {self.symbol}. "
+                    f"Reason: {reason} | Today's loss: -${dd_details['today_loss_usd']:.2f} / ${dd_details['max_daily_loss_usd']:.2f} limit. "
+                    f"Remaining budget: ${dd_details['remaining_budget_usd']:.2f}."
+                )
+                self._send_drawdown_alert(reason, dd_details)
+            return
+
         # For XAU/USD, yield briefly so background authentic volume sync finishes
         if "XAU" in self.symbol or "GOLD" in self.symbol:
             await asyncio.sleep(1.2)
@@ -369,6 +518,17 @@ class NativeStrategyRunner:
 
     async def _trigger_new_signal(self, sig: Dict[str, Any]) -> None:
         """Saves signal to store, alerts Telegram, plays sound, and broadcasts to UI."""
+        # Double defense: check drawdown safety before executing order
+        safe, reason, dd_details = self.check_drawdown_safety()
+        if not safe:
+            logger.warning(f"[NativeStrategyRunner] 🛡️ ORDER EXECUTION BLOCKED by {reason}: {dd_details.get('message', reason)}")
+            sig["status"] = "BLOCKED_DRAWDOWN_LIMIT"
+            sig["exit_reason"] = reason
+            sig["annotation"] = f"Blocked: {reason}"
+            signal_store.add(sig)
+            self._send_drawdown_alert(reason, dd_details)
+            return
+
         logger.info(f"[NativeStrategyRunner] 🚀 SIGNAL TRIGGERED for {self.strategy_name}: {sig['action']} @ {sig['price']}")
 
         # 1. Execute order via Active Execution Broker (Paper, TradeLocker, etc.)

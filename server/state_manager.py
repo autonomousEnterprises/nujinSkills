@@ -356,8 +356,18 @@ class SignalStore:
             raw_pnl = ((exit_price - entry_p) / entry_p * 100) if is_long else ((entry_p - exit_price) / entry_p * 100)
             target["pnl_pct"] = round(raw_pnl, 2)
 
+        # Record exact dollar PnL for precise prop firm drawdown tracking
+        entry_p = float(target.get("price") or target.get("entry_price") or 0.0)
+        lots = float(target.get("lots") or target.get("lot_size") or 0.01)
+        pair = target.get("pair") or target.get("symbol") or "XAU/USD"
+        contract_val = 100.0 if ("XAU" in pair.upper() or "GOLD" in pair.upper()) else 1.0
+        is_long = target.get("action") in ("BUY", "LONG") or target.get("side") == "LONG"
+        if entry_p > 0 and exit_price > 0:
+            diff = (exit_price - entry_p) if is_long else (entry_p - exit_price)
+            target["pnl_usd"] = round(diff * lots * contract_val, 2)
+
         _write_json_locked(self._path, signals)
-        logger.info(f"[SignalStore] Position #{target['id']} closed for {target['strategy']}: exit {exit_price}, pnl {target['pnl_pct']}%")
+        logger.info(f"[SignalStore] Position #{target['id']} closed for {target['strategy']}: exit {exit_price}, pnl {target['pnl_pct']}% (${target.get('pnl_usd', 0.0):+.2f})")
         return target
 
     def update_signal(self, signal_id: int, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:

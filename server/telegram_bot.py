@@ -256,13 +256,15 @@ class TelegramGateway:
         strategy = html.escape(str(payload.get("strategy", "Autonomous Bot")).replace(".py", ""))
         pair = html.escape(str(payload.get("pair", "Asset")))
         entry_p = float(payload.get("price") or payload.get("entry_price") or 0.0)
-        exit_p = float(payload.get("exit_price") or 0.0)
         pnl = float(payload.get("pnl_pct") or 0.0)
+        pnl_usd = payload.get("pnl_usd")
         exit_reason = html.escape(str(payload.get("exit_reason", "EXIT")))
         
         icon = "🎯" if pnl >= 0 else "🛑"
         local_time_str = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
         pnl_str = f"{pnl:+.2f}%"
+        if pnl_usd is not None:
+            pnl_str += f" (${float(pnl_usd):+.2f})"
 
         text = (
             f"{icon} <b>TRADE CLOSED: {strategy}</b>\n"

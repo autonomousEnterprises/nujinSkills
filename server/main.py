@@ -1385,6 +1385,20 @@ async def get_gft_rules(account_size: float = 100000.0):
     }
 
 
+@app.get("/api/risk/drawdown-status")
+async def get_drawdown_status(strategy: str = "zillions_mtfvdmr"):
+    """Returns real-time Daily and Total Drawdown Circuit Breaker metrics for active funded account."""
+    from server.strategy_executor import NativeStrategyRunner
+    runner = NativeStrategyRunner(strategy)
+    safe, reason, details = runner.check_drawdown_safety()
+    return {
+        "status": "SAFE" if safe else "HALTED",
+        "reason": reason,
+        "is_safe": safe,
+        **details
+    }
+
+
 @app.post("/api/xauusd/trade/start")
 async def start_xauusd_trade(req: StartTradeRequest):
     """Starts tracking a manual XAUUSD scalp trade with 2m-15m countdown timer."""
