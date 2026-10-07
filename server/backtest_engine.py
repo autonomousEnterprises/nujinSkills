@@ -333,12 +333,12 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         if min_bars is None:
             min_bars = 2 if "GOAT" in clean_name.upper() else 1
         strat_max_bars = getattr(strat_inst, "max_bars", None)
-        if strat_max_bars is None:
-            max_bars = 288  # 1 full daily session on 5m: allows full trend run protected by TP/SL/Trailing SL & session flatting
+        if strat_max_bars is not None and int(strat_max_bars) > 0:
+            max_bars = int(strat_max_bars)
+        elif roi_keys and max(roi_keys) > 10:
+            max_bars = max(roi_keys)
         else:
-            max_bars = max(roi_keys, default=strat_max_bars)
-            if max_bars == 0:
-                max_bars = 288
+            max_bars = 288  # 1 full daily session on 5m: allows full trend run protected by TP/SL/Trailing SL & session flatting
 
         # Trailing stop configuration
         use_trailing = getattr(strat_inst, "trailing_stop", False)

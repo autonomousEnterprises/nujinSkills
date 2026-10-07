@@ -281,13 +281,16 @@ def main():
         return
 
     # Run the 5 Genuine Gates
-    g1_friction = verify_friction(returns)
     if args.strategy:
+        # Returns from run_real_backtest already have spread, slippage, and taker fees deducted
+        g1_friction = verify_friction(returns, fee_bps=0.0, slippage_bps=0.0)
         g1_noise_floor = verify_noise_floor(args.strategy)
         g1_friction["noise_floor"] = g1_noise_floor
         if g1_noise_floor.get("status") == "FAIL":
             g1_friction["status"] = "FAIL"
             g1_friction["reason"] = g1_noise_floor.get("reason", "Violated microstructure noise floor")
+    else:
+        g1_friction = verify_friction(returns)
 
     g2_dsr = compute_definated_sharpe_ratio(returns, n_trials=args.trials)
     g3_regime = verify_regime_survival(returns)
