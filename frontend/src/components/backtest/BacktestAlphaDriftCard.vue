@@ -14,10 +14,9 @@
               class="badge badge-sm font-bold border"
               :class="overallTrajectory === 'GAINING' ? 'badge-success' : overallTrajectory === 'DECAYING' ? 'badge-error' : 'badge-info'"
             >
-              <component 
-                :is="overallTrajectory === 'GAINING' ? TrendingUp : overallTrajectory === 'DECAYING' ? TrendingDown : Activity" 
-                class="w-3.5 h-3.5 mr-1"
-              />
+              <TrendingUp v-if="overallTrajectory === 'GAINING'" class="w-3.5 h-3.5 mr-1" />
+              <TrendingDown v-else-if="overallTrajectory === 'DECAYING'" class="w-3.5 h-3.5 mr-1" />
+              <Activity v-else class="w-3.5 h-3.5 mr-1" />
               {{ overallTrajectory === 'GAINING' ? 'GAINING EDGE (EXPANSION)' : overallTrajectory === 'DECAYING' ? 'DECAYING EDGE (EXHAUSTION)' : 'STABLE ALPHA' }}
             </span>
           </div>

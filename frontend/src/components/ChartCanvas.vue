@@ -2344,16 +2344,25 @@ onUnmounted(() => {
     cancelAnimationFrame(rafCrosshairId);
     rafCrosshairId = null;
   }
-  if (resizeObserver) resizeObserver.disconnect();
-  for (const s of activeIndicatorSeries.values()) {
+  if (resizeObserver) {
     try {
-      chart?.removeSeries(s);
+      resizeObserver.disconnect();
     } catch {}
+    resizeObserver = null;
   }
-  activeIndicatorSeries.clear();
   if (chart) {
-    chart.remove();
+    for (const s of activeIndicatorSeries.values()) {
+      try {
+        chart.removeSeries(s);
+      } catch {}
+    }
+    activeIndicatorSeries.clear();
+    try {
+      chart.remove();
+    } catch {}
     chart = null;
+  } else {
+    activeIndicatorSeries.clear();
   }
 });
 </script>

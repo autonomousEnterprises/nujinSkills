@@ -252,7 +252,9 @@
               <!-- Drift Trajectory -->
               <td class="text-center whitespace-nowrap">
                 <div class="flex items-center justify-center gap-1">
-                  <component :is="getTrajectoryIcon(strat)" class="w-3.5 h-3.5" :class="getTrajectoryClass(strat)" />
+                  <TrendingUp v-if="getTrajectoryType(strat) === 'UP'" class="w-3.5 h-3.5" :class="getTrajectoryClass(strat)" />
+                  <TrendingDown v-else-if="getTrajectoryType(strat) === 'DOWN'" class="w-3.5 h-3.5" :class="getTrajectoryClass(strat)" />
+                  <Activity v-else class="w-3.5 h-3.5" :class="getTrajectoryClass(strat)" />
                   <span class="text-[10px] font-bold" :class="getTrajectoryClass(strat)">
                     {{ getTrajectoryText(strat) }}
                   </span>
@@ -778,21 +780,21 @@ const getSparklineSeries = (strat: ManagedStrategy): number[] => {
 };
 
 // ── Trajectory Indicators ─────────────────────────────────
-const getTrajectoryIcon = (strat: ManagedStrategy) => {
+const getTrajectoryType = (strat: ManagedStrategy): 'UP' | 'DOWN' | 'FLAT' => {
   if (props.screenMode === 'LIVE') {
     const pnl = getStrategyLivePnl(strat);
-    if (pnl > 0) return TrendingUp;
-    if (pnl < 0) return TrendingDown;
-    return Activity;
+    if (pnl > 0) return 'UP';
+    if (pnl < 0) return 'DOWN';
+    return 'FLAT';
   }
   const hist = strat.cron_config?.drift_history || [];
   if (hist.length >= 2) {
     const last = hist[hist.length - 1];
     const prev = hist[hist.length - 2];
-    if ((last.sharpe || 0) > (prev.sharpe || 0) + 0.05) return TrendingUp;
-    if ((last.sharpe || 0) < (prev.sharpe || 0) - 0.05) return TrendingDown;
+    if ((last.sharpe || 0) > (prev.sharpe || 0) + 0.05) return 'UP';
+    if ((last.sharpe || 0) < (prev.sharpe || 0) - 0.05) return 'DOWN';
   }
-  return Activity;
+  return 'FLAT';
 };
 
 const getTrajectoryClass = (strat: ManagedStrategy) => {
