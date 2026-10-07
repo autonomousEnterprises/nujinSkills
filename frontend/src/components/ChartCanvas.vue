@@ -827,7 +827,9 @@ const allChartMarkers = computed(() => {
     const exitTime = Number(s.exit_time || (s as any).closed_at || 0);
     const exitPrice = s.exit_price != null ? Number(s.exit_price) : undefined;
     if (isClosed && exitTime > 0) {
+      const pnl = s.pnl_pct != null ? Number(s.pnl_pct) : (exitPrice && entryPrice ? ((exitPrice - entryPrice) / entryPrice * 100 * (isBuy ? 1 : -1)) : 0);
       const isWin = pnl >= 0;
+      const pnlStr = `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%`;
       const exitColor = isWin ? '#10b981' : '#f43f5e';
       const exitPos = isBuy ? (isWin ? 'aboveBar' : 'belowBar') : (isWin ? 'belowBar' : 'aboveBar');
       result.push({
@@ -1441,7 +1443,12 @@ const initChart = () => {
   if (!chartContainerRef.value) return;
 
   const isDark = props.theme === 'dark';
+  const containerW = chartContainerRef.value.clientWidth || 800;
+  const containerH = chartContainerRef.value.clientHeight || 500;
+
   chart = createChart(chartContainerRef.value, {
+    width: containerW,
+    height: containerH,
     layout: {
       background: { type: ColorType.Solid, color: isDark ? '#0d1322' : '#edf0f7' },
       textColor: isDark ? '#c9d1d9' : '#151515',
@@ -1820,11 +1827,23 @@ const loadCandles = async (preserveViewport = false) => {
           const windowBars = 80;
           chart.timeScale().setVisibleLogicalRange({
             from: Math.max(0, totalBars - windowBars),
-            to: totalBars + 8,
+            to: totalBars + 5,
           });
           chart.timeScale().scrollToRealTime();
+        } else {
+          chart.timeScale().fitContent();
         }
       }
+      nextTick(() => {
+        if (chart && chartContainerRef.value) {
+          const w = chartContainerRef.value.clientWidth;
+          const h = chartContainerRef.value.clientHeight;
+          if (w > 0 && h > 0) {
+            chart.applyOptions({ width: w, height: h });
+          }
+        }
+        updateBoxCoordinates();
+      });
     }
   } catch (err) {
     console.error('[ChartCanvas] Failed to load candles:', err);
@@ -2028,6 +2047,9 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     lastCandle.close = close;
     if (candleData.volume && candleData.volume > (lastCandle.volume || 0)) {
       lastCandle.volume = candleData.volume;
+    } else {
+      const inc = Number(candleData.volume || 1);
+      lastCandle.volume = Number(lastCandle.volume || 0) + (inc > 0 && inc < 100 ? inc : 1);
     }
 
     candleSeries.update({
