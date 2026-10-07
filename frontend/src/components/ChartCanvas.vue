@@ -1761,12 +1761,21 @@ const loadCandles = async (preserveViewport = false) => {
 
       candleSeries.setData(candles);
 
-      // Volume with surge highlighting
-      const volumes = candles.map((c: any) => ({
-        time: c.time,
-        value: c.volume || 10,
-        color: c.close >= c.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
-      }));
+      // Volume with surge highlighting & robust outlier capping
+      const validVols = candles.map((c: any) => Number(c.volume || 10)).filter((v: number) => v > 0);
+      const sortedVols = [...validVols].sort((a, b) => a - b);
+      const medianVol = sortedVols.length > 0 ? sortedVols[Math.floor(sortedVols.length / 2)] : 1000;
+      const maxVolCap = Math.max(medianVol * 6, 12000);
+
+      const volumes = candles.map((c: any) => {
+        const rawV = Number(c.volume || 10);
+        const cappedV = Math.min(rawV, maxVolCap);
+        return {
+          time: c.time,
+          value: cappedV,
+          color: c.close >= c.open ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
+        };
+      });
       volumeSeries?.setData(volumes);
 
       // Dedicated Quantitative Indicators
@@ -2045,11 +2054,12 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
     lastCandle.high = Math.max(Number(lastCandle.high || open), high, close);
     lastCandle.low = Math.min(Number(lastCandle.low || open), low, close);
     lastCandle.close = close;
-    if (candleData.volume && candleData.volume > (lastCandle.volume || 0)) {
-      lastCandle.volume = candleData.volume;
+    const incomingVol = Number(candleData.volume || 0);
+    if (incomingVol > 0 && incomingVol < 15000 && incomingVol > (lastCandle.volume || 0)) {
+      lastCandle.volume = incomingVol;
     } else {
-      const inc = Number(candleData.volume || 1);
-      lastCandle.volume = Number(lastCandle.volume || 0) + (inc > 0 && inc < 100 ? inc : 1);
+      const inc = (incomingVol > 0 && incomingVol < 50) ? incomingVol : 5;
+      lastCandle.volume = Number(lastCandle.volume || 0) + inc;
     }
 
     candleSeries.update({
@@ -2064,20 +2074,21 @@ const updateLiveCandle = (candleData: { time: number; open: number; high: number
       const isUp = Number(lastCandle.close) >= Number(lastCandle.open);
       volumeSeries.update({
         time: updateTime,
-        value: Number(lastCandle.volume || 10),
+        value: Math.min(Number(lastCandle.volume || 10), 15000),
         color: isUp ? 'rgba(38, 166, 154, 0.6)' : 'rgba(239, 83, 80, 0.6)',
       });
     }
   } else if (rawTime > lastTime) {
     // Brand new bar started!
     invalidateTradeExitCache();
+    const safeBarVol = (volume > 0 && volume < 15000) ? volume : 25;
     const newBar = {
       time: rawTime,
       open: open,
       high: high,
       low: low,
       close: close,
-      volume: volume,
+      volume: safeBarVol,
     };
     rawCandles.value.push(newBar);
     timeIndexMap.set(Number(localTime), rawCandles.value.length - 1);

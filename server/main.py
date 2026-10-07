@@ -118,6 +118,49 @@ async def get_system_status():
         "active_strategy": strategy_registry.get_active_strategy_name()
     }
 
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+
+def _sanitize_candles(candles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not candles:
+        return []
+    import numpy as np
+    vols = [float(c.get("volume", 0.0)) for c in candles if float(c.get("volume", 0.0)) > 0]
+    med_vol = float(np.median(vols)) if vols else 1000.0
+    max_vol = max(med_vol * 6.0, 15000.0)
+
+    clean = []
+    for c in candles:
+        ts = int(c.get("time") or c.get("timestamp") or 0)
+        if ts <= 0:
+            continue
+        op = round(float(c.get("open", 0.0)), 2)
+        hi = round(float(c.get("high", 0.0)), 2)
+        lo = round(float(c.get("low", 0.0)), 2)
+        cl = round(float(c.get("close", 0.0)), 2)
+        if cl <= 0:
+            continue
+        hi = max(hi, op, cl)
+        lo = min(lo, op, cl)
+        body_max = max(op, cl)
+        body_min = min(op, cl)
+        raw_vol = float(c.get("volume", 10.0))
+        # Clamp anomalous outlier wicks with low volume
+        if (hi - body_max) > 12.0 and raw_vol < 500.0:
+            hi = round(body_max + 2.50, 2)
+        if (body_min - lo) > 12.0 and raw_vol < 500.0:
+            lo = round(body_min - 2.50, 2)
+        vol = round(min(raw_vol, max_vol), 1)
+        clean.append({
+            "time": ts,
+            "timestamp": ts,
+            "open": op,
+            "high": hi,
+            "low": lo,
+            "close": cl,
+            "volume": vol
+        })
+    return clean
+
 def _extract_primitives_for_response(strategy_name: Optional[str], candles_data: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not candles_data:
         return {"lines": [], "series": {}, "boxes": [], "levels": [], "hud_items": []}
@@ -172,41 +215,17 @@ async def get_candles(
     # 1. First priority: Check live in-memory warm candles from running bot/providers (< 2ms)
     from server.providers.base import ProviderRegistry
     if is_sp:
-        csv_path = "data/sp500_candles_1m.csv"
+        csv_path = os.path.join(DATA_DIR, "sp500_candles_1m.csv")
     elif is_xau:
         if interval == "5m":
-            csv_path = "data/xauusd_candles_5m.csv"
-            need_resample = not os.path.exists(csv_path)
-            if not need_resample and os.path.exists("data/xauusd_candles_1m.csv"):
-                try:
-                    need_resample = os.path.getmtime("data/xauusd_candles_1m.csv") > os.path.getmtime(csv_path)
-                except Exception:
-                    pass
-            if need_resample and os.path.exists("data/xauusd_candles_1m.csv"):
-                import pandas as pd
-                df_1m = pd.read_csv("data/xauusd_candles_1m.csv")
-                df_1m['dt'] = pd.to_datetime(df_1m['timestamp'], unit='s', utc=True)
-                df_1m = df_1m.set_index('dt').sort_index()
-                resampled = df_1m.resample('5min', label='left', closed='left').agg({
-                    'timestamp': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
-                }).dropna().reset_index(drop=True)
-                resampled['timestamp'] = resampled['timestamp'].astype(int)
-                if os.path.exists(csv_path):
-                    try:
-                        df_old = pd.read_csv(csv_path)
-                        resampled = pd.concat([df_old, resampled], ignore_index=True)
-                        resampled.drop_duplicates(subset=["timestamp"], keep="last", inplace=True)
-                        resampled.sort_values(by="timestamp", inplace=True)
-                    except Exception:
-                        pass
-                resampled.to_csv(csv_path, index=False)
+            csv_path = os.path.join(DATA_DIR, "xauusd_candles_5m.csv")
         else:
-            csv_path = "data/xauusd_candles_1m.csv"
+            csv_path = os.path.join(DATA_DIR, "xauusd_candles_1m.csv")
     else:
-        if interval == "5m" and os.path.exists("data/btc_candles_5m.csv"):
-            csv_path = "data/btc_candles_5m.csv"
+        if interval == "5m" and os.path.exists(os.path.join(DATA_DIR, "btc_candles_5m.csv")):
+            csv_path = os.path.join(DATA_DIR, "btc_candles_5m.csv")
         else:
-            csv_path = "data/candles_15m.csv"
+            csv_path = os.path.join(DATA_DIR, "candles_15m.csv")
 
     try:
         provider = ProviderRegistry.get_provider(symbol, interval)
@@ -220,7 +239,8 @@ async def get_candles(
             now_ts = int(time.time())
             last_ts = int(c_list[-1].get("time") or c_list[-1].get("timestamp") or 0)
             if (now_ts - last_ts) <= 300:
-                data = c_list[-count:] if (count and count < len(c_list)) else c_list
+                raw_data = c_list[-count:] if (count and count < len(c_list)) else c_list
+                data = _sanitize_candles(raw_data)
                 prims = _extract_primitives_for_response(strategy, data)
                 return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
 
@@ -245,6 +265,7 @@ async def get_candles(
                     provider._candles = data
 
         if data:
+            data = _sanitize_candles(data)
             prims = _extract_primitives_for_response(strategy, data)
             return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
     except Exception as e:
@@ -272,6 +293,7 @@ async def get_candles(
                 ]
                 data = resample_candles(base_candles, interval) if interval not in ("1m", "15m") else base_candles
                 data = data[-count:] if (count and count < len(data)) else data
+                data = _sanitize_candles(data)
             except Exception as e_csv:
                 raise HTTPException(
                     status_code=503,
@@ -282,6 +304,7 @@ async def get_candles(
                 status_code=503,
                 detail=f"Real market data unavailable for {symbol}. Error: {str(e)}"
             )
+    data = _sanitize_candles(data)
     prims = _extract_primitives_for_response(strategy, data)
     return {"symbol": symbol, "timeframe": interval, "mode": mode, "data": data, "primitives": prims}
 

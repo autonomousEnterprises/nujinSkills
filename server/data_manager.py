@@ -70,7 +70,9 @@ def get_oanda_spot_quote() -> Dict[str, Any]:
                 "bid": bid_p,
                 "ask": ask_p,
                 "change_pct": round(float(row[6] or 0.0), 2),
-                "volume": round(float(row[7] or 100.0), 1),
+                "volume": 25.0,
+                "volume_increment": 15.0,
+                "total_volume_24h": round(float(row[7] or 0.0), 1),
                 "timestamp": int(time.time()),
                 "source": "oanda_spot"
             }

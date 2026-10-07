@@ -159,6 +159,14 @@ class BaseMarketDataProvider(abc.ABC):
         last_bar = self._candles[-1]
         last_bar_t = int(last_bar.get("timestamp") or last_bar.get("time") or 0)
 
+        # Outlier price guard: reject single anomalous tick spike > 2% from previous close
+        prev_close = float(last_bar.get("close") or price)
+        if prev_close > 0 and abs(price - prev_close) / prev_close > 0.02:
+            logger.warning(f"[{self.symbol}] Outlier tick rejected: {price} vs prev close {prev_close}")
+            return self._latest_quote or {}
+
+        safe_vol_inc = min(max(float(volume_increment or 10.0), 1.0), 50.0)
+
         # 1. Bar Rollover Detection
         if bar_time > last_bar_t:
             closed_bar = dict(last_bar)
@@ -171,7 +179,7 @@ class BaseMarketDataProvider(abc.ABC):
             else:
                 new_open = last_bar["close"]
 
-            init_vol = volume_increment if volume_increment is not None else 10.0
+            init_vol = safe_vol_inc
             new_bar = {
                 "time": bar_time,
                 "timestamp": bar_time,
@@ -190,8 +198,7 @@ class BaseMarketDataProvider(abc.ABC):
             last_bar["close"] = price
             last_bar["high"] = max(float(last_bar["high"]), price)
             last_bar["low"] = min(float(last_bar["low"]), price)
-            if volume_increment is not None:
-                last_bar["volume"] = round(float(last_bar.get("volume", 0.0)) + volume_increment, 2)
+            last_bar["volume"] = round(float(last_bar.get("volume", 0.0)) + safe_vol_inc, 2)
 
         spread = abs(price * 0.0001)
         quote = {
