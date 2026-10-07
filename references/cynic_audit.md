@@ -113,3 +113,12 @@ When evaluating a strategy for portfolio deployment, test cross-strategy correla
 $$\rho_{i,j} = \frac{\text{Cov}(R_i, R_j)}{\sigma_i \sigma_j} < 0.50$$
 
 Any strategy exhibiting pairwise return correlation $\rho \ge 0.50$ with an existing active strategy is rejected or assigned reduced capital allocation to prevent risk crowding.
+
+---
+
+### 6. Equity Curve Linearity Standard ($R^2 \ge 0.85$, K-Ratio $\ge 1.5$)
+Verifies that cumulative profits compound linearly over time without erratic jumps or stagnant recovery periods:
+1. Regress cumulative trade return curve against sequential trade steps $t = 1, \dots, N$.
+2. Compute $R^2$ goodness-of-fit and K-Ratio consistency:
+   $$R^2 \ge 0.85 \quad (\text{Target } \ge 0.90), \quad \text{K-Ratio} \ge 1.5$$
+3. Strategies with high total profit but low linearity ($R^2 < 0.70$, indicating profits driven by a few isolated windfalls) are rejected to preserve steady, reliable execution.

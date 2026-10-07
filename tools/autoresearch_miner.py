@@ -475,6 +475,8 @@ def execute_screener_eval(rules: Dict[str, Any], features_path: str) -> Dict[str
         "max_drawdown": screener_res.get("max_drawdown", 0.0),
         "profit_factor": screener_res.get("profit_factor", 0.0),
         "expectancy_bps": screener_res.get("expectancy_bps", 0.0),
+        "r_squared": screener_res.get("equity_r_squared", 0.0),
+        "k_ratio": screener_res.get("k_ratio", 0.0),
         "dsr": dsr_val,
         "param_stability": param_status
     }
@@ -537,12 +539,13 @@ def action_step(features_path: str = "data/features.csv", rules_override: str = 
         "sample_trades_gte_60": 1 if (metrics["trades"] >= 60 and metrics["win_rate"] >= 0.50) else 0,
         "fee_drag_protected": 1 if metrics["expectancy_bps"] >= 14.0 else 0,
         "dsr_gte_0_95": 1 if metrics["dsr"] >= 0.95 else 0,
-        "param_plateau": 1 if metrics["param_stability"] == "PASS" else 0
+        "param_plateau": 1 if metrics["param_stability"] == "PASS" else 0,
+        "equity_linearity_gte_0_85": 1 if metrics.get("r_squared", 0.0) >= 0.85 else 0
     }
 
     score = sum(criteria.values())
     validation_score = score  # Evaluated on full multi-regime features
-    max_score = state.get("max_score", 6)
+    max_score = state.get("max_score", 7)
     failures = [crit for crit, val in criteria.items() if val == 0]
 
     best_v_score = state.get("best_validation_score", -1)

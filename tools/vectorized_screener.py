@@ -176,6 +176,26 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
         return
 
     fee_threshold_bps = 2.0 * (fee_bps + slippage_bps)
+    
+    # Compute Equity Curve Linearity ($R^2$ and K-Ratio)
+    cum_eq = np.cumsum(trade_returns)
+    n_tr = len(cum_eq)
+    if n_tr >= 15:
+        x_tr = np.arange(n_tr)
+        x_m, y_m = float(np.mean(x_tr)), float(np.mean(cum_eq))
+        ss_xy = float(np.sum((x_tr - x_m) * (cum_eq - y_m)))
+        ss_xx = float(np.sum((x_tr - x_m) ** 2))
+        ss_yy = float(np.sum((cum_eq - y_m) ** 2))
+        slope = ss_xy / ss_xx if ss_xx > 0 else 0.0
+        r_val = ss_xy / np.sqrt(ss_xx * ss_yy) if (ss_xx * ss_yy) > 0 else 0.0
+        r_squared = float(r_val ** 2) if not np.isnan(r_val) else 0.0
+        residuals = cum_eq - (y_m + slope * (x_tr - x_m))
+        std_err = np.sqrt(np.sum(residuals ** 2) / max(1, n_tr - 2)) / np.sqrt(ss_xx) if ss_xx > 0 else 1.0
+        k_ratio = float((slope / max(std_err, 1e-6)) * (np.sqrt(n_tr) / n_tr)) if (std_err > 0 and n_tr > 0) else 0.0
+    else:
+        r_squared = 0.0
+        k_ratio = 0.0
+
     reasons = []
     if sharpe < 1.3:
         reasons.append(f"Sharpe {sharpe:.2f} < 1.3")
@@ -185,6 +205,8 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
         reasons.append(f"Profit Factor {profit_factor:.2f} < 1.4")
     if expectancy_bps <= fee_threshold_bps:
         reasons.append(f"Expectancy {expectancy_bps:.1f}bps <= 2x Fees ({fee_threshold_bps:.1f}bps)")
+    if r_squared < 0.85:
+        reasons.append(f"Linearity R^2 {r_squared:.2f} < 0.85 (erratic curve)")
         
     status = "PASS" if len(reasons) == 0 else "REJECT"
     
@@ -197,6 +219,8 @@ def run_screener(data_path: str, rules_json: str, fee_bps: float, slippage_bps: 
         "profit_factor": round(profit_factor, 4),
         "max_drawdown": round(max_dd, 4),
         "expectancy_bps": round(expectancy_bps, 2),
+        "equity_r_squared": round(r_squared, 4),
+        "k_ratio": round(k_ratio, 2),
         "fee_bps": fee_bps,
         "slippage_bps": slippage_bps,
         "engine": "vectorbt"

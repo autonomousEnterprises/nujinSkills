@@ -42,6 +42,7 @@ def audit(strategy: str, save_state: bool, output_path: str):
     print(f"    [Gate 3] Monte Carlo MDD99:   {gates.get('gate_3_monte_carlo', {}).get('status')} ({summary.get('mdd_99', 0) * 100:.2f}%)")
     print(f"    [Gate 4] OOS Walk-Forward:    {gates.get('gate_4_oos_walkforward', {}).get('status')} (Retention: {gates.get('gate_4_oos_walkforward', {}).get('retention_pct')}%)")
     print(f"    [Gate 5] Regime Survival:     {gates.get('gate_5_regime_survival', {}).get('status')} (Score: {gates.get('gate_5_regime_survival', {}).get('score')}/100)")
+    print(f"    [Gate 6] Linearity R²:        {gates.get('gate_5_equity_linearity', {}).get('status', 'N/A')} (R²: {gates.get('gate_5_equity_linearity', {}).get('r_squared', 0):.4f} | K-Ratio: {gates.get('gate_5_equity_linearity', {}).get('k_ratio', 0):.2f})")
     print("-" * 70)
     print("  MARKET REGIME SURVIVAL:")
     for reg, data in regimes.items():

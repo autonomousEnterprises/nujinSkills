@@ -102,6 +102,32 @@ def run_parameter_stability(param_grid_json: str, observed_sr: float) -> dict:
         "status": "PASS" if plateau_status == "STABLE_PLATEAU" else "FAIL"
     }
 
+def compute_equity_linearity(returns: np.ndarray) -> dict:
+    clean_r = returns[~np.isnan(returns)]
+    if len(clean_r) < 15:
+        return {"r_squared": 0.0, "k_ratio": 0.0, "status": "FAIL", "reason": "Insufficient return samples (< 15)"}
+    cum_eq = np.cumsum(clean_r)
+    n = len(cum_eq)
+    x = np.arange(n)
+    x_mean = np.mean(x)
+    y_mean = np.mean(cum_eq)
+    ss_xy = np.sum((x - x_mean) * (cum_eq - y_mean))
+    ss_xx = np.sum((x - x_mean) ** 2)
+    ss_yy = np.sum((cum_eq - y_mean) ** 2)
+    slope = ss_xy / ss_xx if ss_xx > 0 else 0.0
+    r_val = ss_xy / np.sqrt(ss_xx * ss_yy) if (ss_xx * ss_yy) > 0 else 0.0
+    r_squared = float(r_val ** 2) if not np.isnan(r_val) else 0.0
+    residuals = cum_eq - (y_mean + slope * (x - x_mean))
+    std_err = np.sqrt(np.sum(residuals ** 2) / max(1, n - 2)) / np.sqrt(ss_xx) if ss_xx > 0 else 1.0
+    k_ratio = float((slope / max(std_err, 1e-6)) * (np.sqrt(n) / n)) if (std_err > 0 and n > 0) else 0.0
+    passed = (slope > 0) and (r_squared >= 0.85)
+    return {
+        "r_squared": round(r_squared, 4),
+        "k_ratio": round(k_ratio, 2),
+        "slope": round(float(slope), 6),
+        "status": "PASS" if passed else "FAIL"
+    }
+
 def audit_candidate(returns_path: str, trials: int, param_grid: str, oos_data: str, strategy: str = "", strict: bool = False):
     returns = np.array([])
     if strategy:
@@ -155,11 +181,15 @@ def audit_candidate(returns_path: str, trials: int, param_grid: str, oos_data: s
     oos_sr = round(is_sr * 0.78, 2)
     oos_status = "PASS" if oos_sr >= 0.65 * is_sr else "FAIL"
     
+    # Gate 5: Equity Curve Linearity ($R^2 \ge 0.85$, K-Ratio)
+    lin_res = compute_equity_linearity(returns)
+
     overall_pass = (
         dsr_res["status"] == "PASS" and 
         param_res["status"] == "PASS" and 
         mc_res["status"] == "PASS" and 
-        oos_status == "PASS"
+        oos_status == "PASS" and
+        lin_res["status"] == "PASS"
     )
     
     result = {
@@ -172,7 +202,8 @@ def audit_candidate(returns_path: str, trials: int, param_grid: str, oos_data: s
             "sharpe_oos": oos_sr,
             "retention_pct": round((oos_sr / (is_sr + 1e-6)) * 100, 1),
             "status": oos_status
-        }
+        },
+        "gate_5_equity_linearity": lin_res
     }
     
     print(json.dumps(result, indent=2))

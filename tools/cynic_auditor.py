@@ -165,6 +165,32 @@ def verify_monte_carlo(returns: np.ndarray, num_simulations: int = 1000) -> dict
         "status": "PASS" if passed else "FAIL"
     }
 
+def compute_equity_linearity(returns: np.ndarray) -> dict:
+    clean_r = returns[~np.isnan(returns)]
+    if len(clean_r) < 15:
+        return {"r_squared": 0.0, "k_ratio": 0.0, "status": "FAIL", "reason": "Insufficient samples (< 15)"}
+    cum_eq = np.cumsum(clean_r)
+    n = len(cum_eq)
+    x = np.arange(n)
+    x_mean = np.mean(x)
+    y_mean = np.mean(cum_eq)
+    ss_xy = np.sum((x - x_mean) * (cum_eq - y_mean))
+    ss_xx = np.sum((x - x_mean) ** 2)
+    ss_yy = np.sum((cum_eq - y_mean) ** 2)
+    slope = ss_xy / ss_xx if ss_xx > 0 else 0.0
+    r_val = ss_xy / np.sqrt(ss_xx * ss_yy) if (ss_xx * ss_yy) > 0 else 0.0
+    r_sq = float(r_val ** 2) if not np.isnan(r_val) else 0.0
+    residuals = cum_eq - (y_mean + slope * (x - x_mean))
+    std_err = np.sqrt(np.sum(residuals ** 2) / max(1, n - 2)) / np.sqrt(ss_xx) if ss_xx > 0 else 1.0
+    k_ratio = float((slope / max(std_err, 1e-6)) * (np.sqrt(n) / n)) if (std_err > 0 and n > 0) else 0.0
+    passed = (slope > 0) and (r_sq >= 0.85)
+    return {
+        "r_squared": round(r_sq, 4),
+        "k_ratio": round(k_ratio, 2),
+        "slope": round(float(slope), 6),
+        "status": "PASS" if passed else "FAIL"
+    }
+
 def main():
     parser = argparse.ArgumentParser(description="Generic 5-Gate Adversarial Cynic Auditor")
     parser.add_argument("--id", "--experiment", type=str, default="", help="Experiment ID to audit in .nujin/experiments/<id>/")
@@ -267,13 +293,15 @@ def main():
     g3_regime = verify_regime_survival(returns)
     g4_noise = verify_noise_jitter(returns)
     g5_mc = verify_monte_carlo(returns)
+    g6_linear = compute_equity_linearity(returns)
 
     overall_pass = (
         g1_friction["status"] == "PASS" and
         g2_dsr["status"] == "PASS" and
         g3_regime["status"] == "PASS" and
         g4_noise["status"] == "PASS" and
-        g5_mc["status"] == "PASS"
+        g5_mc["status"] == "PASS" and
+        g6_linear["status"] == "PASS"
     )
 
     report = {
@@ -283,14 +311,15 @@ def main():
         "gate_2_deflated_sharpe": g2_dsr,
         "gate_3_regime_survival": g3_regime,
         "gate_4_noise_jitter": g4_noise,
-        "gate_5_monte_carlo_mdd": g5_mc
+        "gate_5_monte_carlo_mdd": g5_mc,
+        "gate_6_equity_linearity": g6_linear
     }
 
     if args.json:
         print(json.dumps(report, indent=2))
     else:
         print("\n" + "=" * 65)
-        print("🛡️  5-GATE ADVERSARIAL CYNIC AUDIT REPORT")
+        print("🛡️  6-GATE ADVERSARIAL CYNIC AUDIT REPORT")
         print("=" * 65)
         print(f"  • Sample Trades Evaluated: {len(returns)}")
         print(f"  • Trial Penalty Count:     {args.trials} hypotheses")
@@ -300,6 +329,7 @@ def main():
         print(f"  Gate 3 [Regimes]:         {g3_regime['status']} (Positive Slices: {g3_regime.get('positive_slices', 'N/A')})")
         print(f"  Gate 4 [Noise Jitter]:    {g4_noise['status']} (Sharpe Retention: {g4_noise.get('retention_pct', 0):.1f}%)")
         print(f"  Gate 5 [Monte Carlo MDD]: {g5_mc['status']} (MDD99: {g5_mc.get('mdd_99', 0)*100:.2f}% | Tail Ratio: {g5_mc.get('tail_ratio', 0):.2f})")
+        print(f"  Gate 6 [Linearity R²]:    {g6_linear['status']} (R²: {g6_linear.get('r_squared', 0):.4f} | K-Ratio: {g6_linear.get('k_ratio', 0):.2f})")
         print("=" * 65)
         print(f"FINAL AUDIT VERDICT: {'✅ APPROVED FOR DEPLOYMENT' if overall_pass else '❌ REJECTED BY CYNIC AUDIT'}")
         print("=" * 65 + "\n")
