@@ -562,6 +562,35 @@ class NativeStrategyRunner:
         elif max_hold is not None and elapsed_sec >= max_hold:
             exit_reason = "TIME_CUTOFF"
 
+        # 4. Broker Server-Side Execution Reconciliation:
+        # If the broker server (e.g. TradeLocker) has executed the Stop Loss or Take Profit server-side:
+        elif elapsed_sec >= 30:
+            last_reconcile = getattr(self, "_last_broker_reconcile_ts", 0)
+            if (now_ts - last_reconcile) >= 8:
+                self._last_broker_reconcile_ts = now_ts
+                try:
+                    broker = broker_registry.get_broker()
+                    if broker and getattr(broker, "is_connected", False) and hasattr(broker, "get_open_positions"):
+                        broker_positions = broker.get_open_positions(symbol=self.symbol)
+                        if broker_positions is not None:
+                            matches = [
+                                bp for bp in broker_positions
+                                if bp.get("symbol") == self.symbol or ("XAU" in str(bp.get("symbol", "")).upper() and "XAU" in self.symbol.upper())
+                            ]
+                            if len(matches) == 0:
+                                empty_count = int(pos.get("_broker_empty_confirmations", 0)) + 1
+                                pos["_broker_empty_confirmations"] = empty_count
+                                if empty_count >= 2:
+                                    logger.info(f"[NativeStrategyRunner] 🛡️ Confirmed: Broker server closed position #{pos['id']} ({pos['strategy']}). Reconciling immediately!")
+                                    if is_long:
+                                        exit_reason = "STOP_LOSS" if eval_exit_price <= entry_price else "TAKE_PROFIT"
+                                    else:
+                                        exit_reason = "STOP_LOSS" if eval_exit_price >= entry_price else "TAKE_PROFIT"
+                            else:
+                                pos["_broker_empty_confirmations"] = 0
+                except Exception as e_rec:
+                    logger.debug(f"[NativeStrategyRunner] Broker reconciliation check note: {e_rec}")
+
         if exit_reason:
             logger.info(f"[NativeStrategyRunner] 🏁 Closing position #{pos['id']} ({pos['strategy']}): {exit_reason} @ {current_price}")
             # Route exit through Active Execution Broker
@@ -604,7 +633,7 @@ class NativeStrategyRunner:
             if broker and hasattr(broker, "modify_position"):
                 broker_order_id = pos.get("broker_order", {}).get("order_id") or str(pos.get("id"))
                 loop = asyncio.get_running_loop()
-                await loop.run_in_executor(
+                res = await loop.run_in_executor(
                     None,
                     lambda: broker.modify_position(
                         position_id=broker_order_id,
@@ -612,6 +641,35 @@ class NativeStrategyRunner:
                         symbol=self.symbol
                     )
                 )
+                # If broker reports position was NOT_FOUND and position has been open > 25s:
+                if res and res.get("status") in ("NOT_FOUND", "PARTIAL") and res.get("modified_count", 0) == 0:
+                    details = res.get("details", [])
+                    if details and all(d.get("status") == "NOT_FOUND" for d in details):
+                        now_ts = int(time.time())
+                        if (now_ts - int(pos.get("time") or now_ts)) >= 25:
+                            logger.info(f"[NativeStrategyRunner] 🛡️ Broker reported position #{pos['id']} NOT_FOUND during SL ratchet. Position was executed/closed on broker server.")
+                            side = pos.get("action", "BUY").upper()
+                            is_long = side in ("BUY", "LONG")
+                            entry_p = float(pos.get("price") or pos.get("entry_price") or 0.0)
+                            r_exit = "STOP_LOSS" if (is_long and new_sl <= entry_p) or (not is_long and new_sl >= entry_p) else "TRAIL_STOP"
+                            closed = signal_store.close_position(
+                                signal_id=pos["id"],
+                                strategy=self.strategy_name,
+                                exit_price=new_sl,
+                                exit_reason=r_exit
+                            )
+                            if closed:
+                                telegram_gateway.format_and_send_trade_close(closed)
+                                if self.broadcast_callback:
+                                    await self.broadcast_callback({"event_type": "SIGNAL_CLOSED", "payload": closed})
+                                    all_strats = strategy_registry.get_all(sync=False)
+                                    portfolio = strategy_registry.get_portfolio_summary()
+                                    dist = strategy_registry.get_distribution_analytics()
+                                    await self.broadcast_callback({
+                                        "event_type": "STRATEGIES_UPDATED",
+                                        "payload": {"strategies": all_strats, "portfolio_summary": portfolio, "distribution_analytics": dist}
+                                    })
+                            return
             signal_store.save()
             logger.info(f"[NativeStrategyRunner] 🛡️ Trailing Stop ratcheted to {new_sl} for #{pos['id']} ({self.symbol}). Broker synced.")
         except Exception as e_mod:
