@@ -412,109 +412,115 @@ class NativeStrategyRunner:
 
     async def _on_market_tick(self, quote: Dict[str, Any]) -> None:
         """Called on every real-time price tick. Checks open position exits."""
-        if not self.is_running:
-            return
+        try:
+            if not self.is_running:
+                return
 
-        # Lifecycle Guard: If strategy is deactivated, only monitor exit of active position, then stop
-        strat_record = strategy_registry.get(self.strategy_name)
-        if not strat_record or strat_record.get("status") != "ACTIVE_LIVE":
+            # Lifecycle Guard: If strategy is deactivated, only monitor exit of active position, then stop
+            strat_record = strategy_registry.get(self.strategy_name)
+            if not strat_record or strat_record.get("status") != "ACTIVE_LIVE":
+                active_pos = signal_store.get_active(self.strategy_name)
+                if active_pos:
+                    current_price = float(quote.get("price") or 0.0)
+                    if current_price > 0:
+                        await self._evaluate_position_exit(active_pos, current_price, quote=quote)
+                else:
+                    await self.stop()
+                return
+
+            current_price = float(quote.get("price") or 0.0)
+            if current_price <= 0:
+                return
+
+            # 1. Check open position exit triggers (spread-aware with live Bid/Ask)
             active_pos = signal_store.get_active(self.strategy_name)
             if active_pos:
-                current_price = float(quote.get("price") or 0.0)
-                if current_price > 0:
-                    await self._evaluate_position_exit(active_pos, current_price, quote=quote)
-            else:
-                await self.stop()
-            return
-
-        current_price = float(quote.get("price") or 0.0)
-        if current_price <= 0:
-            return
-
-        # 1. Check open position exit triggers (spread-aware with live Bid/Ask)
-        active_pos = signal_store.get_active(self.strategy_name)
-        if active_pos:
-            await self._evaluate_position_exit(active_pos, current_price, quote=quote)
+                await self._evaluate_position_exit(active_pos, current_price, quote=quote)
+        except Exception as e_tick:
+            logger.error(f"[NativeStrategyRunner] Error in _on_market_tick for {self.strategy_name}: {e_tick}", exc_info=True)
 
     async def _on_market_bar(self, bar: Dict[str, Any]) -> None:
         """Called when a candle bar finalizes. Checks for new strategy entry signals."""
-        if not self.is_running:
-            return
-
-        # Strict Lifecycle Guard: If strategy is no longer ACTIVE_LIVE, immediately halt runner
-        strat_record = strategy_registry.get(self.strategy_name)
-        if not strat_record or strat_record.get("status") != "ACTIVE_LIVE":
-            logger.info(f"[NativeStrategyRunner] Strategy '{self.strategy_name}' is not ACTIVE_LIVE (status: {strat_record.get('status') if strat_record else 'None'}). Halting runner.")
-            await self.stop()
-            return
-
-        bar_time = int(bar.get("time") or bar.get("timestamp") or 0)
-        if bar_time <= self._last_evaluated_bar_time:
-            return
-        self._last_evaluated_bar_time = bar_time
-
-        # Check if there is already an active position for this strategy
-        active_pos = signal_store.get_active(self.strategy_name)
-        if active_pos:
-            # Already in position — enforce 1 concurrent trade per strategy
-            return
-
-        # Prop Firm Risk Guard: Daily Drawdown Circuit Breaker
-        safe, reason, dd_details = self.check_drawdown_safety()
-        if not safe:
-            today_key = dd_details.get("day_key", "today")
-            if not getattr(self, f"_halted_{today_key}", False):
-                setattr(self, f"_halted_{today_key}", True)
-                logger.warning(
-                    f"[NativeStrategyRunner] 🛡️ CIRCUIT BREAKER ACTIVE: Halting new entries for '{self.strategy_name}' on {self.symbol}. "
-                    f"Reason: {reason} | Today's loss: -${dd_details['today_loss_usd']:.2f} / ${dd_details['max_daily_loss_usd']:.2f} limit. "
-                    f"Remaining budget: ${dd_details['remaining_budget_usd']:.2f}."
-                )
-                self._send_drawdown_alert(reason, dd_details)
-            return
-
-        # For XAU/USD, yield briefly so background authentic volume sync finishes
-        if "XAU" in self.symbol or "GOLD" in self.symbol:
-            await asyncio.sleep(1.2)
-
-        # Evaluate strategy entry strictly on completed bars up to bar_time
-        candles = self.provider.get_candles(count=1000)
-        completed_candles = [
-            c for c in candles 
-            if int(c.get("time", c.get("timestamp", 0))) <= bar_time
-        ]
-        if not completed_candles or len(completed_candles) < 25:
-            completed_candles = candles
-
-        sig = StrategyEvaluator.evaluate(self.strategy_name, self.symbol, completed_candles)
-        if sig:
-            # Enforce Signal Cannibalization Guard: Prevent opposing wash trades across active strategies on same asset
-            from server.bot_runner import check_signal_cannibalization
-            conflict = check_signal_cannibalization(sig)
-            if conflict:
-                logger.warning(
-                    f"[SignalConflictGuard] ⚠️ CANNIBALIZATION BLOCKED: Strategy '{self.strategy_name}' signaled {sig['action']} on {self.symbol}, "
-                    f"but strategy '{conflict.get('strategy')}' already holds opposing position #{conflict.get('id')} ({conflict.get('action')}). "
-                    f"Suppressing order."
-                )
-                sig["status"] = "CANCELLED_CONFLICT"
-                sig["exit_reason"] = f"CONFLICT_WITH_{conflict.get('strategy')}"
-                sig["annotation"] = f"Cannibalization Suppressed ({conflict.get('strategy')})"
-                signal_store.add(sig)
-                if self.broadcast_callback:
-                    await self.broadcast_callback({
-                        "event_type": "SIGNAL_CONFLICT_SUPPRESSED",
-                        "payload": {
-                            "incoming_strategy": self.strategy_name,
-                            "conflicting_strategy": conflict.get("strategy"),
-                            "symbol": self.symbol,
-                            "action": sig["action"],
-                            "conflicting_action": conflict.get("action")
-                        }
-                    })
+        try:
+            if not self.is_running:
                 return
 
-            await self._trigger_new_signal(sig)
+            # Strict Lifecycle Guard: If strategy is no longer ACTIVE_LIVE, immediately halt runner
+            strat_record = strategy_registry.get(self.strategy_name)
+            if not strat_record or strat_record.get("status") != "ACTIVE_LIVE":
+                logger.info(f"[NativeStrategyRunner] Strategy '{self.strategy_name}' is not ACTIVE_LIVE (status: {strat_record.get('status') if strat_record else 'None'}). Halting runner.")
+                await self.stop()
+                return
+
+            bar_time = int(bar.get("time") or bar.get("timestamp") or 0)
+            if bar_time <= self._last_evaluated_bar_time:
+                return
+            self._last_evaluated_bar_time = bar_time
+
+            # Check if there is already an active position for this strategy
+            active_pos = signal_store.get_active(self.strategy_name)
+            if active_pos:
+                # Already in position — enforce 1 concurrent trade per strategy
+                return
+
+            # Prop Firm Risk Guard: Daily Drawdown Circuit Breaker
+            safe, reason, dd_details = self.check_drawdown_safety()
+            if not safe:
+                today_key = dd_details.get("day_key", "today")
+                if not getattr(self, f"_halted_{today_key}", False):
+                    setattr(self, f"_halted_{today_key}", True)
+                    logger.warning(
+                        f"[NativeStrategyRunner] 🛡️ CIRCUIT BREAKER ACTIVE: Halting new entries for '{self.strategy_name}' on {self.symbol}. "
+                        f"Reason: {reason} | Today's loss: -${dd_details['today_loss_usd']:.2f} / ${dd_details['max_daily_loss_usd']:.2f} limit. "
+                        f"Remaining budget: ${dd_details['remaining_budget_usd']:.2f}."
+                    )
+                    self._send_drawdown_alert(reason, dd_details)
+                return
+
+            # For XAU/USD, yield briefly so background authentic volume sync finishes
+            if "XAU" in self.symbol or "GOLD" in self.symbol:
+                await asyncio.sleep(1.2)
+
+            # Evaluate strategy entry strictly on completed bars up to bar_time
+            candles = self.provider.get_candles(count=1000)
+            completed_candles = [
+                c for c in candles 
+                if int(c.get("time", c.get("timestamp", 0))) <= bar_time
+            ]
+            if not completed_candles or len(completed_candles) < 25:
+                completed_candles = candles
+
+            sig = StrategyEvaluator.evaluate(self.strategy_name, self.symbol, completed_candles)
+            if sig:
+                # Enforce Signal Cannibalization Guard: Prevent opposing wash trades across active strategies on same asset
+                from server.bot_runner import check_signal_cannibalization
+                conflict = check_signal_cannibalization(sig)
+                if conflict:
+                    logger.warning(
+                        f"[SignalConflictGuard] ⚠️ CANNIBALIZATION BLOCKED: Strategy '{self.strategy_name}' signaled {sig['action']} on {self.symbol}, "
+                        f"but strategy '{conflict.get('strategy')}' already holds opposing position #{conflict.get('id')} ({conflict.get('action')}). "
+                        f"Suppressing order."
+                    )
+                    sig["status"] = "CANCELLED_CONFLICT"
+                    sig["exit_reason"] = f"CONFLICT_WITH_{conflict.get('strategy')}"
+                    sig["annotation"] = f"Cannibalization Suppressed ({conflict.get('strategy')})"
+                    signal_store.add(sig)
+                    if self.broadcast_callback:
+                        await self.broadcast_callback({
+                            "event_type": "SIGNAL_CONFLICT_SUPPRESSED",
+                            "payload": {
+                                "incoming_strategy": self.strategy_name,
+                                "conflicting_strategy": conflict.get("strategy"),
+                                "symbol": self.symbol,
+                                "action": sig["action"],
+                                "conflicting_action": conflict.get("action")
+                            }
+                        })
+                    return
+
+                await self._trigger_new_signal(sig)
+        except Exception as e_bar:
+            logger.error(f"[NativeStrategyRunner] Error in _on_market_bar for {self.strategy_name}: {e_bar}", exc_info=True)
 
     async def _trigger_new_signal(self, sig: Dict[str, Any]) -> None:
         """Saves signal to store, alerts Telegram, plays sound, and broadcasts to UI."""
@@ -537,17 +543,37 @@ class NativeStrategyRunner:
         sig["entry_time_ts"] = now_ts
         try:
             broker = broker_registry.get_broker()
+            is_paper_broker = getattr(broker, "broker_id", "paper") == "paper"
             order_res = broker.execute_order(sig)
             sig["broker_order"] = order_res
+            
             if order_res.get("status") in ("REJECTED", "FAILED", "ERROR"):
-                logger.warning(
-                    f"[NativeStrategyRunner] Broker rejected/failed order for {self.strategy_name}: {order_res.get('error')}. "
-                    "Falling back to paper simulated execution so signals appear uninterrupted."
-                )
-                sig["status"] = "ACTIVE_IN_POSITION"
-                sig["execution_mode"] = "PAPER_SIMULATED"
-                sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
+                err_msg = order_res.get("error") or "Order rejected by broker"
+                if not is_paper_broker:
+                    logger.error(f"[NativeStrategyRunner] ❌ Live broker rejected order for {self.strategy_name}: {err_msg}. Order halted.")
+                    sig["status"] = "FAILED_BROKER_ORDER"
+                    sig["exit_reason"] = f"BROKER_REJECTED: {err_msg}"
+                    sig["annotation"] = f"Rejected: {err_msg}"
+                    sig["execution_mode"] = "LIVE_BROKER"
+                    signal_store.add(sig)
+                    
+                    reject_alert = (
+                        f"❌ <b>[BROKER ORDER REJECTED]</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
+                        f"📊 <b>Strategy:</b> <code>{self.strategy_name}</code>\n"
+                        f"⚠️ <b>Action:</b> {sig.get('action')} @ {sig.get('price')}\n"
+                        f"🛑 <b>Reason:</b> <code>{err_msg}</code>\n\n"
+                        f"<i>No live position was opened. Internal state remains clean and unblocked.</i>"
+                    )
+                    telegram_gateway.send_message(reject_alert, parse_mode="HTML")
+                    return
+                else:
+                    sig["status"] = "ACTIVE_IN_POSITION"
+                    sig["execution_mode"] = "PAPER_SIMULATED"
+                    sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
             elif order_res.get("status") == "SIMULATED_PREVIEW":
+                if not is_paper_broker:
+                    logger.warning(f"[NativeStrategyRunner] Broker returned preview for {self.strategy_name} while on live broker.")
                 sig["status"] = "ACTIVE_IN_POSITION"
                 sig["execution_mode"] = "PAPER_SIMULATED"
                 sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
@@ -556,13 +582,30 @@ class NativeStrategyRunner:
                 sig["execution_mode"] = "LIVE_BROKER"
         except Exception as e_broker:
             logger.error(
-                f"[NativeStrategyRunner] Error executing order with broker: {e_broker}. "
-                "Falling back to paper execution so signal appears."
+                f"[NativeStrategyRunner] Error executing order with broker: {e_broker}",
+                exc_info=True
             )
-            sig["broker_order"] = {"status": "SIMULATED_PREVIEW", "error": str(e_broker)}
-            sig["status"] = "ACTIVE_IN_POSITION"
-            sig["execution_mode"] = "PAPER_SIMULATED"
-            sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
+            is_paper = False
+            try:
+                is_paper = getattr(broker_registry.get_broker(), "broker_id", "paper") == "paper"
+            except Exception:
+                pass
+            if not is_paper:
+                sig["status"] = "FAILED_BROKER_ORDER"
+                sig["exit_reason"] = f"EXECUTION_EXCEPTION: {e_broker}"
+                sig["annotation"] = f"Failed: {e_broker}"
+                sig["execution_mode"] = "LIVE_BROKER"
+                signal_store.add(sig)
+                telegram_gateway.send_message(
+                    f"❌ <b>[BROKER EXECUTION ERROR]</b>\n\nStrategy: <code>{self.strategy_name}</code>\nError: <code>{e_broker}</code>\nPosition was NOT opened.",
+                    parse_mode="HTML"
+                )
+                return
+            else:
+                sig["broker_order"] = {"status": "SIMULATED_PREVIEW", "error": str(e_broker)}
+                sig["status"] = "ACTIVE_IN_POSITION"
+                sig["execution_mode"] = "PAPER_SIMULATED"
+                sig["annotation"] = f"{sig.get('annotation', '')} (Simulated Paper)"
 
         # 2. Add to SignalStore (writes to data/signals.json & state.json)
         updated_signals = signal_store.add(sig)
