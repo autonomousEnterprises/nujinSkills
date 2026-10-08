@@ -1260,6 +1260,10 @@ class StrategyRegistry:
                 s["falsification_gates"] = gates
                 s["trade_markers"] = bt_result.get("trade_markers", [])
                 s["trades_detail"] = bt_result.get("trades_detail", [])
+                s["account_summary"] = bt_result.get("account_summary", {})
+                s["account_growth_models"] = bt_result.get("account_growth_models", {})
+                s["regime_breakdown"] = bt_result.get("regime_breakdown", {})
+                s["return_distribution"] = bt_result.get("return_distribution", [])
                 s["updated_at"] = now_iso
 
                 cron_cfg = s.setdefault("cron_config", {"enabled": False, "interval": "24h", "last_run": "", "drift_history": []})
