@@ -2,12 +2,12 @@
 
 [![System: NujinAI](https://img.shields.io/badge/System-NujinAI-blue.svg)](SKILL.md)
 [![Quant Protocol](https://img.shields.io/badge/Methodology-Universal%20Quant-emerald.svg)](references/quant_protocol.md)
-[![Audit: 5--Gate Cynic](https://img.shields.io/badge/Audit-DSR%20%E2%89%A5%200.95%20%7C%20MC%20MDD99-amber.svg)](references/cynic_audit.md)
+[![Audit: 6--Gate Cynic](https://img.shields.io/badge/Audit-6--Gate%20Cynic%20%7C%20R%C2%B2%20%E2%89%A5%200.85-amber.svg)](references/cynic_audit.md)
 [![Tools Reference](https://img.shields.io/badge/Tools-CLI%20Reference-purple.svg)](references/tools_reference.md)
 [![Bot Operations](https://img.shields.io/badge/Bot-Live%20Supervision-cyan.svg)](references/bot_operations.md)
 [![Telemetry API](https://img.shields.io/badge/Telemetry-JSON%20API-sky.svg)](references/telemetry_api.md)
 
-> **Unlock quantitative trading with full autonomy.** You bring the creative hypothesis and define your targets; your AI agent handles the mathematical modeling, multi-timeframe feature extraction, adversarial statistical falsification (5-Gate Cynic Audit), 24/7 live signaling, and safe bot hot-deployment.
+> **Unlock quantitative trading with full autonomy.** You bring the creative hypothesis and define your targets; your AI agent handles the mathematical modeling, multi-timeframe feature extraction, adversarial statistical falsification (6-Gate Cynic Audit), 24/7 live signaling, and safe bot hot-deployment.
 
 ---
 
@@ -18,9 +18,32 @@
 Instead of getting bogged down in boilerplate code, manual data joining, or curve-fitted indicator traps:
 1. **Universal Hypothesis Modeling:** Formulate strategies for any concept or market (Price Action, Market Structure, Order Flow, Statistical Arbitrage, Volatility Breakouts, Macro/Funding Spreads, or Machine Learning classifiers).
 2. **Institutional Multi-Timeframe (MTF) Confluence:** Seamlessly link Higher-Timeframe (HTF) market regime and context, Mid-Timeframe (MTF) structural zones, and Lower-Timeframe (LTF) precision execution triggers with **strict zero lookahead bias**.
-3. **5-Gate Adversarial Falsification:** Stress-test candidates against real friction, Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$), multi-regime temporal slices, synthetic noise jitter ($\ge 80\%$ Sharpe retention), and 1,000-run Monte Carlo trade order permutations ($\text{MDD}_{99}$).
+3. **6-Gate Adversarial Falsification:** Stress-test candidates against real friction, Deflated Sharpe Ratio ($\text{DSR} \ge 0.95$), multi-regime temporal slices, synthetic noise jitter ($\ge 80\%$ Sharpe retention), 1,000-run Monte Carlo trade order permutations ($\text{MDD}_{99} \le 3.0\%$), and the Equity Linearity Standard ($R^2 \ge 0.85$).
 4. **Unified Single-Folder Data Isolation (`.nujin/`):** All research features, briefings, returns, and states live strictly inside `.nujin/`, namespaced via `--id <experiment_name>` so new strategies never contaminate or overwrite prior research.
 5. **Live Bot Hot-Deployment:** Emits production Python strategies and hot-deploys them into the live running trading engine without dropping active WebSocket connections or restarting server processes.
+
+---
+
+## 💎 Core Strengths & Institutional Edge
+
+1. **Zero Overfitting & No Curve-Fitting Illusions**
+   * **Physical Microstructure Noise Floor:** Stop losses, trailing stops, and targets are mathematically required to clear broker spread and tick noise ($\ge \max(3\times \text{Spread}, 1.5\times \text{ATR})$), eliminating sub-pip backtest fantasies.
+   * **Adversarial Falsification:** Actively attempts to break every strategy candidate before deployment using Deflated Sharpe Ratio (discounting for multiple search trials and non-normal returns), price noise perturbation, and parameter plateau stability.
+
+2. **Smooth, Linear Capital Growth ($R^2 \ge 0.85$, $K$-Ratio $\ge 1.5$)**
+   * Rejects erratic, high-variance strategies driven by lucky outlier windfalls.
+   * Specifically optimizes for a steady, straight-line upward equity curve with strict tail-risk drawdown containment ($\text{MDD}_{99} \le 3.0\%$)—tailored for consistency and passing prop firm evaluations.
+
+3. **Completely Unbiased & Asset-Agnostic**
+   * Operates without restrictive, hardcoded archetype templates.
+   * Generically models any asset class (Forex, Commodities, Indices, Crypto) and any quantitative thesis purely through empirical statistical discovery.
+
+4. **Institutional Multi-Timeframe (MTF) Confluence**
+   * Solves single-timeframe myopia through a rigorous 3-tier hierarchy: **HTF** (Macro Regime & Bias) $\rightarrow$ **MTF** (Structural Zone / Setup) $\rightarrow$ **LTF** (Execution Trigger & Precise Invalidation).
+
+5. **Seamless Full-Stack Pipeline (Hypothesis to Live Execution)**
+   * Eliminates the painful gap between research scripts and live trading code.
+   * Automatically moves from raw anomaly discovery $\rightarrow$ vectorized rule screening $\rightarrow$ adversarial audit $\rightarrow$ clean Python code generation $\rightarrow$ **live broker hot-deployment and dual-screen telemetry**.
 
 ---
 

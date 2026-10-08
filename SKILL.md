@@ -3,8 +3,8 @@ name: nujinskills
 description: >-
   Autonomous quantitative research, strategy engineering & systematic trading engine for NujinAI.
   Translates any trading thesis or market hypothesis into systematic strategies, runs iterative optimization loops,
-  enforces multi-timeframe confluence, audits via the 5-Gate Cynic protocol (Friction, DSR >= 0.95, Monte Carlo MDD,
-  Noise Jitter, Parameter Stability), and hot-deploys to the running bot.
+  enforces multi-timeframe confluence, audits via the 6-Gate Cynic protocol (Friction, DSR >= 0.95, Monte Carlo MDD,
+  Noise Jitter, Parameter Stability, Equity Linearity R^2 >= 0.85), and hot-deploys to the running bot.
 ---
 
 # Skill: NujinSkills — Autonomous Quant Research & Trading Engine
@@ -25,7 +25,7 @@ Your responsibility is to take any trading concept or quantitative hypothesis th
 1. **Model Any Hypothesis:** Translate user ideas or market hypotheses into precise, testable mathematical conditions and multi-timeframe rules.
 2. **Multi-Timeframe Architecture:** Structure strategies with Higher-Timeframe (HTF) context and regime alignment, Mid-Timeframe (MTF) structural confirmation, and Lower-Timeframe (LTF) precision entry and invalidation.
 3. **Asymmetric Risk Management:** Enforce positive mathematical expectancy ($E > 0$) with favorable risk-to-reward ($R:R \ge 1.5$ to $3.0+$), structural stop losses, and dynamic trade management.
-4. **Adversarial Falsification:** Stress-test candidates against real friction, non-normal return distributions (DSR $\ge 0.95$), Monte Carlo path permutations, price noise, and parameter stability.
+4. **Adversarial Falsification:** Stress-test candidates against real friction, non-normal return distributions (DSR $\ge 0.95$), Monte Carlo path permutations, price noise, parameter stability, and equity linearity ($R^2 \ge 0.85$, $K$-Ratio $\ge 1.5$).
 5. **Live Bot Supervision:** Safely register, manage, and hot-deploy production strategies to the running trading bot.
 
 ---
@@ -42,7 +42,7 @@ Your responsibility is to take any trading concept or quantitative hypothesis th
                     │
                     ▼
 [ STAGE 3: Adversarial Cynic Audit & Stress Verification ]
-  Enforce 5 Gates: Real Friction, Deflated Sharpe (DSR >= 0.95), Regimes, Noise Jitter, & MC MDD.
+  Enforce 6 Gates: Real Friction, Deflated Sharpe (DSR >= 0.95), Regimes, Noise Jitter, MC MDD, & Linearity.
                     │
                     ▼
 [ STAGE 4: Code Emission, Portfolio Orthogonality & Live Hot-Deployment ]
@@ -70,7 +70,7 @@ All research data, features, briefings, returns, and state are organized strictl
   `tools/vectorized_screener.py --id my_alpha --rules '{"entry_long": "condition"}'`
 
 ### 3. Adversarial Cynic Audit (Falsification)
-- **5-Gate Adversarial Falsification Audit (DSR + Monte Carlo + Regimes):**
+- **6-Gate Adversarial Falsification Audit (DSR + Monte Carlo + Linearity):**
   `tools/cynic_auditor.py --id my_alpha --trials 50 --strict`
 - **Portfolio Correlation & Regime Orthogonality:**
   `tools/portfolio_cynic.py --data data/candles_15m.csv --threshold 0.50`
