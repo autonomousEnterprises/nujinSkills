@@ -100,17 +100,26 @@ def extract_strategy_primitives(strategy_name: str, candles: List[Dict[str, Any]
     # 1. Line Series Auto-Discovery (EMAs, Bands, Channels, S&R)
     indicator_cols = [c for c in df.columns if c not in standard_cols and pd.api.types.is_numeric_dtype(df[c])]
     
-    # Prioritize price overlays (ignore non-price columns like volume zscore, boolean flags)
+    # Prioritize price overlays (ignore non-price columns like volume, oscillators, boolean flags)
     close_median = df["close"].median() if "close" in df.columns else 1.0
     valid_line_cols = []
 
+    non_price_keywords = [
+        "vol", "volume", "delta", "mom", "sig", "score", "zscore", "z_score",
+        "count", "ratio", "pnl", "return", "range", "wick", "atr", "sl", "tp",
+        "target", "stop", "hour", "session", "regime", "trend", "valid", "active"
+    ]
+
     for col in indicator_cols:
+        col_lower = col.lower()
+        if any(k in col_lower for k in non_price_keywords):
+            continue
         series = df[col].dropna()
         if len(series) == 0:
             continue
-        # Check if values are close to price range (price overlay)
+        # Check if values are close to price range (price overlay strictly within +/- 15%)
         med_val = series.median()
-        if med_val > close_median * 0.1 and med_val < close_median * 10.0:
+        if abs(med_val - close_median) / close_median <= 0.15:
             valid_line_cols.append(col)
 
     # If strategy has chart_indicators manifest, use that

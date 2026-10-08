@@ -1619,7 +1619,20 @@ const applyStrategyIndicators = () => {
 
   // 2. Level 3 Universal Primitives path: If backend provided dynamic indicator lines
   if (backendPrimitives.value && backendPrimitives.value.lines && backendPrimitives.value.lines.length > 0) {
-    const pLines = backendPrimitives.value.lines;
+    const rawPLines = backendPrimitives.value.lines;
+    // Filter out non-price indicators (e.g. volume, oscillators) to strictly protect the candlestick price scale
+    const closeMedian = rawCandles.value.length > 0 ? Number(rawCandles.value[Math.floor(rawCandles.value.length / 2)].close) : 1;
+    const pLines = rawPLines.filter((cfg: any) => {
+      const rawData = backendPrimitives.value.series?.[cfg.id] || [];
+      if (rawData.length === 0) return false;
+      if (cfg.id.toLowerCase().includes('vol') || (cfg.title && cfg.title.toLowerCase().includes('vol'))) return false;
+      const sampleVal = Number(rawData[Math.floor(rawData.length / 2)]?.value);
+      if (closeMedian > 0 && Math.abs(sampleVal - closeMedian) / closeMedian > 0.35) {
+        console.warn(`[ChartCanvas] Skipping non-price indicator from price scale: ${cfg.id} (val=${sampleVal}, closeMedian=${closeMedian})`);
+        return false;
+      }
+      return true;
+    });
     const currentConfigIds = new Set(pLines.map((c: any) => c.id));
     for (const [id, s] of activeIndicatorSeries.entries()) {
       if (!currentConfigIds.has(id)) {
