@@ -611,6 +611,34 @@ class NativeStrategyRunner:
             self._send_drawdown_alert(reason, dd_details)
             return
 
+        # Triple defense: Live Spread Guard (Protects TradeLocker / MetaTrader accounts from abnormal spread spikes)
+        # Gold standard normal spread: $0.20 - $0.40/oz. Maximum permissible spread threshold: $0.70/oz (7 pips).
+        strat_inst = None
+        try:
+            from server.backtest_engine import load_strategy_instance
+            strat_inst = load_strategy_instance(self.strategy_name)
+        except Exception:
+            pass
+        max_allowed_spread = float(getattr(strat_inst, "max_allowed_spread", 0.70)) if strat_inst else 0.70
+        try:
+            latest_quote = self.provider.get_latest_quote() if hasattr(self, "provider") and self.provider else None
+            if latest_quote:
+                live_bid = float(latest_quote.get("bid") or 0.0)
+                live_ask = float(latest_quote.get("ask") or 0.0)
+                if live_bid > 0 and live_ask > 0 and live_ask >= live_bid:
+                    current_spread = round(live_ask - live_bid, 2)
+                    sig["live_spread"] = current_spread
+                    if current_spread > max_allowed_spread:
+                        spread_msg = f"Live spread (${current_spread:.2f}) exceeds maximum threshold (${max_allowed_spread:.2f})"
+                        logger.warning(f"[NativeStrategyRunner] 🛡️ SPREAD GUARD BLOCKED: {spread_msg}. Order suppressed.")
+                        sig["status"] = "BLOCKED_SPREAD_SPIKE"
+                        sig["exit_reason"] = f"SPREAD_SPIKE: ${current_spread:.2f} > ${max_allowed_spread:.2f}"
+                        sig["annotation"] = f"Spread Spike (${current_spread:.2f})"
+                        signal_store.add(sig)
+                        return
+        except Exception as e_spread:
+            logger.debug(f"[NativeStrategyRunner] Live spread check bypassed: {e_spread}")
+
         logger.info(f"[NativeStrategyRunner] 🚀 SIGNAL TRIGGERED for {self.strategy_name}: {sig['action']} @ {sig['price']}")
 
         # 1. Execute order via Active Execution Broker (Paper, TradeLocker, etc.)
