@@ -117,16 +117,17 @@ Examine underlying series behavior before finalizing rule parameters:
    - Alternatively apply Combinatorial Purged Cross-Validation (CPCV) with purging and embargoing to eliminate lookahead leakage.
 4. **Iterative Autonomous Search:**
    - Execute vectorized screening via `tools/vectorized_screener.py` or continuous cycles via `tools/autoresearch_miner.py`.
+   - Leverage multi-scale features including trend, volatility, and auction microstructure proxies ([`references/microstructure_protocol.md`](microstructure_protocol.md)).
    - If progress halts ($N \ge 5$ iterations without improvement), trigger the **Plateau Breaker** to expand the feature space, mutate rules, or adjust timeframes.
 
 ### Stage 3: Adversarial Cynic Audit (Falsification)
-Every candidate strategy must pass all 5 gates before code generation:
-1. **Execution Friction:** Realistic fee (e.g., 5 bps taker fee) + slippage (e.g., 2 bps per side) + spread friction.
+Every candidate strategy must pass all 6 gates before code generation:
+1. **Execution Friction & Noise Floor:** Realistic fee + slippage + spread friction; stops must clear Brownian noise ($\ge \max(3\times \text{Spread}, 1.5\times \text{ATR})$).
 2. **Deflated Sharpe Ratio (DSR):** DSR $\ge 0.95$ accounting for total trial count ($N_{trials}$) and non-normal return skewness/kurtosis.
 3. **Market Regime Survival:** Positive expectancy across distinct market slices (Trending, Choppy, Volatility shock).
 4. **Noise Perturbation Jitter:** Price series perturbed with synthetic noise; Sharpe retention must exceed $80\%$.
-5. **Parameter Stability Surface:** Hyperparameter grid must form a stable plateau, rejecting narrow parameter spikes.
-6. **Monte Carlo Permutation:** 1,000+ trade order permutations verifying 99th percentile drawdown ($\text{MDD}_{99} \le 3.0\%$) and zero ruin probability.
+5. **Parameter Stability Surface & Monte Carlo MDD:** Hyperparameter grid must form a stable plateau, and 1,000+ trade order permutations must yield $\text{MDD}_{99} \le 3.0\%$.
+6. **Equity Curve Linearity Standard:** Compounding path must follow a smooth, nearly linear trajectory ($R^2 \ge 0.85$, $K\text{-Ratio} \ge 1.5$).
 
 ### Stage 4: Code Emission, Portfolio Orthogonality & Live Hot-Deployment
 1. **Code Generation:** Emit production-ready Python strategy classes inheriting standard interface (`tools/strategy_emitter.py`).

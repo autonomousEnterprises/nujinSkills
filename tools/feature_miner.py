@@ -108,7 +108,16 @@ def extract_ohlcv_features(df: pl.DataFrame, window: int = 20) -> pl.DataFrame:
          (pl.col("volume_zscore") > 1.0)).cast(pl.Int32).alias("sweep_high_rejection"),
         ((pl.col("low") < pl.col("low").shift(1).rolling_min(window).fill_null(pl.col("low"))) & 
          (pl.col("lower_wick") >= 0.38) & 
-         (pl.col("volume_zscore") > 1.0)).cast(pl.Int32).alias("sweep_low_rejection")
+         (pl.col("volume_zscore") > 1.0)).cast(pl.Int32).alias("sweep_low_rejection"),
+        # Trapped Inventory & Passive Absorption Signatures
+        ((pl.col("volume_zscore") > 1.0) & (pl.col("lower_wick") >= 0.35) & (pl.col("close") >= pl.col("open"))).cast(pl.Int32).alias("absorption_bullish"),
+        ((pl.col("volume_zscore") > 1.0) & (pl.col("upper_wick") >= 0.35) & (pl.col("close") <= pl.col("open"))).cast(pl.Int32).alias("absorption_bearish"),
+        ((pl.col("high") >= pl.col("high").shift(1).rolling_max(window).fill_null(pl.col("high"))) & 
+         (pl.col("volume_zscore") > 0.8) & 
+         (pl.col("close") < pl.col("open"))).cast(pl.Int32).alias("trapped_longs"),
+        ((pl.col("low") <= pl.col("low").shift(1).rolling_min(window).fill_null(pl.col("low"))) & 
+         (pl.col("volume_zscore") > 0.8) & 
+         (pl.col("close") > pl.col("open"))).cast(pl.Int32).alias("trapped_shorts")
     ])
 
     # 10. Universal Multi-Scale Trend Indicators (EMAs & Donchian Channels)

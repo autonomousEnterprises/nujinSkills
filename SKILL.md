@@ -100,7 +100,8 @@ All research data, features, briefings, returns, and state are organized strictl
 
 Consult these modular references on demand during specific tasks:
 - [`references/quant_protocol.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/quant_protocol.md) — Comprehensive institutional methodology (Hypothesis formulation, MTF confluence, R:R math, Out-of-Sample rigor).
-- [`references/cynic_audit.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/cynic_audit.md) — 5-Gate Adversarial Audit mathematical formulas (DSR, Monte Carlo MDD, noise jitter, parameter plateau).
+- [`references/cynic_audit.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/cynic_audit.md) — 6-Gate Adversarial Audit mathematical formulas (DSR, Monte Carlo MDD, noise jitter, parameter plateau, linearity).
+- [`references/microstructure_protocol.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/microstructure_protocol.md) — Market microstructure, trapped inventory, passive absorption, and auction failure dynamics.
 - [`references/tools_reference.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/tools_reference.md) — Complete CLI tool manual with exact flags, parameters, and invocation patterns.
 - [`references/bot_operations.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/bot_operations.md) — Non-disruptive live bot supervision, state inspection, hot-deployment, and telemetry protocols.
 - [`references/telemetry_api.md`](file:///home/christonomous/Coding/AutonomousEnterprises/nujin/nujinSkills/references/telemetry_api.md) — Cockpit UI WebSocket/IPC payload specifications and Telegram alert schemas.
