@@ -128,6 +128,39 @@ def compute_equity_linearity(returns: np.ndarray) -> dict:
         "status": "PASS" if passed else "FAIL"
     }
 
+def compute_cusum_degradation(returns: np.ndarray, threshold_sigma: float = 2.5) -> dict:
+    """
+    Page's Cumulative Sum (CUSUM) test for live/forward alpha degradation detection.
+    Detects negative performance drift when cumulative downward error exceeds threshold * sigma.
+    """
+    if len(returns) < 5:
+        return {"status": "HEALTHY", "cusum_statistic": 0.0, "reason": "Insufficient samples (< 5)"}
+        
+    mean_r = float(np.mean(returns))
+    std_r = float(np.std(returns, ddof=1)) if len(returns) > 1 else 1.0
+    if std_r == 0:
+        std_r = 1e-6
+        
+    k = 0.5 * std_r
+    s_t = 0.0
+    max_s = 0.0
+    
+    for r in returns:
+        s_t = max(0.0, s_t - r - k)
+        if s_t > max_s:
+            max_s = s_t
+            
+    h_threshold = threshold_sigma * std_r
+    degraded = max_s >= h_threshold
+    
+    return {
+        "status": "DEGRADED" if degraded else "HEALTHY",
+        "max_cusum": round(max_s, 6),
+        "threshold": round(h_threshold, 6),
+        "mean_return": round(mean_r, 6),
+        "std_return": round(std_r, 6)
+    }
+
 def audit_candidate(returns_path: str, trials: int, param_grid: str, oos_data: str, strategy: str = "", strict: bool = False):
     returns = np.array([])
     if strategy:

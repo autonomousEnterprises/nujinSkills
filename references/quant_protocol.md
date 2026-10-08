@@ -68,6 +68,35 @@ Systematic alpha originates from three objective, physical invariants of market 
 3. **The Effort vs. Result Invariant (Absorption & Trapped Liquidity):**
    Volume measures aggressive market order effort; candle displacement measures the result. When massive aggressive volume stalls at structural extremes due to passive limit liquidity, aggressors become trapped offside, serving as forced market liquidity for high-expectancy reversals.
 
+### 1.6 Invalidation-Based Volatility Position Sizing
+Fixed lot sizing or arbitrary contract sizing introduces uncontrolled variance across changing volatility regimes. The institutional standard links position size directly to structural invalidation distance:
+
+$$\text{Position Size} = \frac{\text{Account Equity} \times \text{Risk Fraction}}{\max(|\text{Entry Price} - \text{Structural Stop Loss}|, \; \text{Microstructure Noise Floor}) \times \text{Point Value}}$$
+
+- **Risk Uniformity:** Every position risks the exact same percentage of portfolio equity (e.g. 0.50% or \$50 on a \$10k account) regardless of market volatility.
+- **Volatility Parity:** When market conditions are calm and structural invalidation is tight (e.g., at the extreme of an absorption wick), sizing expands safely. When volatility is wide, sizing contracts, protecting capital automatically.
+
+### 1.7 Alpha Half-Life & Time-Based Trade Invalidation (The Stale-Trade Rule)
+Quantitative edges have a finite temporal duration (alpha half-life). Holding a trade that fails to develop directionally introduces dead-money drag and uncompensated overnight/rollover risk:
+
+1. **Maximum Holding Horizon ($N_{\text{max}}$ Bars):**
+   A strategy specifies a maximum bar horizon (`time_invalidation_bars`, e.g. 12 to 24 bars on 5m data) for a trade to demonstrate profit.
+2. **Momentum Progress Gate:**
+   If price has not achieved at least $+0.5 \times \text{ATR}$ or triggered the initial trailing ratchet within the holding window, the original entry catalyst has evaporated.
+3. **Active Capital Scavenging:**
+   The strategy executes a time-based exit (`EXIT_TIME_EXPIRATION`), cutting inventory risk, eliminating chop exposure, and shortening recovery drawdown periods.
+
+### 1.8 Continuous Quality Control & CUSUM Alpha Degradation Monitoring
+Post-deployment, market regimes drift and competitive crowding causes alpha decay. The engine enforces statistical process control (SPC) using the Page's Cumulative Sum (CUSUM) test:
+
+$$S_t = \max\left(0, \; S_{t-1} + (\mu_{\text{expected}} - R_t - k)\right)$$
+
+Where:
+- $\mu_{\text{expected}}$ is the expected mean trade return from the out-of-sample backtest.
+- $R_t$ is the actual live return of trade $t$.
+- $k$ is the allowable slack parameter ($k = 0.5 \times \sigma$).
+- **Degradation Threshold:** When $S_t \ge 2.5 \times \sigma$, the system automatically issues a `CRITICAL_ALERT: ALPHA_DEGRADED` and transitions the runner to `SAFE_MODE` or pauses new entries to trigger an autonomous re-mining cycle.
+
 ---
 
 ## 🔭 2. Institutional Multi-Timeframe (MTF) Architecture

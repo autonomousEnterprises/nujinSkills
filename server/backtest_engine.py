@@ -332,7 +332,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
         min_bars = getattr(strat_inst, "min_bars", getattr(strat_inst, "min_hold_bars", None))
         if min_bars is None:
             min_bars = 2 if "GOAT" in clean_name.upper() else 1
-        strat_max_bars = getattr(strat_inst, "max_bars", None)
+        strat_max_bars = getattr(strat_inst, "time_invalidation_bars", getattr(strat_inst, "max_bars", None))
         if strat_max_bars is not None and int(strat_max_bars) > 0:
             max_bars = int(strat_max_bars)
         elif roi_keys and max(roi_keys) > 10:
@@ -468,7 +468,7 @@ def run_real_backtest(strategy_name: str = "", save_as_active: bool = False, tim
             # Sequential exit resolution
             exit_idx = i + 1
             exit_price = entry_price
-            exit_reason = "BARS_HOLD"
+            exit_reason = "TIME_EXPIRATION" if getattr(strat_inst, "time_invalidation_bars", None) else "BARS_HOLD"
             final_exit_idx = exit_idx
 
             while exit_idx < min(i + max_bars + 1, n):

@@ -201,7 +201,7 @@ class StrategyEvaluator:
 
             lots = round(lots, 2)
 
-            strat_max_bars = getattr(strat_inst, "max_bars", None)
+            strat_max_bars = getattr(strat_inst, "time_invalidation_bars", getattr(strat_inst, "max_bars", None))
             max_hold_seconds = (strat_max_bars * bar_sec) if strat_max_bars is not None else None
 
             # 5. Dynamic Trailing Stop Configuration
