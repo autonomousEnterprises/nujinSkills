@@ -3,6 +3,7 @@
 [![System: NujinAI](https://img.shields.io/badge/System-NujinAI-blue.svg)](SKILL.md)
 [![Quant Protocol](https://img.shields.io/badge/Methodology-Universal%20Quant-emerald.svg)](references/quant_protocol.md)
 [![Audit: 6--Gate Cynic](https://img.shields.io/badge/Audit-6--Gate%20Cynic%20%7C%20R%C2%B2%20%E2%89%A5%200.85-amber.svg)](references/cynic_audit.md)
+[![Market Invariants](https://img.shields.io/badge/Invariants-Auction%20%26%20Wyckoff-teal.svg)](references/microstructure_protocol.md)
 [![Tools Reference](https://img.shields.io/badge/Tools-CLI%20Reference-purple.svg)](references/tools_reference.md)
 [![Bot Operations](https://img.shields.io/badge/Bot-Live%20Supervision-cyan.svg)](references/bot_operations.md)
 [![Telemetry API](https://img.shields.io/badge/Telemetry-JSON%20API-sky.svg)](references/telemetry_api.md)
@@ -34,16 +35,19 @@ Instead of getting bogged down in boilerplate code, manual data joining, or curv
    * Rejects erratic, high-variance strategies driven by lucky outlier windfalls.
    * Specifically optimizes for a steady, straight-line upward equity curve with strict tail-risk drawdown containment ($\text{MDD}_{99} \le 3.0\%$)—tailored for consistency and passing prop firm evaluations.
 
-3. **Completely Unbiased & Asset-Agnostic**
-   * Operates without restrictive, hardcoded archetype templates.
-   * Generically models any asset class (Forex, Commodities, Indices, Crypto) and any quantitative thesis purely through empirical statistical discovery.
+3. **Universal Market Invariants (Auction Market Theory & Wyckoff Mechanics)**
+   * Anchors alpha to physical price formation laws: Value Area acceptance ($H < 0.45$) vs. price discovery ($H > 0.55$), Wyckoff volatility compression (`vol_compression < 0.70`), and passive limit absorption of trapped inventory (`absorption_bullish`/`bearish`).
 
-4. **Institutional Multi-Timeframe (MTF) Confluence**
+4. **Active Alpha Protection & Volatility Risk Management**
+   * **Invalidation-Based Position Sizing:** Automatically scales position size inversely with structural invalidation distance to enforce strict dollar-risk uniformity.
+   * **Alpha Half-Life (Time Invalidation):** Automatically scratches stale trades after $N$ bars (`TIME_EXPIRATION`), cutting dead-money drag and chop risk.
+   * **Live CUSUM Drift Circuit Breaker:** Continuously monitors live forward returns; automatically halts new entries and dispatches Telegram alerts if performance degrades beyond $2.5\sigma$.
+
+5. **Institutional Multi-Timeframe (MTF) Confluence**
    * Solves single-timeframe myopia through a rigorous 3-tier hierarchy: **HTF** (Macro Regime & Bias) $\rightarrow$ **MTF** (Structural Zone / Setup) $\rightarrow$ **LTF** (Execution Trigger & Precise Invalidation).
 
-5. **Seamless Full-Stack Pipeline (Hypothesis to Live Execution)**
-   * Eliminates the painful gap between research scripts and live trading code.
-   * Automatically moves from raw anomaly discovery $\rightarrow$ vectorized rule screening $\rightarrow$ adversarial audit $\rightarrow$ clean Python code generation $\rightarrow$ **live broker hot-deployment and dual-screen telemetry**.
+6. **Unified Closed-Loop AI Quantitative Compiler**
+   * The AI directly authors native Python strategies inheriting `IStrategy`, verifies all 6 Cynic Gates in closed-loop iteration, and hot-deploys them to the live running engine and dual-screen telemetry dashboard.
 
 ---
 
@@ -162,7 +166,7 @@ Invoke all tools using the project virtualenv (`.venv/bin/python3 tools/<tool>.p
   ```
 
 ### 3. Adversarial Cynic Audit (Falsification)
-* **5-Gate Adversarial Cynic Auditor:**
+* **6-Gate Adversarial Cynic Auditor (Friction + DSR + Regimes + Noise + MC MDD + Linearity):**
   ```bash
   python tools/cynic_auditor.py --id my_alpha --trials 50 --strict
   ```
@@ -171,10 +175,11 @@ Invoke all tools using the project virtualenv (`.venv/bin/python3 tools/<tool>.p
   python tools/portfolio_cynic.py --data data/candles_15m.csv --threshold 0.50
   ```
 
-### 4. Code Generation & Strategy Registry
-* **Emit Native Standalone Python Strategy Class:**
+### 4. Native Strategy Synthesis & Closed-Loop Cynic Verification
+* **Native Production Python Class Generation & Self-Correction:**
   ```bash
-  python tools/strategy_emitter.py --thesis "XAUUSD Session Volatility Absorption" --rules .nujin/experiments/my_alpha/best_rule.json --out strategies/XauusdVolAbsorber.py
+  # Directly authored by the AI Agent with full state machines and risk guards, verified via:
+  python tools/cynic_auditor.py --strategy MyCustomStrategy --strict
   ```
 * **Strategy Registry & Dynamic Plugins Inspection:**
   ```bash
@@ -187,7 +192,7 @@ Invoke all tools using the project virtualenv (`.venv/bin/python3 tools/<tool>.p
 * **Query Live Bot Status & Hot-Deploy Strategy:**
   ```bash
   python tools/bot_control.py status
-  python tools/bot_control.py deploy --strategy XauusdVolAbsorber --mode paper
+  python tools/bot_control.py deploy --strategy MyCustomStrategy --mode paper
   ```
 * **Inspect Live Performance & Signals:**
   ```bash
@@ -210,7 +215,7 @@ Access the interactive trading cockpit at **`http://localhost:3000`**:
 |---|---|---|
 | **Chart Canvas** | **`F1`** | High-performance candlestick chart overlaid with visual primitives (multi-scale EMAs, Bollinger Bands, Fair Value Gaps, liquidity sweeps, and execution markers). |
 | **Signal Deck** | **`F2`** | Live execution telemetry: win rate, profit factor, annualized Sharpe, active open position card with real-time unrealized PnL, and manual override controls. |
-| **Backtest Deck** | **`F3`** | Backtest audit: equity trajectory curves, return distribution, regime breakdown (Bull, Bear, Range), and 5-Gate Cynic matrix. |
+| **Backtest Deck** | **`F3`** | Backtest audit: equity trajectory curves, return distribution, regime breakdown (Bull, Bear, Range), and 6-Gate Cynic matrix ($R^2 \ge 0.85$). |
 | **Strategy Manager** | **`F4`** | Strategy leaderboard, global Live vs. Paper toggle, equity trajectory curves, correlation matrices, and direct action navigation. |
 | **Cycle Screens** | **`Ctrl + Space`** | Seamlessly toggle focus between open decks. |
 
@@ -226,8 +231,9 @@ Nujin supports external modular extensions via the `plugins/` directory. Any ins
 
 For in-depth mathematical derivations and operational specifications:
 - [`SKILL.md`](SKILL.md) — Master Autonomous Quant Engine Protocol & Instructions
-- [`references/quant_protocol.md`](references/quant_protocol.md) — Universal quant research methodology, MTF architecture & risk-reward math
-- [`references/cynic_audit.md`](references/cynic_audit.md) — 5-Gate Adversarial Falsification formulas (DSR, Monte Carlo MDD, noise jitter, parameter plateau)
+- [`references/quant_protocol.md`](references/quant_protocol.md) — Universal quant research methodology, MTF architecture, volatility sizing & risk-reward math
+- [`references/cynic_audit.md`](references/cynic_audit.md) — 6-Gate Adversarial Falsification formulas (DSR, Monte Carlo MDD, noise jitter, parameter plateau, linearity)
+- [`references/microstructure_protocol.md`](references/microstructure_protocol.md) — Market microstructure, trapped inventory, passive absorption, and auction failure dynamics
 - [`references/tools_reference.md`](references/tools_reference.md) — Complete CLI manual with all tool flags, parameters, and invocation examples
 - [`references/bot_operations.md`](references/bot_operations.md) — Non-disruptive live bot supervision, state inspection, and hot-deployment guide
 - [`references/telemetry_api.md`](references/telemetry_api.md) — Cockpit UI WebSocket/IPC payload specifications and Telegram alert schemas
