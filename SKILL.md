@@ -45,8 +45,8 @@ Your responsibility is to take any trading concept or quantitative hypothesis th
   Enforce 6 Gates: Real Friction, Deflated Sharpe (DSR >= 0.95), Regimes, Noise Jitter, MC MDD, & Linearity.
                     │
                     ▼
-[ STAGE 4: Code Emission, Portfolio Orthogonality & Live Hot-Deployment ]
-  Emit standalone Python strategy, verify portfolio correlation (< 0.50), & deploy to running bot.
+[ STAGE 4: Native Strategy Synthesis, Closed-Loop Cynic Audit & Live Hot-Deployment ]
+  Directly code native Python class, enforce 6 Cynic Gates, verify correlation (< 0.50), & deploy to bot.
 ```
 
 ---
@@ -75,10 +75,13 @@ All research data, features, briefings, returns, and state are organized strictl
 - **Portfolio Correlation & Regime Orthogonality:**
   `tools/portfolio_cynic.py --data data/candles_15m.csv --threshold 0.50`
 
-### 4. Code Generation & Strategy Registration
-- **Dual-Path Strategy Engineering:**
-  * **Path A (Primary / Sophisticated Alpha):** The AI Agent directly authors native Python strategy classes (`strategies/<Name>.py` inheriting `IStrategy`), with full freedom to implement multi-bar state machines, zone tracking, custom order flow logic, and dynamic risk management.
-  * **Path B (Automated Rule Serializer):** `tools/strategy_emitter.py --thesis "Description" --rules .nujin/experiments/my_alpha/best_rule.json --out strategies/MyStrategy.py` (serializes simple boolean screening rules into boilerplate classes).
+### 4. Native Strategy Synthesis & Closed-Loop Cynic Verification
+- **Unified Native AI Strategy Synthesis (Zero-Ceiling Quantitative Engineering):**
+  The AI Agent directly authors native production Python strategy classes (`strategies/<Name>.py` inheriting `IStrategy`). 
+  Unrestricted expressiveness: implements multi-bar state machines, MTF zone memory, custom order flow / absorption logic, noise-floor protected risk, and frontend visual indicator manifests (`chart_indicators`).
+- **Closed-Loop Cynic Falsification & Self-Correction:**
+  `tools/cynic_auditor.py --strategy <Name> --strict`
+  (The AI immediately stress-tests its synthesized code against the 6 Cynic Gates, iteratively self-correcting any parameter, friction, or linearity failures before deployment).
 - **Strategy Registry & Plugins Management:**
   `tools/strategy_manager.py list`
   `tools/strategy_manager.py plugins`

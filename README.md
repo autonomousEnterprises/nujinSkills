@@ -73,7 +73,7 @@ python tools/frontend_control.py start --port 3000 --daemon
 ### 3. Prompt Your AI Agent
 Open this workspace in your agentic coding environment (**Google Antigravity**, **Claude Code**, **Cursor**, **Windsurf**, or **Hermes**) and issue a request:
 
-> *"Research a gold (XAU/USD) 1m scalping strategy targeting max 3% drawdown and Sharpe >= 1.8 with 5m MTF trend confluence. Mine the features, run the 5-Gate Cynic audit, and deploy it to paper mode."*
+> *"Research a gold (XAU/USD) 1m scalping strategy targeting max 3% drawdown and Sharpe >= 1.8 with 5m MTF trend confluence. Mine the features, run the 6-Gate Cynic audit, and deploy it to paper mode."*
 
 The agent reads [`SKILL.md`](SKILL.md), invokes the specialized CLI tools, and executes the entire institutional pipeline.
 
@@ -90,12 +90,12 @@ The agent reads [`SKILL.md`](SKILL.md), invokes the specialized CLI tools, and e
   Join HTF context -> Extract scale-invariant features -> Vectorized screen -> Mutate rules.
                     │
                     ▼
-[ STAGE 3: 5-Gate Adversarial Cynic Audit (Falsification) ]
-  Friction Gate + DSR (>= 0.95) + Regime Survival + Noise Jitter + Monte Carlo MDD99.
+[ STAGE 3: 6-Gate Adversarial Cynic Audit (Falsification) ]
+  Friction Gate + DSR (>= 0.95) + Regime Survival + Noise Jitter + MC MDD99 + Linearity (R² >= 0.85).
                     │
                     ▼
-[ STAGE 4: Code Emission, Portfolio Orthogonality & Live Hot-Deployment ]
-  Emit native Python strategy class, verify correlation (< 0.50), & hot-deploy to running bot.
+[ STAGE 4: Native Strategy Synthesis, Closed-Loop Audit & Live Hot-Deployment ]
+  Directly code native Python class, enforce 6 Cynic Gates, verify correlation (< 0.50), & hot-deploy.
 ```
 
 ---
