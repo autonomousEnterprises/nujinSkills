@@ -48,23 +48,30 @@ def extract_ohlcv_features(df: pl.DataFrame, window: int = 20) -> pl.DataFrame:
         (pl.col("_ret5").rolling_var(50) / (pl.col("_ret1").rolling_var(50).clip(1e-6, None) * 5.0)).clip(0.1, 0.9).alias("hurst_proxy")
     ]).drop(["_ret1", "_ret5"])
     
-    # 5. Anchored VWAP Z-Score Proxy
+    # 5. Anchored VWAP & Value Area Auction Bands
     df = df.with_columns([
         (pl.col("close") * pl.col("volume")).rolling_sum(100).alias("_pv_sum"),
         pl.col("volume").rolling_sum(100).alias("_v_sum"),
+        pl.col("close").rolling_std(100).clip(1e-6, None).alias("_vwap_std"),
     ]).with_columns([
         (pl.col("_pv_sum") / pl.col("_v_sum").clip(1e-6, None)).alias("avwap_100")
     ]).with_columns([
-        ((pl.col("close") - pl.col("avwap_100")) / pl.col("close").rolling_std(100).clip(1e-6, None)).alias("avwap_zscore")
-    ]).drop(["_pv_sum", "_v_sum"])
+        ((pl.col("close") - pl.col("avwap_100")) / pl.col("_vwap_std")).alias("avwap_zscore"),
+        (pl.col("avwap_100") + 1.5 * pl.col("_vwap_std")).alias("value_area_high"),
+        (pl.col("avwap_100") - 1.5 * pl.col("_vwap_std")).alias("value_area_low"),
+    ]).drop(["_pv_sum", "_v_sum", "_vwap_std"])
 
-    # 6. Bollinger Bands & Moving Averages for rule evaluation
+    # 6. Bollinger Bands, Moving Averages & Volatility Compression (Wyckoff Cause)
     df = df.with_columns([
         pl.col("close").rolling_mean(20).alias("sma_20"),
         pl.col("close").rolling_std(20).alias("std_20"),
     ]).with_columns([
         (pl.col("sma_20") + 2.0 * pl.col("std_20")).alias("upper_band"),
         (pl.col("sma_20") - 2.0 * pl.col("std_20")).alias("lower_band"),
+        ((4.0 * pl.col("std_20")) / (pl.col("sma_20") + 1e-6)).alias("bb_bandwidth"),
+    ]).with_columns([
+        # Volatility Compression Ratio (Wyckoff Cause / Squeeze: < 0.70 = coiled spring, > 1.40 = extended)
+        (pl.col("bb_bandwidth") / pl.col("bb_bandwidth").rolling_mean(50).clip(1e-6, None)).alias("vol_compression"),
     ])
 
     # 7. Prop Firm Scalping Features (Trader MNQ ATR Bands & Shooting Star Rejection)

@@ -56,6 +56,18 @@ To achieve smooth compounding without erratic swings or long flatlined drawdowns
    Autonomous miners optimize for smooth compounding rather than raw unpenalized profit:
    $$\text{Fitness} = \text{Net Expectancy (bps)} \times R^2 \times \min(\text{DSR}, 1.0)$$
 
+### 1.5 Universal Market Invariants & Economic Causality
+Systematic alpha originates from three objective, physical invariants of market price formation:
+
+1. **The Incomplete Auction Invariant (Steidlmayer / Auction Market Theory):**
+   Markets continuously rotate between **Balance / Value Acceptance** (efficient two-sided trade, low Hurst $H < 0.45$) and **Imbalance / Price Discovery** (directional expansion seeking new value, high Hurst $H > 0.55$). Testing outside the Value Area (`value_area_high` / `value_area_low`) without volume acceptance triggers a Failed Auction, rapidly reverting back to mean value.
+
+2. **The Cause & Effect Invariant (Wyckoff / Volatility Clustering):**
+   Volatility mathematically clusters (ARCH/GARCH): periods of low variance precede explosive expansion. The asymmetric payoff of any breakout or trend continuation scales inversely with the preceding volatility compression (`vol_compression < 0.70` indicates energy coiling).
+
+3. **The Effort vs. Result Invariant (Absorption & Trapped Liquidity):**
+   Volume measures aggressive market order effort; candle displacement measures the result. When massive aggressive volume stalls at structural extremes due to passive limit liquidity, aggressors become trapped offside, serving as forced market liquidity for high-expectancy reversals.
+
 ---
 
 ## 🔭 2. Institutional Multi-Timeframe (MTF) Architecture
