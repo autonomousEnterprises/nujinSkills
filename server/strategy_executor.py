@@ -420,6 +420,62 @@ class NativeStrategyRunner:
         )
         telegram_gateway.send_message(msg, parse_mode="HTML")
 
+    def check_alpha_degradation(self) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Monitors live trade performance via CUSUM (Page's Cumulative Sum) test.
+        Flags edge decay if rolling cumulative losses exceed statistical bounds (2.5 sigma).
+        """
+        try:
+            closed_signals = [
+                s for s in signal_store.get_all()
+                if (s.get("strategy") == self.strategy_name and (s.get("status") == "CLOSED" or s.get("exit_price")))
+            ]
+            if len(closed_signals) < 8:
+                return True, {"status": "HEALTHY", "reason": "Insufficient closed trades (< 8)"}
+
+            # Extract return percentages
+            returns = []
+            for s in closed_signals:
+                if s.get("pnl_pct") is not None:
+                    returns.append(float(s["pnl_pct"]) / 100.0)
+                else:
+                    entry_p = float(s.get("price") or s.get("entry_price") or 0.0)
+                    exit_p = float(s.get("exit_price") or 0.0)
+                    act = (s.get("action") or "BUY").upper()
+                    if entry_p > 0 and exit_p > 0:
+                        ret = (exit_p - entry_p) / entry_p if act in ("BUY", "LONG") else (entry_p - exit_p) / entry_p
+                        returns.append(ret)
+
+            if len(returns) < 8:
+                return True, {"status": "HEALTHY", "reason": "Insufficient return samples"}
+
+            from tools.validation_cynic import compute_cusum_degradation
+            res = compute_cusum_degradation(np.array(returns[-30:]), threshold_sigma=2.5)
+            healthy = (res.get("status") != "DEGRADED")
+            return healthy, res
+        except Exception as e_decay:
+            logger.debug(f"[AlphaDriftGuard] Error evaluating CUSUM: {e_decay}")
+            return True, {"status": "ERROR", "error": str(e_decay)}
+
+    def _send_alpha_decay_alert(self, details: Dict[str, Any]) -> None:
+        """Dispatches an urgent Telegram alert when strategy edge decay is detected."""
+        today_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if getattr(self, f"_last_alerted_decay_{today_key}", False):
+            return
+        setattr(self, f"_last_alerted_decay_{today_key}", True)
+
+        msg = (
+            f"📉 <b>[ALPHA DRIFT DETECTED] EDGE DECAY GUARD ACTIVE</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"⏰ <b>Time:</b> <code>{datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}</code>\n"
+            f"📊 <b>Strategy:</b> <code>{self.strategy_name}</code>\n"
+            f"⚠️ <b>Status:</b> <b>PERFORMANCE DRIFT &gt; 2.5σ</b>\n"
+            f"📉 <b>CUSUM Score:</b> <code>{details.get('max_cusum', 0.0):.4f}</code> (Threshold: {details.get('threshold', 0.0):.4f})\n"
+            f"🛑 <b>Action Taken:</b> <b>NEW ENTRIES PAUSED</b>\n\n"
+            f"<i>The strategy's forward performance has drifted significantly from out-of-sample expectations. New entries are halted to protect account equity while you re-evaluate or re-mine.</i>"
+        )
+        telegram_gateway.send_message(msg, parse_mode="HTML")
+
     async def _on_market_tick(self, quote: Dict[str, Any]) -> None:
         """Called on every real-time price tick. Checks open position exits."""
         try:
@@ -485,6 +541,16 @@ class NativeStrategyRunner:
                         f"Remaining budget: ${dd_details['remaining_budget_usd']:.2f}."
                     )
                     self._send_drawdown_alert(reason, dd_details)
+                return
+
+            # Institutional Alpha Drift Guard: CUSUM Edge Decay Circuit Breaker
+            healthy, decay_details = self.check_alpha_degradation()
+            if not healthy:
+                logger.warning(
+                    f"[NativeStrategyRunner] ⚠️ ALPHA DECAY DETECTED: Pausing entries for '{self.strategy_name}'. "
+                    f"CUSUM score: {decay_details.get('max_cusum', 0.0):.4f} >= threshold {decay_details.get('threshold', 0.0):.4f}."
+                )
+                self._send_alpha_decay_alert(decay_details)
                 return
 
             # For XAU/USD, yield briefly so background authentic volume sync finishes
