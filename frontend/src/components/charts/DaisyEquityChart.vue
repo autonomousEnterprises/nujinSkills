@@ -10,6 +10,9 @@
         <span>Peak: <strong class="text-success font-bold">+{{ peakGainPct.toFixed(2) }}%</strong></span>
         <span>Net PnL: <strong :class="finalNetPct >= 0 ? 'text-success' : 'text-error'" class="font-bold">
           {{ finalNetPct >= 0 ? '+' : '' }}{{ finalNetPct.toFixed(2) }}%
+          <span v-if="dollarGain != null" class="ml-1 opacity-80 text-[10px]">
+            ({{ dollarGain >= 0 ? '+' : '' }}${{ dollarGain.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }})
+          </span>
         </strong></span>
         <span>Worst DD: <strong class="text-error font-bold">-{{ maxDd.toFixed(2) }}%</strong></span>
       </div>
@@ -108,6 +111,8 @@ interface Point {
   time?: number;
   equity_pct: number;
   drawdown_pct?: number;
+  balance?: number;
+  profit_dollars?: number;
 }
 
 const props = withDefaults(
@@ -160,6 +165,7 @@ const rangeEq = computed(() => Math.max(maxEq.value - minEq.value, 0.4));
 
 const finalEq = computed(() => points.value[points.value.length - 1]?.equity_pct ?? 100.0);
 const finalNetPct = computed(() => finalEq.value - 100.0);
+const dollarGain = computed(() => points.value[points.value.length - 1]?.profit_dollars ?? null);
 const peakGainPct = computed(() => Math.max(rawMaxEq.value - 100.0, 0.0));
 const maxDd = computed(() => Math.max(...points.value.map((d) => d.drawdown_pct || 0.0), 0.0));
 
