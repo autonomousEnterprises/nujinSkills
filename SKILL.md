@@ -75,9 +75,10 @@ All research data, features, briefings, returns, and state are organized strictl
 - **Portfolio Correlation & Regime Orthogonality:**
   `tools/portfolio_cynic.py --data data/candles_15m.csv --threshold 0.50`
 
-### 4. Code Emission & Strategy Registration
-- **Generate Standalone Strategy Class:**
-  `tools/strategy_emitter.py --thesis "Strategy Thesis Description" --rules .nujin/experiments/my_alpha/best_rule.json --out strategies/MyStrategy.py`
+### 4. Code Generation & Strategy Registration
+- **Dual-Path Strategy Engineering:**
+  * **Path A (Primary / Sophisticated Alpha):** The AI Agent directly authors native Python strategy classes (`strategies/<Name>.py` inheriting `IStrategy`), with full freedom to implement multi-bar state machines, zone tracking, custom order flow logic, and dynamic risk management.
+  * **Path B (Automated Rule Serializer):** `tools/strategy_emitter.py --thesis "Description" --rules .nujin/experiments/my_alpha/best_rule.json --out strategies/MyStrategy.py` (serializes simple boolean screening rules into boilerplate classes).
 - **Strategy Registry & Plugins Management:**
   `tools/strategy_manager.py list`
   `tools/strategy_manager.py plugins`

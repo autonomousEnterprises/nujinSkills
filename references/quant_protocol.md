@@ -141,7 +141,9 @@ Every candidate strategy must pass all 6 gates before code generation:
 5. **Parameter Stability Surface & Monte Carlo MDD:** Hyperparameter grid must form a stable plateau, and 1,000+ trade order permutations must yield $\text{MDD}_{99} \le 3.0\%$.
 6. **Equity Curve Linearity Standard:** Compounding path must follow a smooth, nearly linear trajectory ($R^2 \ge 0.85$, $K\text{-Ratio} \ge 1.5$).
 
-### Stage 4: Code Emission, Portfolio Orthogonality & Live Hot-Deployment
-1. **Code Generation:** Emit production-ready Python strategy classes inheriting standard interface (`tools/strategy_emitter.py`).
+### Stage 4: Strategy Implementation, Portfolio Orthogonality & Live Hot-Deployment
+1. **Dual-Path Strategy Engineering:**
+   - **Path A (Primary / Native AI Engineering):** For non-trivial alphas (multi-bar state machines, MTF zone memory, custom liquidity confirmation, dynamic structural trailing), the AI Agent writes or refactors native Python strategy classes inheriting `IStrategy` directly.
+   - **Path B (Automated Rule Serializer):** For simple boolean conditions discovered during autonomous screening runs, serialize them into standalone classes using `tools/strategy_emitter.py`.
 2. **Portfolio Correlation Audit:** Ensure the candidate strategy has low pairwise return correlation ($< 0.50$) with existing active strategies (`tools/portfolio_cynic.py`).
 3. **Hot Deployment:** Register into `strategy_manager.py` and deploy via `tools/bot_control.py` in paper mode before live capital allocation.
