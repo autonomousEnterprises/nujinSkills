@@ -205,13 +205,36 @@ class StrategyEvaluator:
                 lots = float(last_row["lot_size"])
             elif hasattr(strat_inst, "calculate_lot_size") and callable(getattr(strat_inst, "calculate_lot_size")):
                 try:
+                    # Resolve Target Account Scale:
+                    # Prioritize live connected broker ONLY IF it is an active real/demo broker account (e.g. TradeLocker).
+                    # When running in paper preview or before an account is activated, scale to the configured account
+                    # in accounts_store or the strategy's target benchmark equity (e.g. $5,000 Prop Firm base).
                     broker = broker_registry.get_broker()
-                    acc_info = broker.get_account_info() if broker else {}
-                    acc_bal = float(acc_info.get("equity") or acc_info.get("balance") or 5000.0)
-                    if acc_bal <= 0:
-                        acc_bal = 5000.0
+                    is_paper_broker = getattr(broker, "broker_id", "paper") == "paper"
+                    
+                    target_equity = None
+                    if broker and getattr(broker, "is_connected", False) and not is_paper_broker:
+                        acc_info = broker.get_account_info()
+                        eq = float(acc_info.get("equity") or acc_info.get("balance") or 0.0)
+                        if eq > 0:
+                            target_equity = eq
+
+                    if target_equity is None:
+                        try:
+                            if accounts_store:
+                                all_accs = accounts_store.get_all_accounts(decrypt=False) if hasattr(accounts_store, "get_all_accounts") else []
+                                if not all_accs and hasattr(accounts_store, "_read_raw"):
+                                    all_accs = accounts_store._read_raw().get("accounts", [])
+                                if all_accs:
+                                    target_equity = float(all_accs[0].get("initial_balance") or all_accs[0].get("balance") or 0.0)
+                        except Exception:
+                            pass
+
+                    if not target_equity or target_equity <= 0:
+                        target_equity = float(getattr(strat_inst, "benchmark_equity", 5000.0))
+
                     lots = float(strat_inst.calculate_lot_size(
-                        account_balance=acc_bal,
+                        account_balance=target_equity,
                         entry_price=curr_p,
                         stop_loss=sl,
                         symbol=symbol,
@@ -318,19 +341,22 @@ class NativeStrategyRunner:
 
         # 1. Resolve Account & Pluggable Risk Profile
         primary_acc = None
-        initial_balance = 5000.0
+        initial_balance = None
         try:
             if accounts_store:
                 active_accs = accounts_store.get_all_active_accounts(broker_id="tradelocker", decrypt=False)
                 if not active_accs:
                     active_accs = accounts_store.get_all_active_accounts(decrypt=False)
+                if not active_accs and hasattr(accounts_store, "_read_raw"):
+                    active_accs = accounts_store._read_raw().get("accounts", [])
                 if active_accs:
                     primary_acc = active_accs[0]
-                    initial_balance = float(primary_acc.get("initial_balance") or primary_acc.get("balance") or 5000.0)
+                    initial_balance = float(primary_acc.get("initial_balance") or primary_acc.get("balance") or 0.0)
         except Exception:
             pass
-        if initial_balance <= 0:
-            initial_balance = 5000.0
+
+        if not initial_balance or initial_balance <= 0:
+            initial_balance = float(getattr(strat_inst, "benchmark_equity", 5000.0))
 
         risk_profile = (primary_acc.get("risk_profile") if primary_acc else None) or {}
 
@@ -343,18 +369,20 @@ class NativeStrategyRunner:
         max_total_dd_pct = float(risk_profile.get("max_total_drawdown_pct") or getattr(strat_inst, "max_total_drawdown_pct", 0.05))
         trade_risk_pct = float(risk_profile.get("risk_per_trade_pct") or getattr(strat_inst, "max_risk_pct", getattr(strat_inst, "risk_per_trade_pct", 0.0060)))
 
-        # 2. Check live broker equity/balance
+        # 2. Check live broker equity/balance (ONLY IF not in paper mode, avoiding $100k paper mismatch)
         broker_equity = None
         broker_balance = None
         try:
             broker = broker_registry.get_broker()
-            if broker and getattr(broker, "is_connected", False):
+            is_paper = getattr(broker, "broker_id", "paper") == "paper"
+            if broker and getattr(broker, "is_connected", False) and not is_paper:
                 info = broker.get_account_info()
                 eq = float(info.get("equity") or 0.0)
                 bal = float(info.get("balance") or 0.0)
                 if eq > 0:
                     broker_equity = eq
                     broker_balance = bal
+                    initial_balance = bal
         except Exception as e_b:
             logger.debug(f"[DrawdownGuard] Broker info error: {e_b}")
 
