@@ -359,10 +359,12 @@ class NativeStrategyRunner:
             initial_balance = float(getattr(strat_inst, "benchmark_equity", 5000.0))
 
         risk_profile = (primary_acc.get("risk_profile") if primary_acc else None) or {}
+        now_utc = datetime.now(timezone.utc)
+        today_utc_str = now_utc.strftime("%Y-%m-%d")
 
-        # If user explicitly disabled drawdown guard on this account
-        if risk_profile.get("disable_daily_guard") is True:
-            return True, "Drawdown guard disabled by account risk profile", {"status": "BYPASSED"}
+        # If user explicitly bypassed drawdown guard for today or disabled it
+        if risk_profile.get("disable_daily_guard") is True or risk_profile.get("bypass_guard_date") == today_utc_str:
+            return True, f"Drawdown guard bypassed for today ({today_utc_str})", {"status": "BYPASSED", "day_key": today_utc_str}
 
         # Respect account-level risk profile, falling back to strategy configuration, then generic defaults
         max_daily_dd_pct = float(risk_profile.get("max_daily_drawdown_pct") or getattr(strat_inst, "max_daily_drawdown_pct", 0.03))
