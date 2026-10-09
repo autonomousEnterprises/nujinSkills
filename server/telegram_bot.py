@@ -256,6 +256,7 @@ class TelegramGateway:
         strategy = html.escape(str(payload.get("strategy", "Autonomous Bot")).replace(".py", ""))
         pair = html.escape(str(payload.get("pair", "Asset")))
         entry_p = float(payload.get("price") or payload.get("entry_price") or 0.0)
+        exit_p = float(payload.get("exit_price") or payload.get("close_price") or 0.0)
         pnl = float(payload.get("pnl_pct") or 0.0)
         pnl_usd = payload.get("pnl_usd")
         exit_reason = html.escape(str(payload.get("exit_reason", "EXIT")))

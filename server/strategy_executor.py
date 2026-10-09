@@ -170,9 +170,34 @@ class StrategyEvaluator:
                 logger.error(f"[StrategyEvaluator] REJECTED excessive Gold stop loss (${abs(sl - curr_p):.2f} > $25) for {clean_name}")
                 return None
 
-            bar_sec = 60 if ("1m" in symbol or is_xau or is_sp) else 900
-            min_bars = getattr(strat_inst, "min_bars", getattr(strat_inst, "min_hold_bars", 2 if is_xau else 1))
-            max_bars = getattr(strat_inst, "max_bars", 15 if is_xau else 12)
+            # Dynamic bar duration resolution (Single Source of Truth)
+            bar_sec = None
+            if len(df) >= 2 and "time" in df.columns:
+                try:
+                    diffs = df["time"].diff().dropna()
+                    valid_diffs = diffs[diffs > 0]
+                    if len(valid_diffs) > 0:
+                        bar_sec = int(valid_diffs.median())
+                except Exception:
+                    pass
+
+            if not bar_sec or bar_sec <= 0:
+                tf_str = getattr(strat_inst, "timeframe", "")
+                if not tf_str:
+                    try:
+                        from server.backtest_engine import resolve_strategy_metadata
+                        tf_str = resolve_strategy_metadata(clean_name).get("timeframe", "")
+                    except Exception:
+                        pass
+                
+                tf_map = {
+                    "1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800,
+                    "1h": 3600, "2h": 7200, "4h": 14400, "1d": 86400
+                }
+                bar_sec = tf_map.get(str(tf_str).lower(), 300 if ("5m" in clean_name.lower()) else (60 if "1m" in symbol.lower() else 900))
+
+            min_bars = getattr(strat_inst, "min_bars", getattr(strat_inst, "min_hold_bars", 1))
+            max_bars = getattr(strat_inst, "max_bars", None)
 
             # 4. Strategy-Designed Smart Lot Sizer
             lots = None
@@ -747,7 +772,8 @@ class NativeStrategyRunner:
     async def _evaluate_position_exit(self, pos: Dict[str, Any], current_price: float, quote: Optional[Dict[str, Any]] = None) -> None:
         """Monitors active trade against Take Profit, Stop Loss, and Holding Rules with bid/ask spread awareness."""
         now_ts = int(time.time())
-        entry_time = int(pos.get("time") or now_ts)
+        # Measure elapsed time strictly from actual order fill execution time, not candle open timestamp
+        entry_time = int(pos.get("executed_at") or pos.get("entry_time_ts") or pos.get("time") or now_ts)
         elapsed_sec = max(0, now_ts - entry_time)
 
         side = pos.get("action", "BUY").upper()
@@ -766,8 +792,9 @@ class NativeStrategyRunner:
 
         eval_exit_price = bid_price if is_long else ask_price
 
-        # Holding constraints (from signal payload or defaults)
-        min_hold = int(pos.get("min_hold_seconds") or (120 if "XAU" in self.symbol else 30))
+        # Holding constraints (strictly from signal payload or strategy configuration, no arbitrary global caps)
+        min_hold_raw = pos.get("min_hold_seconds")
+        min_hold = int(min_hold_raw) if min_hold_raw is not None else 10
         max_hold_raw = pos.get("max_hold_seconds")
         max_hold = int(max_hold_raw) if (max_hold_raw is not None and max_hold_raw != 0) else None
 
